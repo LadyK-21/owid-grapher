@@ -1,14 +1,20 @@
 import { ColorScaleBin } from "../color/ColorScaleBin"
 import { Bounds, PointVector, ColumnSlug } from "@ourworldindata/utils"
-import { MapProjectionName } from "./MapProjections"
+import {
+    MapProjectionName,
+    Color,
+    Time,
+    GrapherChartType,
+    GrapherTabOption,
+    SeriesName,
+} from "@ourworldindata/types"
 import { ChartManager } from "../chart/ChartManager"
 import { MapConfig } from "./MapConfig"
-import { Color, Time } from "@ourworldindata/core-table"
-import { ChartTypeName, SeriesName } from "../core/GrapherConstants"
 import { ChartSeries } from "../chart/ChartInterface"
 
 export type GeoFeature = GeoJSON.Feature<GeoJSON.GeometryObject>
 export type MapBracket = ColorScaleBin
+export const MAP_HOVER_TARGET_RANGE = 20
 
 export interface MapEntity {
     id: string | number | undefined
@@ -34,8 +40,9 @@ export interface ChoroplethMapManager {
     focusBracket?: MapBracket
     focusEntity?: MapEntity
     onClick: (d: GeoFeature, ev: React.MouseEvent<SVGElement>) => void
-    onMapMouseOver: (d: GeoFeature, ev: React.MouseEvent<SVGElement>) => void
+    onMapMouseOver: (d: GeoFeature) => void
     onMapMouseLeave: () => void
+    isStatic?: boolean
 }
 
 export interface RenderFeature {
@@ -49,8 +56,12 @@ export interface RenderFeature {
 export interface MapChartManager extends ChartManager {
     mapColumnSlug?: ColumnSlug
     mapIsClickable?: boolean
-    currentTab?: string // Used to switch to chart tab on map click
-    type?: ChartTypeName // Used to determine the "Click to select" text in MapTooltip
+    tab?: GrapherTabOption // Used to switch to chart tab on map click
+    type?: GrapherChartType // Used to determine the "Click to select" text in MapTooltip
+    isLineChartThatTurnedIntoDiscreteBar?: boolean // Used to determine whether to reset the timeline on map click
+    hasTimeline?: boolean // Used to determine whether to reset the timeline on map click
+    resetHandleTimeBounds?: () => void // Used to reset the timeline on map click
     mapConfig?: MapConfig
     endTime?: Time
+    title?: string
 }

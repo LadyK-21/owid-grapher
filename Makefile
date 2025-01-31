@@ -7,56 +7,62 @@
 # https://unix.stackexchange.com/questions/352316/finding-out-the-default-shell-of-a-user-within-a-shell-script
 LOGIN_SHELL = $(shell finger $(USER) | grep 'Shell:*' | cut -f3 -d ":")
 
+# Check for the environment variable OWID_SCRIPT_SHELL and fall back to LOGIN_SHELL if not set
+SCRIPT_SHELL ?= $(or $(shell echo $$OWID_SCRIPT_SHELL),$(LOGIN_SHELL))
+
+
 # setting .env variables as Make variables for validate.env targets
 # https://lithic.tech/blog/2020-05/makefile-dot-env/
 ifneq (,$(wildcard ./.env))
 	include .env
-	export
 endif
 
-.PHONY: help up up.full down down.full refresh refresh.wp refresh.full migrate svgtest
+.PHONY: help up up.full down refresh refresh.wp refresh.full migrate svgtest itsJustJavascript
 
 help:
 	@echo 'Available commands:'
 	@echo
 	@echo '  GRAPHER ONLY'
-	@echo '  make up            start dev environment via docker-compose and tmux'
-	@echo '  make down          stop any services still running'
-	@echo '  make refresh       (while up) download a new grapher snapshot and update MySQL'
-	@echo '  make refresh.meta  (while up) refresh grapher metadata only'
-	@echo '  make migrate       (while up) run any outstanding db migrations'
-	@echo '  make test          run full suite (except db tests) of CI checks including unit tests'
-	@echo '  make dbtest        run db test suite that needs a running mysql db'
-	@echo '  make svgtest       compare current rendering against reference SVGs'
+	@echo '  make up                     start dev environment via docker-compose and tmux'
+	@echo '  make down                   stop any services still running'
+	@echo '  make refresh                (while up) download a new grapher snapshot and update MySQL'
+	@echo '  make refresh.pageviews      (while up) download and load pageviews from the private datasette instance'
+	@echo '  make refresh.full           (while up) run refresh and refresh.pageviews'
+	@echo '  make migrate                (while up) run any outstanding db migrations'
+	@echo '  make test                   run full suite (except db tests) of CI checks including unit tests'
+	@echo '  make dbtest                 run db test suite that needs a running mysql db'
+	@echo '  make svgtest                compare current rendering against reference SVGs'
+	@echo '  make local-bake             do a full local site bake'
 	@echo
-	@echo '  GRAPHER + WORDPRESS (staff-only)'
-	@echo '  make up.full       start dev environment via docker-compose and tmux'
-	@echo '  make down.full     stop any services still running'
-	@echo '  make refresh.wp    download a new wordpress snapshot and update MySQL'
-	@echo '  make refresh.full  do a full MySQL update of both wordpress and grapher'
-	@echo
-	@echo '  OPS (staff-only)'
-	@echo '  make deploy        Deploy your local site to production'
-	@echo '  make stage         Deploy your local site to staging'
-	@echo
+	@echo '  GRAPHER + CLOUDFLARE (staff-only)'
+	@echo '  make up.full                start dev environment via docker-compose and tmux'
+	@echo '  make update.chart-entities  update the charts_x_entities join table'
+	@echo '  make reindex                reindex (or initialise) search in Algolia'
+	@echo '  make bench.search           run search benchmarks'
+	@echo '  make sync-cloudflare-images sync Cloudflare Images with local DB'
 
 up: export DEBUG = 'knex:query'
 
-up: require create-if-missing.env tmp-downloads/owid_chartdata.sql.gz
+up: require create-if-missing.env ../owid-content tmp-downloads/owid_metadata.sql.gz node_modules
 	@make validate.env
 	@make check-port-3306
+
+	@if tmux has-session -t grapher 2>/dev/null; then \
+		echo '==> Killing existing tmux session'; \
+		tmux kill-session -t grapher; \
+	fi
+
 	@echo '==> Building grapher'
-	yarn install
 	yarn lerna run build
-	yarn run tsc -b
 
 	@echo '==> Starting dev environment'
+	@mkdir -p logs
 	tmux new-session -s grapher \
-		-n docker 'docker-compose -f docker-compose.grapher.yml up' \; \
+		-n docker 'docker compose -f docker-compose.grapher.yml up' \; \
 			set remain-on-exit on \; \
-		set-option -g default-shell $(LOGIN_SHELL) \; \
+		set-option -g default-shell $(SCRIPT_SHELL) \; \
 		new-window -n admin \
-			'devTools/docker/wait-for-mysql.sh && yarn run tsc-watch -b --onSuccess "yarn startAdminServer"' \; \
+			'devTools/docker/wait-for-mysql.sh && yarn startAdminDevServer' \; \
 			set remain-on-exit on \; \
 		new-window -n vite 'yarn run startSiteFront' \; \
 			set remain-on-exit on \; \
@@ -69,18 +75,17 @@ up: require create-if-missing.env tmp-downloads/owid_chartdata.sql.gz
 		set -g mouse on \
 		|| make down
 
-up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_chartdata.sql.gz
+up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_metadata.sql.gz node_modules
 	@make validate.env
 	@make check-port-3306
 	@echo '==> Building grapher'
-	yarn install
 	yarn lerna run build
-	yarn run tsc -b
 
 	@echo '==> Starting dev environment'
+	@mkdir -p logs
 	tmux new-session -s grapher \
 		-n admin \
-			'devTools/docker/wait-for-mysql.sh && yarn run tsc-watch -b --onSuccess "yarn startAdminServer"' \; \
+			'devTools/docker/wait-for-mysql.sh && yarn startAdminDevServer' \; \
 			set remain-on-exit on \; \
 		new-window -n vite 'yarn run startSiteFront' \; \
 			set remain-on-exit on \; \
@@ -93,77 +98,78 @@ up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_chartdata
 
 up.full: export DEBUG = 'knex:query'
 
-up.full: require create-if-missing.env.full wordpress/.env tmp-downloads/owid_chartdata.sql.gz tmp-downloads/live_wordpress.sql.gz wordpress/web/app/uploads/2022
+up.full: require create-if-missing.env.full ../owid-content tmp-downloads/owid_metadata.sql.gz node_modules
 	@make validate.env.full
 	@make check-port-3306
 
+	@if tmux has-session -t grapher 2>/dev/null; then \
+		echo '==> Killing existing tmux session'; \
+		tmux kill-session -t grapher; \
+	fi
+
 	@echo '==> Building grapher'
-	yarn install
 	yarn lerna run build
-	yarn run tsc -b
-	yarn buildWordpressPlugin
 
 	@echo '==> Starting dev environment'
 	tmux new-session -s grapher \
-		-n docker 'docker-compose -f docker-compose.full.yml up' \; \
+		-n docker 'docker compose -f docker-compose.grapher.yml up' \; \
 			set remain-on-exit on \; \
-		set-option -g default-shell $(LOGIN_SHELL) \; \
+		set-option -g default-shell $(SCRIPT_SHELL) \; \
 		new-window -n admin \
-			'devTools/docker/wait-for-mysql.sh && yarn run tsc-watch -b --onSuccess "yarn startAdminServer"' \; \
+			'devTools/docker/wait-for-mysql.sh && yarn startAdminDevServer' \; \
 			set remain-on-exit on \; \
 		new-window -n vite 'yarn run startSiteFront' \; \
 			set remain-on-exit on \; \
 		new-window -n lerna 'yarn startLernaWatcher' \; \
+			set remain-on-exit on \; \
+		new-window -n functions 'yarn startLocalCloudflareFunctions' \; \
 			set remain-on-exit on \; \
 		new-window -n welcome 'devTools/docker/banner.sh; exec $(LOGIN_SHELL)' \; \
 		bind R respawn-pane -k \; \
 		bind X kill-pane \; \
 		bind Q kill-server \; \
 		set -g mouse on \
-		|| make down.full
+		|| make down
 
-migrate:
+migrate: node_modules
 	@echo '==> Running DB migrations'
-	yarn && yarn buildTsc && yarn runDbMigrations
+	yarn buildLerna && yarn runDbMigrations
 
 refresh:
 	@echo '==> Downloading chart data'
-	./devTools/docker/download-grapher-mysql.sh
-
-	@echo '==> Updating grapher database'
-	@. ./.env && DATA_FOLDER=tmp-downloads ./devTools/docker/refresh-grapher-data.sh
-
-refresh.meta:
-	@echo '==> Downloading chart metadata'
 	./devTools/docker/download-grapher-metadata-mysql.sh
 
 	@echo '==> Updating grapher database'
-	@. ./.env && DATA_FOLDER=tmp-downloads SKIP_CHARTDATA=1 ./devTools/docker/refresh-grapher-data.sh
+	DATA_FOLDER=tmp-downloads ./devTools/docker/refresh-grapher-data.sh
 
-refresh.wp:
-	@echo '==> Downloading wordpress data'
-	./devTools/docker/download-wordpress-mysql.sh
+	@echo '!!! If you use ETL, wipe indicators from your R2 staging with `rclone delete r2:owid-api-staging/[yourname]/ ' \
+	'--fast-list --transfers 32 --checkers 32  --verbose`'
 
-	@echo '==> Updating wordpress data'
-	@. ./.env && DATA_FOLDER=tmp-downloads ./devTools/docker/refresh-wordpress-data.sh
+refresh.pageviews: node_modules
+	@echo '==> Refreshing pageviews'
+	yarn refreshPageviews
 
 sync-images:
-	@echo '==> Syncing S3 images'
-	@. ./.env && ./devTools/docker/sync-s3-images.sh
+	@echo 'Task has been deprecated.'
 
-refresh.full: refresh refresh.wp sync-images
+bake-images:
+	@echo 'Task has been deprecated.'
+
+# Only needed to run once to seed the prod DB with initially
+sync-cloudflare-images: node_modules
+	@echo '==> Syncing images table with Cloudflare Images'
+	@yarn syncCloudflareImages
+
+refresh.full: refresh refresh.pageviews
+	@echo '==> Full refresh completed'
 
 down:
 	@echo '==> Stopping services'
-	docker-compose -f docker-compose.grapher.yml down
-
-down.full:
-	@echo '==> Stopping services'
-	docker-compose -f docker-compose.full.yml down
+	docker compose -f docker-compose.grapher.yml down
 
 require:
 	@echo '==> Checking your local environment has the necessary commands...'
-	@which docker-compose >/dev/null 2>&1 || (echo "ERROR: docker-compose is required."; exit 1)
+	@which docker >/dev/null 2>&1 || (echo "ERROR: docker compose is required."; exit 1)
 	@which yarn >/dev/null 2>&1 || (echo "ERROR: yarn is required."; exit 1)
 	@which tmux >/dev/null 2>&1 || (echo "ERROR: tmux is required."; exit 1)
 	@which finger >/dev/null 2>&1 || (echo "ERROR: finger is required."; exit 1)
@@ -193,7 +199,7 @@ validate.env:
 create-if-missing.env.full:
 	@if test ! -f .env; then \
 		echo 'Copying .env.example-full --> .env'; \
-		sed "s/IMAGE_HOSTING_BUCKET_PATH=.*/IMAGE_HOSTING_BUCKET_PATH=owid-image-upload\/dev-$(USER)/g" <.env.example-full >.env; \
+		sed "s/IMAGE_HOSTING_R2_BUCKET_PATH=.*/IMAGE_HOSTING_R2_BUCKET_PATH=owid-image-upload-staging\/dev-$(USER)/g" <.env.example-full >.env; \
 	fi
 
 validate.env.full:
@@ -211,85 +217,43 @@ check-port-3306:
 		\nWe recommend using a different port (like 3307)";\
 	fi
 
-tmp-downloads/owid_chartdata.sql.gz:
-	@echo '==> Downloading chart data'
-	./devTools/docker/download-grapher-mysql.sh
+tmp-downloads/owid_metadata.sql.gz:
+	@echo '==> Downloading metadata'
+	./devTools/docker/download-grapher-metadata-mysql.sh
 
-tmp-downloads/live_wordpress.sql.gz:
-	@echo '==> Downloading wordpress data'
-	./devTools/docker/download-wordpress-mysql.sh
-
-wordpress/.env:
-	@echo 'Copying wordpress/.env.example --> wordpress/.env'
-	@cp -f wordpress/.env.example wordpress/.env
-
-wordpress/web/app/uploads/2022:
-	@echo '==> Downloading wordpress uploads'
-	./devTools/docker/download-wordpress-uploads.sh
-
-deploy:
-	@echo '==> Starting from a clean slate...'
-	rm -rf itsJustJavascript
-
-	@echo '==> Building...'
-	yarn
-	yarn lerna run build
-	yarn run tsc -b
-
-	@echo '==> Deploying...'
-	yarn buildAndDeploySite live
-
-stage:
-	@if [[ ! "$(STAGING)" ]]; then \
-		echo 'ERROR: must set the staging environment'; \
-		echo '       e.g. STAGING=halley make stage'; \
-		exit 1; \
-	fi
-	@echo '==> Preparing to deploy to $(STAGING)'
-	@echo '==> Starting from a clean slate...'
-	rm -rf itsJustJavascript
-
-	@echo '==> Building...'
-	yarn
-	yarn lerna run build
-	yarn run tsc -b
-
-	@echo '==> Deploying to $(STAGING)...'
-	yarn buildAndDeploySite $(STAGING)
-
-test:
+test: node_modules
 	@echo '==> Linting'
-	yarn
 	yarn run eslint
+	yarn lerna run build
 	yarn lerna run buildTests
 
 	@echo '==> Checking formatting'
-	yarn testPrettierChanged
+	yarn testPrettierAll
 
 	@echo '==> Running tests'
 	yarn run jest
 
-dbtest:
+dbtest: node_modules
 	@echo '==> Building'
-	yarn
 	yarn buildTsc
 
 	@echo '==> Running db test script'
 	./db/tests/run-db-tests.sh
 
-lint:
+lint: node_modules
 	@echo '==> Linting'
-	yarn
 	yarn run eslint
 
-check-formatting:
+check-formatting: node_modules
 	@echo '==> Checking formatting'
-	yarn
-	yarn testPrettierChanged
+	yarn testPrettierAll
 
-unittest:
+format: node_modules
+	@echo '==> Fixing formatting'
+	yarn fixPrettierAll
+
+unittest: node_modules
 	@echo '==> Running tests'
-	yarn
 	yarn run jest --all
 
 ../owid-grapher-svgs:
@@ -299,10 +263,56 @@ svgtest: ../owid-grapher-svgs
 	@echo '==> Comparing against reference SVGs'
 
 	@# get ../owid-grapher-svgs reliably to a base state at origin/master
-	cd ../owid-grapher-svgs && git fetch && git checkout -f master && git reset --hard origin/master
+	cd ../owid-grapher-svgs && git fetch && git checkout -f master && git reset --hard origin/master && git clean -fd
 
-	@# generate a full new set of svgs
-	node --enable-source-maps itsJustJavascript/devTools/svgTester/verify-graphs.js -i ../owid-grapher-svgs/configs -o ../owid-grapher-svgs/svg -r ../owid-grapher-svgs/svg
+	@# generate a full new set of svgs and create an HTML report if there are differences
+	node --enable-source-maps itsJustJavascript/devTools/svgTester/verify-graphs.js \
+		|| node --enable-source-maps itsJustJavascript/devTools/svgTester/create-compare-view.js
 
-	@# summarize differences
-	cd ../owid-grapher-svgs && git diff --stat
+../owid-content:
+	@echo '==> Cloning owid-content to ../owid-content'
+	cd .. && git clone git@github.com:owid/owid-content
+
+node_modules: package.json yarn.lock yarn.config.cjs
+	@echo '==> Installing packages'
+	yarn install
+	touch -m $@
+
+itsJustJavascript: node_modules
+	@echo '==> Compiling TS'
+	yarn lerna run build
+	yarn run tsc -b
+	touch $@
+
+update.chart-entities: itsJustJavascript
+	@echo '==> Updating chart entities table'
+	node --enable-source-maps itsJustJavascript/baker/updateChartEntities.js --all
+
+reindex: itsJustJavascript
+	@echo '==> Reindexing search in Algolia'
+	@echo '--- Running configureAlgolia...'
+	node --enable-source-maps itsJustJavascript/baker/algolia/configureAlgolia.js
+	@echo '--- Running indexPagesToAlgolia...'
+	node --enable-source-maps itsJustJavascript/baker/algolia/indexPagesToAlgolia.js
+	@echo '--- Running indexChartsToAlgolia...'
+	node --enable-source-maps itsJustJavascript/baker/algolia/indexChartsToAlgolia.js
+	@echo '--- Running indexPostsToAlgolia...'
+	node --enable-source-maps itsJustJavascript/baker/algolia/indexExplorerViewsToAlgolia.js
+	@echo '--- Running indexExplorerViewsAndChartsToAlgolia...'
+	node --enable-source-maps itsJustJavascript/baker/algolia/indexExplorerViewsAndChartsToAlgolia.js
+
+delete-algolia-index: itsJustJavascript
+	@echo '==> Deleting Algolia index'
+	node --enable-source-maps itsJustJavascript/baker/algolia/deleteAlgoliaIndex.js
+
+bench.search: itsJustJavascript
+	@echo '==> Running search benchmarks'
+	@node --enable-source-maps itsJustJavascript/site/search/evaluateSearch.js
+
+local-bake: itsJustJavascript
+	@echo '==> Baking site'
+	yarn buildVite
+	yarn buildLocalBake
+
+clean:
+	rm -rf node_modules itsJustJavascript

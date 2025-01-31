@@ -1,8 +1,8 @@
-import React from "react"
+import { Component } from "react"
 import {
     chartBulkUpdateAllowedColumnNamesAndTypes,
     WHITELISTED_SQL_COLUMN_NAMES,
-} from "@ourworldindata/utils"
+} from "../adminShared/AdminSessionTypes.js"
 import { AdminLayout } from "./AdminLayout.js"
 import { GrapherConfigGridEditor } from "./GrapherConfigGridEditor.js"
 import {
@@ -79,7 +79,7 @@ const bulkChartEditorColumnSets: ColumnSet[] = [
         label: "Common",
         kind: "specificColumns",
         columns: [
-            "/type",
+            "/chartTypes",
             "/hasMapTab",
             "/title",
             "/subtitle",
@@ -110,9 +110,8 @@ const bulkChartEditorColumnSets: ColumnSet[] = [
             "/baseColorScheme",
             "/map/colorScale",
             "/colorScale",
-            "/hasChartTab",
             "/hasMapTab",
-            "/type",
+            "/chartTypes",
         ],
     },
 ]
@@ -131,7 +130,7 @@ const config: GrapherConfigGridEditorConfig = {
     finalVariableLayerModificationFn: () => ({}),
 }
 
-export class BulkGrapherConfigEditorPage extends React.Component {
+export class BulkGrapherConfigEditorPage extends Component {
     render() {
         return (
             <AdminLayout title="Bulk chart editor">

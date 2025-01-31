@@ -1,212 +1,105 @@
-import React, { createContext } from "react"
-import ReactDOM from "react-dom"
-import cx from "classnames"
-import { ArticleBlocks } from "./ArticleBlocks.js"
-import Footnotes from "./Footnotes.js"
+import * as React from "react"
 import {
-    LinkedChart,
-    OwidGdocInterface,
-    getOwidGdocFromJSON,
-    ImageMetadata,
-    RelatedChart,
-    CITATION_ID,
-    LICENSE_ID,
-} from "@ourworldindata/utils"
-import { CodeSnippet } from "../blocks/CodeSnippet.js"
-import { BAKED_BASE_URL } from "../../settings/clientSettings.js"
-import { formatAuthors } from "../clientFormatting.js"
-import { DebugProvider } from "./DebugContext.js"
-import { OwidGdocHeader } from "./OwidGdocHeader.js"
-import StickyNav from "../blocks/StickyNav.js"
+    OwidGdocType,
+    OwidGdoc as OwidGdocInterface,
+    OwidGdocAboutInterface,
+} from "@ourworldindata/types"
+import { get } from "@ourworldindata/utils"
+import { match, P } from "ts-pattern"
+import { GdocPost } from "./pages/GdocPost.js"
+import { DataInsightPage } from "./pages/DataInsight.js"
+import { Fragment } from "./pages/Fragment.js"
+import { Homepage } from "./pages/Homepage.js"
+import { Author } from "./pages/Author.js"
+import AboutPage from "./pages/AboutPage.js"
+import { AttachmentsContext } from "./AttachmentsContext.js"
+import { DocumentContext } from "./DocumentContext.js"
 
-export const AttachmentsContext = createContext<{
-    linkedCharts: Record<string, LinkedChart>
-    linkedDocuments: Record<string, OwidGdocInterface>
-    imageMetadata: Record<string, ImageMetadata>
-    relatedCharts: RelatedChart[]
-}>({
-    linkedDocuments: {},
-    imageMetadata: {},
-    linkedCharts: {},
-    relatedCharts: [],
-})
-
-export const DocumentContext = createContext<{ isPreviewing: boolean }>({
-    isPreviewing: false,
-})
+function AdminLinks() {
+    return (
+        <div id="gdoc-admin-bar">
+            <a href="#" id="gdoc-link">
+                Gdoc
+            </a>
+            <span>/</span>
+            <a href="#" id="admin-link">
+                Admin
+            </a>
+        </div>
+    )
+}
 
 type OwidGdocProps = OwidGdocInterface & {
     isPreviewing?: boolean
 }
 
 export function OwidGdoc({
-    content,
-    publishedAt,
-    slug,
-    linkedCharts = {},
-    linkedDocuments = {},
-    imageMetadata = {},
-    relatedCharts = [],
     isPreviewing = false,
-}: OwidGdocProps) {
-    const citationText = `${formatAuthors({
-        authors: content.authors,
-    })} (${publishedAt?.getFullYear()}) - "${
-        content.title
-    }". Published online at OurWorldInData.org. Retrieved from: '${`${BAKED_BASE_URL}/${slug}`}' [Online Resource]`
-
-    const bibtex = `@article{owid${slug.replace(/-/g, "")},
-    author = {${formatAuthors({
-        authors: content.authors,
-        forBibtex: true,
-    })}},
-    title = {${content.title}},
-    journal = {Our World in Data},
-    year = {${publishedAt?.getFullYear()}},
-    note = {${BAKED_BASE_URL}/${slug}}
-}`
-    const stickyNavLinks = content["sticky-nav"]
+    ...props
+}: OwidGdocProps): React.ReactElement {
+    const content = match(props)
+        .with(
+            {
+                content: {
+                    type: P.union(
+                        OwidGdocType.Article,
+                        OwidGdocType.TopicPage,
+                        OwidGdocType.LinearTopicPage
+                    ),
+                },
+            },
+            (props) => <GdocPost {...props} />
+        )
+        .with({ content: { type: OwidGdocType.AboutPage } }, (props) => (
+            <AboutPage {...(props as OwidGdocAboutInterface)} />
+        ))
+        .with({ content: { type: OwidGdocType.DataInsight } }, (props) => (
+            <DataInsightPage {...props} />
+        ))
+        .with({ content: { type: OwidGdocType.Homepage } }, (props) => (
+            <Homepage {...props} />
+        ))
+        .with({ content: { type: OwidGdocType.Author } }, (props) => (
+            <Author {...props} />
+        ))
+        .with({ content: { type: OwidGdocType.Fragment } }, (props) => (
+            <Fragment {...props} />
+        ))
+        .with(P.any, (gdoc) => (
+            <div
+                className="grid grid-cols-12-full-width"
+                style={{ height: 250 }}
+            >
+                <h3 className="span-cols-12 col-start-2">
+                    Unknown article type: "{gdoc.content.type}"
+                </h3>
+                <p className="span-cols-12 col-start-2">
+                    Must be one of: {Object.values(OwidGdocType).join(", ")}
+                </p>
+            </div>
+        ))
+        .run()
 
     return (
         <AttachmentsContext.Provider
             value={{
-                linkedDocuments,
-                imageMetadata,
-                linkedCharts,
-                relatedCharts,
+                donors: get(props, "donors", []),
+                linkedAuthors: get(props, "linkedAuthors", []),
+                linkedDocuments: get(props, "linkedDocuments", {}),
+                imageMetadata: get(props, "imageMetadata", {}),
+                linkedCharts: get(props, "linkedCharts", {}),
+                linkedIndicators: get(props, "linkedIndicators", {}),
+                relatedCharts: get(props, "relatedCharts", []),
+                latestDataInsights: get(props, "latestDataInsights", []),
+                homepageMetadata: get(props, "homepageMetadata", {}),
+                latestWorkLinks: get(props, "latestWorkLinks", []),
+                linkedChartViews: get(props, "linkedChartViews", {}),
             }}
         >
             <DocumentContext.Provider value={{ isPreviewing }}>
-                <article
-                    className={cx(
-                        "centered-article-container grid grid-cols-12-full-width",
-                        // Only add this modifier class when content.type is defined
-                        {
-                            [`centered-article-container--${content.type}`]:
-                                content.type,
-                        }
-                    )}
-                >
-                    <OwidGdocHeader
-                        content={content}
-                        authors={content.authors}
-                        publishedAt={publishedAt}
-                    />
-                    {content.type === "topic-page" && stickyNavLinks ? (
-                        <nav className="sticky-nav sticky-nav--dark span-cols-14 grid grid-cols-12-full-width">
-                            <StickyNav
-                                links={stickyNavLinks}
-                                className="span-cols-12 col-start-2"
-                            />
-                        </nav>
-                    ) : null}
-
-                    {content.summary ? (
-                        <details
-                            className="article-summary col-start-5 span-cols-6 col-md-start-3 span-md-cols-10 col-sm-start-2 span-sm-cols-12"
-                            open={true}
-                        >
-                            <summary>Summary</summary>
-                            <ArticleBlocks
-                                blocks={content.summary}
-                                containerType="summary"
-                            />
-                        </details>
-                    ) : null}
-
-                    {content.body ? (
-                        <ArticleBlocks
-                            toc={content.toc}
-                            blocks={content.body}
-                        />
-                    ) : null}
-
-                    {content.refs ? <Footnotes d={content.refs} /> : null}
-
-                    <section
-                        id={CITATION_ID}
-                        className="grid grid-cols-12-full-width col-start-1 col-end-limit"
-                    >
-                        <div className="col-start-4 span-cols-8 col-md-start-3 span-md-cols-10 col-sm-start-2 span-sm-cols-12">
-                            <h3>Cite this work</h3>
-                            <p>
-                                Our articles and data visualizations rely on
-                                work from many different people and
-                                organizations. When citing this topic page,
-                                please also cite the underlying data sources.
-                                This topic page can be cited as:
-                            </p>
-                            {/* TODO? renderSpans(content.citation.map((block) => block.value)) */}
-                            <div>
-                                <CodeSnippet code={citationText} />
-                            </div>
-                            <p>BibTeX citation</p>
-                            <div>
-                                <CodeSnippet code={bibtex} />
-                            </div>
-                        </div>
-                    </section>
-
-                    <section
-                        id={LICENSE_ID}
-                        className="grid grid-cols-12-full-width col-start-1 col-end-limit"
-                    >
-                        <div className="col-start-6 span-cols-4 col-md-start-3 span-md-cols-10 col-sm-start-2 span-sm-cols-12">
-                            <img
-                                src={`${BAKED_BASE_URL}/owid-logo.svg`}
-                                className="img-raw"
-                                alt="Our World in Data logo"
-                            />
-                            <h3>Reuse this work freely</h3>
-
-                            <p>
-                                All visualizations, data, and code produced by
-                                Our World in Data are completely open access
-                                under the{" "}
-                                <a
-                                    href="https://creativecommons.org/licenses/by/4.0/"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    Creative Commons BY license
-                                </a>
-                                . You have the permission to use, distribute,
-                                and reproduce these in any medium, provided the
-                                source and authors are credited.
-                            </p>
-                            <p>
-                                The data produced by third parties and made
-                                available by Our World in Data is subject to the
-                                license terms from the original third-party
-                                authors. We will always indicate the original
-                                source of the data in our documentation, so you
-                                should always check the license of any such
-                                third-party data before use and redistribution.
-                            </p>
-                            <p>
-                                All of{" "}
-                                <a href="/how-to-use-our-world-in-data#how-to-embed-interactive-charts-in-your-article">
-                                    our charts can be embedded
-                                </a>{" "}
-                                in any site.
-                            </p>
-                        </div>
-                    </section>
-                </article>
+                <AdminLinks />
+                {content}
             </DocumentContext.Provider>
         </AttachmentsContext.Provider>
-    )
-}
-
-export const hydrateOwidGdoc = (debug?: boolean, isPreviewing?: boolean) => {
-    const wrapper = document.querySelector("#owid-document-root")
-    const props = getOwidGdocFromJSON(window._OWID_GDOC_PROPS)
-    ReactDOM.hydrate(
-        <React.StrictMode>
-            <DebugProvider debug={debug}>
-                <OwidGdoc {...props} isPreviewing={isPreviewing} />
-            </DebugProvider>
-        </React.StrictMode>,
-        wrapper
     )
 }

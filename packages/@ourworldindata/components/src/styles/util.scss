@@ -1,0 +1,83 @@
+/* Float Clearing
+--------------------------------------------- */
+
+.clearfix:before {
+    content: " ";
+    display: table;
+}
+
+.clearfix:after {
+    clear: both;
+    content: " ";
+    display: table;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.align-left {
+    text-align: left;
+}
+.align-center {
+    text-align: center;
+}
+.align-right {
+    text-align: right;
+}
+
+.list-style-none {
+    list-style: none;
+}
+
+.display-block {
+    display: block;
+}
+
+.hide-sm-only {
+    @include sm-only {
+        display: none !important;
+    }
+}
+
+.hide-sm-up {
+    @include sm-up {
+        display: none !important;
+    }
+}
+
+.hide-md-down {
+    @include md-down {
+        display: none !important;
+    }
+}
+
+.hide-md-up {
+    @include md-up {
+        display: none !important;
+    }
+}
+
+.hide-lg-down {
+    @include lg-down {
+        display: none !important;
+    }
+}
+
+.hide-lg-up {
+    @include lg-up {
+        display: none !important;
+    }
+}
+
+// only show for screen readers
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}

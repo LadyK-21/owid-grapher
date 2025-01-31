@@ -1,6 +1,7 @@
-import React from "react"
-import { SubNavId } from "@ourworldindata/utils"
-import { getSubnavItem, subnavs } from "./SiteSubnavigation.js"
+import * as React from "react"
+import { SubNavId } from "@ourworldindata/types"
+import { getSubnavItem } from "./gdocs/utils.js"
+import { subnavs } from "./SiteConstants.js"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faArrowLeft } from "@fortawesome/free-solid-svg-icons"
 
@@ -8,7 +9,7 @@ export const BackToTopic = ({
     subnavId,
 }: {
     subnavId: SubNavId
-}): JSX.Element | null => {
+}): React.ReactElement | null => {
     const subnavItem = getSubnavItem(subnavId, subnavs[subnavId])
     if (!subnavItem) return null
 

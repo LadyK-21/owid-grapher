@@ -7,11 +7,11 @@ import {
     objectWithPersistablesToObject,
     deleteRuntimeAndUnchangedProps,
 } from "./persistable/Persistable.js"
-import { OwidSource } from "./OwidSource.js"
 import {
-    OwidVariableDataTableConfigInteface,
+    OwidVariableDataTableConfigInterface,
     OwidVariableDisplayConfigInterface,
-} from "./OwidVariableDisplayConfigInterface.js"
+    OwidVariableRoundingMode,
+} from "@ourworldindata/types"
 
 class OwidVariableDisplayConfigDefaults {
     @observable name?: string = undefined
@@ -19,14 +19,17 @@ class OwidVariableDisplayConfigDefaults {
     @observable shortUnit?: string = undefined
     @observable isProjection?: boolean = undefined
     @observable conversionFactor?: number = undefined
+    @observable roundingMode?: OwidVariableRoundingMode = undefined
     @observable numDecimalPlaces?: number = undefined
+    @observable numSignificantFigures?: number = undefined
     @observable tolerance?: number = undefined
     @observable yearIsDay?: boolean = undefined
     @observable zeroDay?: string = undefined
     @observable entityAnnotationsMap?: string = undefined
     @observable includeInTable? = true
-    @observable tableDisplay?: OwidVariableDataTableConfigInteface
+    @observable tableDisplay?: OwidVariableDataTableConfigInterface
     @observable color?: string = undefined
+    @observable plotMarkersOnlyInLineChart?: boolean = undefined
 }
 
 export class OwidVariableDisplayConfig
@@ -48,74 +51,6 @@ export class OwidVariableDisplayConfig
         super()
         if (obj) this.updateFromObject(obj)
     }
-}
-
-export type OwidVariableTypeOptions = "string" | "float" | "int" | "mixed"
-
-export interface OwidVariableWithSource {
-    id: number
-    name?: string
-    description?: string
-    unit?: string
-    display?: OwidVariableDisplayConfigInterface
-    shortUnit?: string
-    datasetName?: string
-    datasetId?: number
-    coverage?: string
-    nonRedistributable?: boolean
-    source?: OwidSource
-}
-
-export type OwidVariableWithSourceAndDimension = OwidVariableWithSource & {
-    dimensions: OwidVariableDimensions
-}
-
-export type OwidVariableWithSourceAndDimensionWithoutId = Omit<
-    OwidVariableWithSourceAndDimension,
-    "id"
->
-
-export interface OwidVariableMixedData {
-    years: number[]
-    entities: number[]
-    values: (string | number)[]
-}
-
-export type OwidVariableWithDataAndSource = OwidVariableWithSource &
-    OwidVariableMixedData
-
-export type OwidVariableWithSourceAndType = OwidVariableWithSource & {
-    type: OwidVariableTypeOptions
-}
-
-export interface OwidVariableDimension {
-    values: OwidVariableDimensionValuePartial[]
-}
-
-export interface OwidVariableDimensions {
-    years: OwidVariableDimension
-    entities: OwidVariableDimension
-}
-
-export type OwidVariableDataMetadataDimensions = {
-    data: OwidVariableMixedData
-    metadata: OwidVariableWithSourceAndDimension
-}
-export type MultipleOwidVariableDataDimensionsMap = Map<
-    number,
-    OwidVariableDataMetadataDimensions
->
-
-export interface OwidVariableDimensionValuePartial {
-    id: number
-    name?: string
-    code?: string
-}
-export type OwidVariableDimensionValueFull =
-    Required<OwidVariableDimensionValuePartial>
-
-export interface OwidEntityKey {
-    [id: string]: OwidVariableDimensionValuePartial
 }
 
 // export interface OwidVariablesAndEntityKey {

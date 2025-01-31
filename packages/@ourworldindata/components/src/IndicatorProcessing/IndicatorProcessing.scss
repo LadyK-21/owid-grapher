@@ -1,0 +1,102 @@
+div.indicator-processing {
+    .data-processing {
+        --content: var(--data-processing-content, #{$blue-60});
+        --content-size: var(--data-processing-content-size, 0.875rem);
+
+        margin-top: 0;
+        margin-bottom: 24px;
+        color: var(--content);
+
+        > p {
+            @include body-3-medium;
+            margin: 0 0 16px;
+            font-size: var(--content-size);
+        }
+    }
+
+    .indicator-processing__link {
+        @include body-3-medium;
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+
+        &:hover {
+            text-decoration: none;
+        }
+
+        svg {
+            font-size: 0.75em;
+            margin-left: 6px;
+            transform: rotate(-90deg);
+        }
+    }
+
+    .indicator-processing-callout {
+        --background: var(--indicator-processing-background, #{$white});
+        --title: var(--indicator-processing-title, currentColor);
+        --content: var(--indicator-processing-content, #{$blue-60});
+        --content-size: var(--indicator-processing-content-size, 0.875rem);
+
+        display: flex;
+        flex-direction: column;
+        background-color: var(--background);
+        margin: 32px calc(-1 * var(--grid-gap)) 0;
+        padding: 24px;
+
+        .indicator-processing-callout__title {
+            @include overline-black-caps;
+            text-transform: uppercase;
+            margin: 0 0 8px;
+            color: var(--title);
+        }
+
+        .indicator-processing-callout__content {
+            @include body-3-medium;
+            color: var(--content);
+            margin: 0;
+            font-size: var(--content-size);
+
+            p,
+            ol,
+            ul {
+                @include body-3-medium;
+                font-size: var(--content-size);
+            }
+
+            ol,
+            ul {
+                margin-left: 1em;
+
+                li {
+                    margin: 1em 0;
+                    &:first-child {
+                        margin-top: 0;
+                    }
+                    &:last-child {
+                        margin-bottom: 0;
+                    }
+                    p {
+                        margin: 0;
+                    }
+                }
+            }
+
+            ol li {
+                margin: 0.5em 0;
+            }
+
+            > *:first-child {
+                margin-top: 0;
+            }
+
+            > *:last-child {
+                margin-bottom: 0;
+            }
+        }
+
+        a {
+            @include owid-link-60;
+            color: inherit;
+        }
+    }
+}

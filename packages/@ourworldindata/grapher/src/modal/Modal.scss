@@ -1,0 +1,31 @@
+.modal-overlay {
+    --modal-padding: 24px;
+
+    position: absolute;
+
+    // -1px to hide the frame border
+    top: -1px;
+    right: -1px;
+    bottom: -1px;
+    left: -1px;
+
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: $zindex-modal;
+
+    .modal-wrapper {
+        position: relative;
+        height: 100%;
+
+        .modal-content {
+            position: absolute;
+            border-radius: 4px;
+            background: #fff;
+            box-shadow: 0px 4px 30px 0px rgba(0, 0, 0, 0.15);
+            min-height: 150px;
+        }
+    }
+}
+
+&.GrapherComponentNarrow .modal-overlay {
+    --modal-padding: 16px;
+}

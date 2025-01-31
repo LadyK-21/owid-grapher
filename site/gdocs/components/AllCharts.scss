@@ -1,0 +1,9 @@
+.article-block__all-charts {
+    h1.h1-semibold {
+        margin-bottom: 40px;
+    }
+
+    figure[data-grapher-src]:not(.grapherPreview) {
+        height: $grapher-height;
+    }
+}

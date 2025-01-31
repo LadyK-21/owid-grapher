@@ -2,12 +2,7 @@
     "extends": "../devTools/tsconfigs/tsconfig.base.json",
     "compilerOptions": {
         "outDir": "../itsJustJavascript/db",
-        "rootDir": ".",
-        "emitDecoratorMetadata": true // must be enabled for typeorm
+        "rootDir": "."
     },
-    "references": [
-        { "path": "../settings" },
-        { "path": "../explorer" },
-        { "path": "../site" }
-    ]
+    "references": [{ "path": "../settings" }, { "path": "../site" }]
 }

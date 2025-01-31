@@ -7,12 +7,12 @@
     "references": [
         { "path": "../site" },
         { "path": "../db" },
-        { "path": "../explorer" },
         { "path": "../explorerAdminServer" },
         { "path": "../gitCms" },
         { "path": "../adminSiteClient" },
         { "path": "../settings" },
         { "path": "../baker" },
-        { "path": "../serverUtils" }
+        { "path": "../serverUtils" },
+        { "path": "../adminShared" }
     ]
 }

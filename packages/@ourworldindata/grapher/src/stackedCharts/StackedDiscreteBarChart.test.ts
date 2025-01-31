@@ -1,8 +1,12 @@
 #! /usr/bin/env jest
 
-import { SortOrder, SortBy } from "@ourworldindata/utils"
 import {
+    SortOrder,
+    SortBy,
     ColumnTypeNames,
+    MissingDataStrategy,
+} from "@ourworldindata/utils"
+import {
     OwidTable,
     SampleColumnSlugs,
     SynthesizeFruitTable,
@@ -106,6 +110,10 @@ it("can display a chart with missing variable data for some entities", () => {
 
     // Check that our absolute values get properly transformed into percentages
     expect(chart.failMessage).toEqual("")
+    expect(
+        chart.transformTableForSelection(table).availableEntityNames
+    ).toEqual(["France", "Spain"])
+
     expect(chart.series.length).toEqual(2)
     expect(chart.series[0].points).toEqual([
         {
@@ -141,6 +149,52 @@ it("can display a chart with missing variable data for some entities", () => {
     ])
 })
 
+it("can display a chart with missing variable data for some entities, while hiding missing data", () => {
+    const csv = `coal,gas,year,entityName
+    20,,2000,France
+    10,20,2000,Italy
+    ,14,2000,Spain`
+    const table = new OwidTable(csv, [
+        { slug: "coal", type: ColumnTypeNames.Numeric },
+        { slug: "gas", type: ColumnTypeNames.Numeric },
+        { slug: "year", type: ColumnTypeNames.Year },
+    ])
+
+    const manager: ChartManager = {
+        table,
+        selection: table.availableEntityNames,
+        yColumnSlugs: ["coal", "gas"],
+        missingDataStrategy: MissingDataStrategy.hide,
+    }
+    const chart = new StackedDiscreteBarChart({ manager })
+
+    // Check that our absolute values get properly transformed into percentages
+    expect(chart.failMessage).toEqual("")
+    expect(
+        chart.transformTableForSelection(table).availableEntityNames
+    ).toEqual(["Italy"])
+
+    expect(chart.series.length).toEqual(2)
+    expect(chart.series[0].points).toEqual([
+        {
+            position: "Italy",
+            value: 10,
+            valueOffset: 0,
+            time: 2000,
+            fake: false,
+        },
+    ])
+    expect(chart.series[1].points).toEqual([
+        {
+            position: "Italy",
+            value: 20,
+            valueOffset: 10,
+            time: 2000,
+            fake: false,
+        },
+    ])
+})
+
 describe("columns as series", () => {
     const table = SynthesizeFruitTable({
         timeRange: [2000, 2001],
@@ -150,6 +204,7 @@ describe("columns as series", () => {
         table,
         selection: table.sampleEntityName(5),
         yColumnSlugs: [SampleColumnSlugs.Fruit, SampleColumnSlugs.Vegetables],
+        showLegend: true,
     }
     const chart = new StackedDiscreteBarChart({ manager })
 
@@ -190,7 +245,7 @@ describe("sorting", () => {
 
     it("defaults to sorting by total value descending", () => {
         const chart = new StackedDiscreteBarChart({ manager: baseManager })
-        expect(chart.sortedItems.map((item) => item.label)).toEqual([
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual([
             "Spain",
             "France",
             "Germany",
@@ -208,7 +263,7 @@ describe("sorting", () => {
             },
         })
 
-        expect(chart.sortedItems.map((item) => item.label)).toEqual([
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual([
             "France",
             "Germany",
             "Spain",
@@ -226,7 +281,7 @@ describe("sorting", () => {
             },
         })
 
-        expect(chart.sortedItems.map((item) => item.label)).toEqual([
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual([
             "Spain",
             "France",
             "Germany",
@@ -246,7 +301,9 @@ describe("sorting", () => {
             },
         })
 
-        expect(chart.sortedItems.map((item) => item.label)).toEqual(selection)
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual(
+            selection
+        )
     })
 
     it("can sort by single dimension", () => {
@@ -261,7 +318,7 @@ describe("sorting", () => {
             },
         })
 
-        expect(chart.sortedItems.map((item) => item.label)).toEqual([
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual([
             "Spain",
             "Germany",
             "France",
@@ -290,7 +347,7 @@ describe("sorting", () => {
         })
 
         // Expected behavior: Belgium and Germany are sorted first because they have values.
-        expect(chart.sortedItems.map((item) => item.label)).toEqual([
+        expect(chart.sortedItems.map((item) => item.entityName)).toEqual([
             "Belgium",
             "Germany",
             "Spain",
@@ -299,7 +356,7 @@ describe("sorting", () => {
     })
 })
 
-describe("hideLegend", () => {
+describe("showLegend", () => {
     const table = SynthesizeFruitTable({
         timeRange: [2000, 2001],
         entityCount: 5,
@@ -310,18 +367,18 @@ describe("hideLegend", () => {
         yColumnSlugs: [SampleColumnSlugs.Fruit, SampleColumnSlugs.Vegetables],
     }
 
-    it("renders internal legend when hideLegend is false", () => {
+    it("renders internal legend when showLegend is true", () => {
         const chart = new StackedDiscreteBarChart({
-            manager: { ...baseManager },
+            manager: { ...baseManager, showLegend: true },
         })
         expect(chart["legend"].height).toBeGreaterThan(0)
         expect(chart["categoricalLegendData"].length).toBeGreaterThan(0)
         expect(chart["externalLegend"]).toBeUndefined()
     })
 
-    it("exposes externalLegendBins when hideLegend is true", () => {
+    it("exposes externalLegendBins when showLegend is false", () => {
         const chart = new StackedDiscreteBarChart({
-            manager: { ...baseManager, hideLegend: true },
+            manager: { ...baseManager, showLegend: false },
         })
         expect(chart["legend"].height).toEqual(0)
         expect(chart["categoricalLegendData"].length).toEqual(0)

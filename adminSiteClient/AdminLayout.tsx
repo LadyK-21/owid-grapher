@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { observable, action, computed } from "mobx"
 import { observer } from "mobx-react"
 
@@ -11,7 +11,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import {
     DefaultNewExplorerSlug,
     EXPLORERS_ROUTE_FOLDER,
-} from "../explorer/ExplorerConstants.js"
+} from "@ourworldindata/explorer"
 import classNames from "classnames"
 
 @observer
@@ -50,18 +50,22 @@ export class AdminLayout extends React.Component<{
             document.title = this.props.title + " - owid-admin"
     }
 
-    @computed get environmentSpan(): JSX.Element {
+    @computed get environmentSpan(): React.ReactElement {
         const { admin } = this.context
         if (admin.settings.ENV === "development") {
             return <span className="dev">dev</span>
-        } else if (window.location.origin === "https://owid.cloud") {
+        } else if (
+            ["https://owid.cloud", "https://admin.owid.io"].includes(
+                window.location.origin
+            )
+        ) {
             return <span className="live">live</span>
         } else {
             return <span className="test">test</span>
         }
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const { admin } = this.context
         const { showFAQ: isFAQ, showSidebar, environmentSpan } = this
 
@@ -101,15 +105,6 @@ export class AdminLayout extends React.Component<{
                         <li className="nav-item">
                             <a className="nav-link" onClick={this.onToggleFAQ}>
                                 FAQ
-                            </a>
-                        </li>
-                        <li className="nav-item">
-                            <a
-                                className="nav-link"
-                                href="/wp/wp-admin"
-                                target="_blank"
-                            >
-                                Wordpress
                             </a>
                         </li>
                     </ul>

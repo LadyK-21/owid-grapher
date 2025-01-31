@@ -1,10 +1,20 @@
-import React from "react"
+import * as React from "react"
 import { computed } from "mobx"
 import { scaleLinear, ScaleLinear } from "d3-scale"
-import { TextWrap, first, last } from "@ourworldindata/utils"
-import { BASE_FONT_SIZE } from "../core/GrapherConstants"
+import { TextWrap, Halo } from "@ourworldindata/components"
+import {
+    Color,
+    first,
+    last,
+    makeIdForHumanConsumption,
+    OwidVariableRoundingMode,
+} from "@ourworldindata/utils"
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_FONT_SCALE_10,
+    GRAPHER_FONT_SCALE_11,
+} from "../core/GrapherConstants"
 import { CoreColumn } from "@ourworldindata/core-table"
-import { getElementWithHalo } from "./Halos"
 import {
     ScatterSeries,
     SCATTER_POINT_MAX_RADIUS,
@@ -13,6 +23,11 @@ import {
     SCATTER_POINT_DEFAULT_RADIUS,
 } from "./ScatterPlotChartConstants"
 import { darkenColorForText } from "../color/ColorUtils"
+import {
+    GRAPHER_BACKGROUND_DEFAULT,
+    GRAPHER_DARK_TEXT,
+    GRAPHER_LIGHT_TEXT,
+} from "../color/ColorConstants"
 
 export interface ScatterSizeLegendManager {
     sidebarWidth: number
@@ -20,14 +35,15 @@ export interface ScatterSizeLegendManager {
     sizeScale: ScaleLinear<number, number>
     fontSize?: number
     tooltipSeries?: ScatterSeries
+    backgroundColor?: Color
 }
 
 const LEGEND_PADDING = 3
 const LEGEND_CIRCLE_COLOR = "#bbb"
 const LEGEND_VALUE_COLOR = "#444"
 const LABEL_PADDING = 2
-const LABEL_COLOR = "#777"
-const TITLE_COLOR = "#222"
+const LABEL_COLOR = GRAPHER_LIGHT_TEXT
+const TITLE_COLOR = GRAPHER_DARK_TEXT
 
 const MIN_FONT_SIZE = 9
 
@@ -91,9 +107,12 @@ export class ScatterSizeLegend {
     }
 
     @computed private get label(): TextWrap {
-        const fontSize = Math.max(MIN_FONT_SIZE, 0.625 * this.baseFontSize)
+        const fontSize = Math.max(
+            MIN_FONT_SIZE,
+            GRAPHER_FONT_SCALE_10 * this.baseFontSize
+        )
         return new TextWrap({
-            text: "Dots sized by",
+            text: "Circles sized by",
             // Allow text to _slightly_ go outside boundaries.
             // Since we have padding left and right, this doesn't
             // actually visibly overflow.
@@ -104,7 +123,10 @@ export class ScatterSizeLegend {
     }
 
     @computed private get title(): TextWrap {
-        const fontSize = Math.max(MIN_FONT_SIZE, 0.6875 * this.baseFontSize)
+        const fontSize = Math.max(
+            MIN_FONT_SIZE,
+            GRAPHER_FONT_SCALE_11 * this.baseFontSize
+        )
         return new TextWrap({
             text: this.manager.sizeColumn.displayName,
             // Allow text to _slightly_ go outside boundaries.
@@ -147,7 +169,7 @@ export class ScatterSizeLegend {
         return undefined
     }
 
-    private renderLegend(targetX: number, targetY: number): JSX.Element {
+    private renderLegend(targetX: number, targetY: number): React.ReactElement {
         const { highlight } = this
         const cx = targetX + this.maxWidth / 2
         return (
@@ -158,7 +180,11 @@ export class ScatterSizeLegend {
                         <LegendItem
                             key={value}
                             label={this.manager.sizeColumn.formatValueShortWithAbbreviations(
-                                value
+                                value,
+                                {
+                                    roundingMode:
+                                        OwidVariableRoundingMode.decimalPlaces,
+                                }
                             )}
                             cx={cx}
                             cy={targetY + this.legendSize - radius}
@@ -168,6 +194,7 @@ export class ScatterSizeLegend {
                             }
                             labelFontSize={this.fontSizeFromRadius(radius)}
                             labelFill={highlight ? "#bbb" : LEGEND_VALUE_COLOR}
+                            backgroundColor={this.manager.backgroundColor}
                         />
                     )
                 })}
@@ -192,6 +219,7 @@ export class ScatterSizeLegend {
                         labelFill={darkenColorForText(highlight.color)}
                         labelFontWeight={700}
                         outsideLabel={true}
+                        backgroundColor={this.manager.backgroundColor}
                     />
                 )}
             </React.Fragment>
@@ -202,20 +230,22 @@ export class ScatterSizeLegend {
         targetX: number,
         targetY: number,
         renderOptions: React.SVGAttributes<SVGGElement> = {}
-    ): JSX.Element {
+    ): React.ReactElement {
         const centerX = targetX + this.maxWidth / 2
         return (
-            <g {...renderOptions}>
+            <g id={makeIdForHumanConsumption("size-legend")} {...renderOptions}>
                 {this.renderLegend(targetX, targetY)}
-                {this.label.render(
+                {this.label.renderSVG(
                     centerX,
                     targetY + this.legendSize + LEGEND_PADDING,
                     {
-                        fill: LABEL_COLOR,
-                        textAnchor: "middle",
+                        textProps: {
+                            fill: LABEL_COLOR,
+                            textAnchor: "middle",
+                        },
                     }
                 )}
-                {this.title.render(
+                {this.title.renderSVG(
                     centerX,
                     targetY +
                         this.legendSize +
@@ -223,8 +253,10 @@ export class ScatterSizeLegend {
                         this.label.height +
                         LABEL_PADDING,
                     {
-                        fill: TITLE_COLOR,
-                        textAnchor: "middle",
+                        textProps: {
+                            fill: TITLE_COLOR,
+                            textAnchor: "middle",
+                        },
                     }
                 )}
             </g>
@@ -245,6 +277,7 @@ const LegendItem = ({
     labelFontSize,
     labelFontWeight = 400,
     outsideLabel = false,
+    backgroundColor = GRAPHER_BACKGROUND_DEFAULT,
 }: {
     label: string
     cx: number
@@ -258,7 +291,8 @@ const LegendItem = ({
     labelFontSize: number
     labelFontWeight?: number
     outsideLabel?: boolean
-}): JSX.Element => {
+    backgroundColor?: Color
+}): React.ReactElement => {
     const style: React.CSSProperties = {
         fontSize: labelFontSize,
         fontWeight: labelFontWeight,
@@ -275,8 +309,11 @@ const LegendItem = ({
                 strokeWidth={circleStrokeWidth}
                 opacity={circleOpacity}
             />
-            {getElementWithHalo(
-                label,
+            <Halo
+                id={label}
+                outlineColor={backgroundColor}
+                style={{ ...style, strokeWidth: 3.5 }}
+            >
                 <text
                     x={cx}
                     y={cy - circleRadius}
@@ -285,9 +322,8 @@ const LegendItem = ({
                     style={style}
                 >
                     {label}
-                </text>,
-                { ...style, strokeWidth: 3.5 }
-            )}
+                </text>
+            </Halo>
         </g>
     )
 }

@@ -1,9 +1,25 @@
-import React from "react"
-import { Box } from "@ourworldindata/utils"
-import { SeriesStrategy } from "../core/GrapherConstants"
+import * as React from "react"
+import { areSetsEqual, Box, getCountryByName, Url } from "@ourworldindata/utils"
+import {
+    SeriesStrategy,
+    EntityName,
+    GrapherTabQueryParam,
+    GrapherChartType,
+    GRAPHER_CHART_TYPES,
+    GRAPHER_TAB_QUERY_PARAMS,
+    InteractionState,
+    SeriesName,
+} from "@ourworldindata/types"
 import { LineChartSeries } from "../lineCharts/LineChartConstants"
 import { SelectionArray } from "../selection/SelectionArray"
 import { ChartManager } from "./ChartManager"
+import {
+    GRAPHER_SIDE_PANEL_CLASS,
+    GRAPHER_TIMELINE_CLASS,
+    GRAPHER_SETTINGS_CLASS,
+    validChartTypeCombinations,
+} from "../core/GrapherConstants"
+import { ChartSeries } from "./ChartInterface"
 
 export const autoDetectYColumnSlugs = (manager: ChartManager): string[] => {
     if (manager.yColumnSlugs && manager.yColumnSlugs.length)
@@ -13,25 +29,25 @@ export const autoDetectYColumnSlugs = (manager: ChartManager): string[] => {
 }
 
 export const getDefaultFailMessage = (manager: ChartManager): string => {
-    if (manager.table.rootTable.isBlank) return `No table loaded yet.`
+    if (manager.table.rootTable.isBlank) return `No table loaded yet`
     if (manager.table.rootTable.entityNameColumn.isMissing)
-        return `Table is missing an EntityName column.`
+        return `Table is missing an EntityName column`
     if (manager.table.rootTable.timeColumn.isMissing)
-        return `Table is missing a Time column.`
+        return `Table is missing a Time column`
     const yColumnSlugs = autoDetectYColumnSlugs(manager)
     if (!yColumnSlugs.length) return "Missing Y axis column"
-    const selection = makeSelectionArray(manager)
-    if (!selection.hasSelection) return `No ${selection.entityType} selected`
+    const selection = makeSelectionArray(manager.selection)
+    if (!selection.hasSelection) return `No ${manager.entityType} selected`
     return ""
 }
 
 export const getSeriesKey = (
     series: LineChartSeries,
-    suffix?: string
+    index: number
 ): string => {
     return `${series.seriesName}-${series.color}-${
         series.isProjection ? "projection" : ""
-    }${suffix ? "-" + suffix : ""}`
+    }-${index}`
 }
 
 export const autoDetectSeriesStrategy = (
@@ -63,7 +79,7 @@ export const autoDetectSeriesStrategy = (
 export const makeClipPath = (
     renderUid: number,
     box: Box
-): { id: string; element: JSX.Element } => {
+): { id: string; element: React.ReactElement } => {
     const id = `boundsClip-${renderUid}`
     return {
         id: `url(#${id})`,
@@ -77,7 +93,188 @@ export const makeClipPath = (
     }
 }
 
-export const makeSelectionArray = (manager: ChartManager): SelectionArray =>
-    manager.selection instanceof SelectionArray
-        ? manager.selection
-        : new SelectionArray(manager.selection ?? [])
+export const makeSelectionArray = (
+    selection?: SelectionArray | EntityName[]
+): SelectionArray =>
+    selection instanceof SelectionArray
+        ? selection
+        : new SelectionArray(selection ?? [])
+
+export function isElementInteractive(element: HTMLElement): boolean {
+    const interactiveTags = ["a", "button", "input"]
+    const interactiveClassNames = [
+        GRAPHER_TIMELINE_CLASS,
+        GRAPHER_SIDE_PANEL_CLASS,
+        GRAPHER_SETTINGS_CLASS,
+    ].map((className) => `.${className}`)
+
+    const selector = [...interactiveTags, ...interactiveClassNames].join(", ")
+
+    // check if the target is an interactive element or contained within one
+    return element.closest(selector) !== null
+}
+
+export function getShortNameForEntity(entityName: string): string | undefined {
+    const country = getCountryByName(entityName)
+    return country?.shortName
+}
+
+export function isTargetOutsideElement(
+    target: EventTarget,
+    element: Node
+): boolean {
+    const targetNode = target as Node
+    return (
+        !element.contains(targetNode) &&
+        // check that the target is still mounted to the document (we also get
+        // click events on nodes that have since been removed by React)
+        document.contains(targetNode)
+    )
+}
+
+export function mapQueryParamToChartTypeName(
+    chartTab: string
+): GrapherChartType | undefined {
+    switch (chartTab) {
+        case GRAPHER_TAB_QUERY_PARAMS.line:
+            return GRAPHER_CHART_TYPES.LineChart
+        case GRAPHER_TAB_QUERY_PARAMS.slope:
+            return GRAPHER_CHART_TYPES.SlopeChart
+        case GRAPHER_TAB_QUERY_PARAMS.scatter:
+            return GRAPHER_CHART_TYPES.ScatterPlot
+        case GRAPHER_TAB_QUERY_PARAMS["stacked-area"]:
+            return GRAPHER_CHART_TYPES.StackedArea
+        case GRAPHER_TAB_QUERY_PARAMS["stacked-bar"]:
+            return GRAPHER_CHART_TYPES.StackedBar
+        case GRAPHER_TAB_QUERY_PARAMS["discrete-bar"]:
+            return GRAPHER_CHART_TYPES.DiscreteBar
+        case GRAPHER_TAB_QUERY_PARAMS["stacked-discrete-bar"]:
+            return GRAPHER_CHART_TYPES.StackedDiscreteBar
+        case GRAPHER_TAB_QUERY_PARAMS.marimekko:
+            return GRAPHER_CHART_TYPES.Marimekko
+        default:
+            return undefined
+    }
+}
+
+export function mapChartTypeNameToQueryParam(
+    chartType: GrapherChartType
+): GrapherTabQueryParam {
+    switch (chartType) {
+        case GRAPHER_CHART_TYPES.LineChart:
+            return GRAPHER_TAB_QUERY_PARAMS.line
+        case GRAPHER_CHART_TYPES.SlopeChart:
+            return GRAPHER_TAB_QUERY_PARAMS.slope
+        case GRAPHER_CHART_TYPES.ScatterPlot:
+            return GRAPHER_TAB_QUERY_PARAMS.scatter
+        case GRAPHER_CHART_TYPES.StackedArea:
+            return GRAPHER_TAB_QUERY_PARAMS["stacked-area"]
+        case GRAPHER_CHART_TYPES.StackedBar:
+            return GRAPHER_TAB_QUERY_PARAMS["stacked-bar"]
+        case GRAPHER_CHART_TYPES.DiscreteBar:
+            return GRAPHER_TAB_QUERY_PARAMS["discrete-bar"]
+        case GRAPHER_CHART_TYPES.StackedDiscreteBar:
+            return GRAPHER_TAB_QUERY_PARAMS["stacked-discrete-bar"]
+        case GRAPHER_CHART_TYPES.Marimekko:
+            return GRAPHER_TAB_QUERY_PARAMS.marimekko
+    }
+}
+
+export function findValidChartTypeCombination(
+    chartTypes: GrapherChartType[]
+): GrapherChartType[] | undefined {
+    const chartTypeSet = new Set(chartTypes)
+    for (const validCombination of validChartTypeCombinations) {
+        const validCombinationSet = new Set(validCombination)
+        if (areSetsEqual(chartTypeSet, validCombinationSet))
+            return validCombination
+    }
+    return undefined
+}
+
+export function getHoverStateForSeries(
+    series: ChartSeries,
+    props: {
+        hoveredSeriesNames: SeriesName[]
+        // usually the hover mode is active when there is
+        // at least one hovered element. But sometimes the hover
+        // mode might be active although there are no hovered elements.
+        // For example, when the facet legend is hovered but a particular
+        // chart doesn't plot the hovered element.
+        isHoverModeActive?: boolean
+    }
+): InteractionState {
+    const hoveredSeriesNames = props.hoveredSeriesNames
+    const isHoverModeActive =
+        props.isHoverModeActive ?? hoveredSeriesNames.length > 0
+
+    const active = hoveredSeriesNames.includes(series.seriesName)
+    const background = isHoverModeActive && !active
+    return { active, background }
+}
+
+/** Useful for sorting series by their interaction state */
+export function byHoverThenFocusState(series: {
+    hover: InteractionState
+    focus: InteractionState
+}): number {
+    // active series rank highest and hover trumps focus
+    if (series.hover.active) return 4
+    if (series.focus.active) return 3
+
+    // series in their default state rank in the middle
+    if (!series.hover.background && !series.focus.background) return 2
+
+    // background series rank lowest
+    return 1
+}
+
+export function makeAxisLabel({
+    label,
+    unit,
+    shortUnit,
+}: {
+    label: string
+    unit?: string
+    shortUnit?: string
+}): {
+    mainLabel: string // shown in bold
+    unit?: string // shown in normal weight, usually in parens
+} {
+    const displayUnit = unit && unit !== shortUnit ? unit : undefined
+    const unitInParens = displayUnit ? `(${displayUnit})` : undefined
+
+    if (unitInParens) {
+        // extract text in parens at the end of the label,
+        // e.g. "Population (millions)" is split into "Population " and "(millions)"
+        const [_fullMatch, untrimmedMainLabelText, labelTextInParens] =
+            label.trim().match(/^(.*?)(\([^()]*\))?$/) ?? []
+        const mainLabelText = untrimmedMainLabelText.trim()
+
+        // don't show unit twice if it's contained in the label
+        const displayLabel =
+            labelTextInParens === unitInParens ? mainLabelText : label
+
+        return { mainLabel: displayLabel, unit: unitInParens }
+    }
+
+    return { mainLabel: label }
+}
+
+/**
+ * Given a URL for a CF function grapher thumbnail, generate a srcSet for the image at different widths
+ * @param defaultSrc - `https://ourworldindata.org/grapher/thumbnail/life-expectancy.png?tab=chart`
+ * @returns srcSet - `https://ourworldindata.org/grapher/thumbnail/life-expectancy.png?tab=chart&imWidth=850 850w, https://ourworldindata.org/grapher/thumbnail/life-expectancy.png?tab=chart&imWidth=1700 1700w`
+ */
+export function generateGrapherImageSrcSet(defaultSrc: string): string {
+    const url = Url.fromURL(defaultSrc)
+    const existingQueryParams = url.queryParams
+    const imWidths = ["850", "1700"]
+    const srcSet = imWidths
+        .map((imWidth) => {
+            return `${url.setQueryParams({ ...existingQueryParams, imWidth }).fullUrl} ${imWidth}w`
+        })
+        .join(", ")
+
+    return srcSet
+}

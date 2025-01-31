@@ -1,13 +1,8 @@
-import React from "react"
 import { Head } from "./Head.js"
 import { SiteHeader } from "./SiteHeader.js"
 import { SiteFooter } from "./SiteFooter.js"
-
-interface Country {
-    name: string
-    slug: string
-    code: string
-}
+import { Country, sortBy } from "@ourworldindata/utils"
+import { Html } from "./Html.js"
 
 export const CountriesIndexPage = (props: {
     countries: Country[]
@@ -15,8 +10,10 @@ export const CountriesIndexPage = (props: {
 }) => {
     const { countries, baseUrl } = props
 
+    const sortedCountries = sortBy(countries, (country) => country.name)
+
     return (
-        <html>
+        <Html>
             <Head
                 canonicalUrl={`${baseUrl}/countries`}
                 pageTitle="Countries"
@@ -25,16 +22,17 @@ export const CountriesIndexPage = (props: {
             />
             <body className="CountriesIndexPage">
                 <SiteHeader baseUrl={baseUrl} />
-                <main>
+                <main className="wrapper">
                     <h1>Data by country</h1>
                     <ul>
-                        {countries.map((country) => (
+                        {sortedCountries.map((country) => (
                             <li key={country.code}>
-                                <img
-                                    className="flag"
-                                    src={`/images/flags/${country.code}.svg`}
-                                />
                                 <a href={`/country/${country.slug}`}>
+                                    <img
+                                        className="flag"
+                                        src={`/images/flags/${country.code}.svg`}
+                                        loading="lazy"
+                                    />
                                     {country.name}
                                 </a>
                             </li>
@@ -42,8 +40,7 @@ export const CountriesIndexPage = (props: {
                     </ul>
                 </main>
                 <SiteFooter baseUrl={baseUrl} />
-                {/* <script>{`window.runChartsIndexPage()`}</script> */}
             </body>
-        </html>
+        </Html>
     )
 }

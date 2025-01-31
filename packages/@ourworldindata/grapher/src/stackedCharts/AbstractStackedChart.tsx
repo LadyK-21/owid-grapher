@@ -1,20 +1,19 @@
 import { DualAxis, HorizontalAxis, VerticalAxis } from "../axis/Axis"
-import { AxisConfig, FontSizeManager } from "../axis/AxisConfig"
+import { AxisConfig, AxisManager } from "../axis/AxisConfig"
 import { ChartInterface } from "../chart/ChartInterface"
 import { ChartManager } from "../chart/ChartManager"
 import {
-    BASE_FONT_SIZE,
+    ColorSchemeName,
     FacetStrategy,
     MissingDataStrategy,
     SeriesStrategy,
-} from "../core/GrapherConstants"
+} from "@ourworldindata/types"
+import { BASE_FONT_SIZE } from "../core/GrapherConstants"
 import {
     Bounds,
     DEFAULT_BOUNDS,
     exposeInstanceOnWindow,
-    flatten,
     guid,
-    max,
 } from "@ourworldindata/utils"
 import { computed } from "mobx"
 import { observer } from "mobx-react"
@@ -24,7 +23,11 @@ import {
     StackedRawSeries,
     StackedSeries,
 } from "./StackedConstants"
-import { OwidTable, CoreColumn } from "@ourworldindata/core-table"
+import {
+    OwidTable,
+    CoreColumn,
+    isNotErrorValueOrEmptyCell,
+} from "@ourworldindata/core-table"
 import {
     autoDetectSeriesStrategy,
     autoDetectYColumnSlugs,
@@ -36,7 +39,15 @@ import { ColorSchemes } from "../color/ColorSchemes"
 import { SelectionArray } from "../selection/SelectionArray"
 import { CategoricalBin } from "../color/ColorScaleBin"
 import { HorizontalColorLegendManager } from "../horizontalColorLegend/HorizontalColorLegends"
-import { CategoricalColorAssigner } from "../color/CategoricalColorAssigner.js"
+import {
+    CategoricalColorAssigner,
+    CategoricalColorMap,
+} from "../color/CategoricalColorAssigner.js"
+import { BinaryMapPaletteE } from "../color/CustomSchemes"
+
+// used in StackedBar charts to color negative and positive bars
+const POSITIVE_COLOR = BinaryMapPaletteE.colorSets[0][0] // orange
+const NEGATIVE_COLOR = BinaryMapPaletteE.colorSets[0][1] // blue
 
 export interface AbstractStackedChartProps {
     bounds?: Bounds
@@ -47,7 +58,7 @@ export interface AbstractStackedChartProps {
 @observer
 export class AbstractStackedChart
     extends React.Component<AbstractStackedChartProps>
-    implements ChartInterface, FontSizeManager
+    implements ChartInterface, AxisManager
 {
     transformTable(table: OwidTable): OwidTable {
         table = table.filterByEntityNames(
@@ -84,6 +95,26 @@ export class AbstractStackedChart
         return table
     }
 
+    transformTableForSelection(table: OwidTable): OwidTable {
+        // if entities with partial data are not plotted,
+        // make sure they don't show up in the entity selector
+        if (this.missingDataStrategy !== MissingDataStrategy.show) {
+            table = table
+                .replaceNonNumericCellsWithErrorValues(this.yColumnSlugs)
+                .dropRowsWithErrorValuesForAllColumns(this.yColumnSlugs)
+
+            if (this.shouldRunLinearInterpolation) {
+                this.yColumnSlugs.forEach((slug) => {
+                    table = table.interpolateColumnLinearly(slug)
+                })
+            }
+
+            table = table.dropRowsWithErrorValuesForAnyColumn(this.yColumnSlugs)
+        }
+
+        return table
+    }
+
     @computed private get missingDataStrategy(): MissingDataStrategy {
         return this.manager.missingDataStrategy || MissingDataStrategy.auto
     }
@@ -107,15 +138,28 @@ export class AbstractStackedChart
     @computed get manager(): ChartManager {
         return this.props.manager
     }
+
     @computed get bounds(): Bounds {
         return this.props.bounds ?? DEFAULT_BOUNDS
     }
 
-    @computed get fontSize(): number {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+    @computed get isStatic(): boolean {
+        return this.manager.isStatic ?? false
     }
 
-    protected get paddingForLegend(): number {
+    @computed get fontSize(): number {
+        return this.manager.fontSize ?? BASE_FONT_SIZE
+    }
+
+    @computed get detailsOrderedByReference(): string[] {
+        return this.manager.detailsOrderedByReference ?? []
+    }
+
+    protected get paddingForLegendRight(): number {
+        return 0
+    }
+
+    protected get paddingForLegendTop(): number {
         return 0
     }
 
@@ -164,15 +208,22 @@ export class AbstractStackedChart
         return autoDetectSeriesStrategy(this.manager)
     }
 
+    @computed get innerBounds(): Bounds {
+        return (
+            this.bounds
+                .padTop(this.paddingForLegendTop)
+                .padRight(this.paddingForLegendRight)
+                // top padding leaves room for tick labels
+                .padTop(6)
+                // bottom padding avoids axis labels to be cut off at some resolutions
+                .padBottom(2)
+        )
+    }
+
     @computed protected get dualAxis(): DualAxis {
-        const {
-            bounds,
-            horizontalAxisPart,
-            verticalAxisPart,
-            paddingForLegend,
-        } = this
+        const { horizontalAxisPart, verticalAxisPart } = this
         return new DualAxis({
-            bounds: bounds.padRight(paddingForLegend),
+            bounds: this.innerBounds,
             horizontalAxis: horizontalAxisPart,
             verticalAxis: verticalAxisPart,
         })
@@ -186,14 +237,9 @@ export class AbstractStackedChart
         return this.dualAxis.horizontalAxis
     }
 
-    @computed private get xAxisConfig(): AxisConfig {
-        return new AxisConfig(
-            {
-                hideGridlines: true,
-                ...this.manager.xAxisConfig,
-            },
-            this
-        )
+    // implemented in subclasses
+    @computed protected get xAxisConfig(): AxisConfig {
+        return new AxisConfig()
     }
 
     @computed private get horizontalAxisPart(): HorizontalAxis {
@@ -207,20 +253,25 @@ export class AbstractStackedChart
     }
 
     @computed private get yAxisConfig(): AxisConfig {
-        // TODO: enable nice axis ticks for linear scales
-        return new AxisConfig(this.manager.yAxisConfig, this)
+        return new AxisConfig(
+            {
+                nice: true,
+                ...this.manager.yAxisConfig,
+            },
+            this
+        )
+    }
+
+    // implemented in subclasses
+    @computed protected get yAxisDomain(): [number, number] {
+        return [0, 0]
     }
 
     @computed private get verticalAxisPart(): VerticalAxis {
-        // const lastSeries = this.series[this.series.length - 1]
-        // const yValues = lastSeries.points.map((d) => d.yOffset + d.y)
-        const yValues = this.allStackedPoints.map(
-            (point) => point.value + point.valueOffset
-        )
         const axis = this.yAxisConfig.toVerticalAxis()
         // Use user settings for axis, unless relative mode
         if (this.manager.isRelativeMode) axis.domain = [0, 100]
-        else axis.updateDomainPreservingUserSettings([0, max(yValues) ?? 0]) // Stacked area chart must have its own y domain)
+        else axis.updateDomainPreservingUserSettings(this.yAxisDomain)
         axis.formatColumn = this.yColumns[0]
         return axis
     }
@@ -240,6 +291,8 @@ export class AbstractStackedChart
 
     @computed
     private get entitiesAsSeries(): readonly StackedRawSeries<number>[] {
+        if (!this.yColumns.length) return []
+
         const { isProjection, owidRowsByEntityName } = this.yColumns[0]
         return this.selectionArray.selectedEntityNames
             .map((seriesName) => {
@@ -261,7 +314,7 @@ export class AbstractStackedChart
 
     @computed
     protected get allStackedPoints(): readonly StackedPoint<number>[] {
-        return flatten(this.series.map((series) => series.points))
+        return this.series.flatMap((series) => series.points)
     }
 
     @computed get failMessage(): string {
@@ -272,6 +325,12 @@ export class AbstractStackedChart
         return ""
     }
 
+    @computed private get colorMap(): CategoricalColorMap {
+        return this.isEntitySeries
+            ? this.inputTable.entityNameColorIndex
+            : this.inputTable.columnDisplayNameToColorMap
+    }
+
     @computed private get categoricalColorAssigner(): CategoricalColorAssigner {
         const seriesCount = this.isEntitySeries
             ? this.selectionArray.numSelectedEntities
@@ -279,19 +338,18 @@ export class AbstractStackedChart
         return new CategoricalColorAssigner({
             colorScheme:
                 (this.manager.baseColorScheme
-                    ? ColorSchemes[this.manager.baseColorScheme]
-                    : null) ?? ColorSchemes.stackedAreaDefault,
+                    ? ColorSchemes.get(this.manager.baseColorScheme)
+                    : null) ??
+                ColorSchemes.get(ColorSchemeName.stackedAreaDefault),
             invertColorScheme: this.manager.invertColorScheme,
-            colorMap: this.isEntitySeries
-                ? this.inputTable.entityNameColorIndex
-                : this.inputTable.columnDisplayNameToColorMap,
+            colorMap: this.colorMap,
             autoColorMapCache: this.manager.seriesColorMap,
             numColorsInUse: seriesCount,
         })
     }
 
     @computed protected get selectionArray(): SelectionArray {
-        return makeSelectionArray(this.manager)
+        return makeSelectionArray(this.manager.selection)
     }
 
     @computed get isEntitySeries(): boolean {
@@ -305,27 +363,42 @@ export class AbstractStackedChart
     @computed get availableFacetStrategies(): FacetStrategy[] {
         const strategies: FacetStrategy[] = []
 
-        const hasMultipleEntities =
-            this.selectionArray.selectedEntityNames.length > 1
+        const { selectedEntityNames } = this.selectionArray
+        const areMultipleEntitiesSelected = selectedEntityNames.length > 1
         const hasMultipleYColumns = this.yColumns.length > 1
-        const uniqueUnits = new Set(
-            this.yColumns.map((column) => column.shortUnit)
-        )
+        const shortUnits = this.yColumns.map((column) => column.shortUnit)
+        const uniqueUnits = new Set(shortUnits)
         const hasMultipleUnits = uniqueUnits.size > 1
+        const hasPercentageUnit = shortUnits.some(
+            (shortUnit) => shortUnit === "%"
+        )
 
         // Normally StackedArea/StackedBar charts are always single-entity or single-column, but if we are ever in a mode where we
         // have multiple entities selected (e.g. through GlobalEntitySelector) and multiple columns, it only makes sense when faceted.
-        if (!this.isEntitySeries && !hasMultipleEntities)
+        if (!this.isEntitySeries && !areMultipleEntitiesSelected)
             strategies.push(FacetStrategy.none)
         else if (this.isEntitySeries && !hasMultipleYColumns)
             strategies.push(FacetStrategy.none)
 
-        if (hasMultipleEntities && !hasMultipleUnits)
+        if (areMultipleEntitiesSelected && !hasMultipleUnits)
             strategies.push(FacetStrategy.entity)
 
-        if (hasMultipleYColumns) strategies.push(FacetStrategy.metric)
+        if (
+            hasMultipleYColumns &&
+            // Stacking percentages doesn't make sense unless we're in relative mode
+            (!hasPercentageUnit || this.manager.isRelativeMode)
+        )
+            strategies.push(FacetStrategy.metric)
 
         return strategies
+    }
+
+    @computed get shouldUseValueBasedColorScheme(): boolean {
+        return false
+    }
+
+    @computed get useValueBasedColorScheme(): boolean {
+        return false
     }
 
     @computed get unstackedSeries(): readonly StackedSeries<number>[] {
@@ -336,11 +409,21 @@ export class AbstractStackedChart
                 const { isProjection, seriesName, rows } = series
 
                 const points = rows.map((row) => {
+                    const pointColor =
+                        row.value > 0 ? POSITIVE_COLOR : NEGATIVE_COLOR
                     return {
-                        position: row.time,
-                        time: row.time,
+                        position: row.originalTime,
+                        time: row.originalTime,
                         value: row.value,
                         valueOffset: 0,
+                        interpolated:
+                            this.shouldRunLinearInterpolation &&
+                            isNotErrorValueOrEmptyCell(row.value) &&
+                            !isNotErrorValueOrEmptyCell(row.originalValue),
+                        // takes precedence over the series color if given
+                        color: this.useValueBasedColorScheme
+                            ? pointColor
+                            : undefined,
                     }
                 })
 
@@ -359,7 +442,7 @@ export class AbstractStackedChart
     }
 
     @computed get externalLegend(): HorizontalColorLegendManager | undefined {
-        if (this.manager.hideLegend) {
+        if (!this.manager.showLegend) {
             const categoricalLegendData = this.series
                 .map(
                     (series, index) =>

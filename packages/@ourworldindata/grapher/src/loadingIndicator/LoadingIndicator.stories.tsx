@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { LoadingIndicator } from "./LoadingIndicator"
 
 export default {
@@ -6,7 +6,7 @@ export default {
     component: LoadingIndicator,
 }
 
-export const Default = (): JSX.Element => {
+export const Default = (): React.ReactElement => {
     return (
         <div>
             <LoadingIndicator />

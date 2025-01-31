@@ -1,6 +1,11 @@
-import { PointVector, first, last } from "@ourworldindata/utils"
+import {
+    PointVector,
+    first,
+    last,
+    makeIdForHumanConsumption,
+} from "@ourworldindata/utils"
 import { observer } from "mobx-react"
-import React from "react"
+import * as React from "react"
 import { MultiColorPolyline } from "./MultiColorPolyline"
 import {
     ScatterRenderSeries,
@@ -14,9 +19,11 @@ import { Triangle } from "./Triangle"
 export class ScatterPoint extends React.Component<{
     series: ScatterRenderSeries
     isLayerMode?: boolean
+    onMouseEnter?: (seriesName: string) => void
+    onMouseLeave?: () => void
 }> {
-    render(): JSX.Element | null {
-        const { series, isLayerMode } = this.props
+    render(): React.ReactElement | null {
+        const { series, isLayerMode, onMouseEnter, onMouseLeave } = this.props
         const value = first(series.points)
         if (value === undefined) return null
 
@@ -29,7 +36,20 @@ export class ScatterPoint extends React.Component<{
         const stroke = isLayerMode ? "#bbb" : isLabelled ? "#333" : "#666"
 
         return (
-            <g key={series.displayKey} className={series.displayKey}>
+            <g
+                id={makeIdForHumanConsumption(
+                    "scatter-point",
+                    series.displayKey
+                )}
+                key={series.displayKey}
+                className={series.displayKey}
+                onMouseEnter={
+                    onMouseEnter
+                        ? (): void => onMouseEnter(series.seriesName)
+                        : undefined
+                }
+                onMouseLeave={onMouseLeave}
+            >
                 {series.isFocus && (
                     <circle
                         cx={cx}
@@ -47,6 +67,7 @@ export class ScatterPoint extends React.Component<{
                     opacity={SCATTER_POINT_OPACITY}
                     stroke={stroke}
                     strokeWidth={SCATTER_POINT_STROKE_WIDTH}
+                    style={{ transition: "fill 250ms" }}
                 />
             </g>
         )
@@ -57,12 +78,21 @@ export class ScatterPoint extends React.Component<{
 export class ScatterLine extends React.Component<{
     series: ScatterRenderSeries
     isLayerMode: boolean
+    onMouseEnter?: (seriesName: string) => void
+    onMouseLeave?: () => void
 }> {
-    render(): JSX.Element | null {
-        const { series, isLayerMode } = this.props
+    render(): React.ReactElement | null {
+        const { series, isLayerMode, onMouseEnter, onMouseLeave } = this.props
 
         if (series.points.length === 1)
-            return <ScatterPoint series={series} isLayerMode={isLayerMode} />
+            return (
+                <ScatterPoint
+                    series={series}
+                    isLayerMode={isLayerMode}
+                    onMouseEnter={onMouseEnter}
+                    onMouseLeave={onMouseLeave}
+                />
+            )
 
         const firstValue = first(series.points)
         const lastValue = last(series.points)
@@ -74,7 +104,14 @@ export class ScatterLine extends React.Component<{
         const opacity = 0.7
 
         return (
-            <g key={series.displayKey} className={series.displayKey}>
+            <g
+                id={makeIdForHumanConsumption(
+                    "scatter-line",
+                    series.displayKey
+                )}
+                key={series.displayKey}
+                className={series.displayKey}
+            >
                 <circle
                     cx={firstValue.position.x.toFixed(2)}
                     cy={firstValue.position.y.toFixed(2)}
@@ -91,6 +128,7 @@ export class ScatterLine extends React.Component<{
                     }))}
                     strokeWidth={series.size.toFixed(2)}
                     opacity={opacity}
+                    style={{ transition: "stroke 250ms" }}
                 />
                 <Triangle
                     transform={`rotate(${rotation}, ${lastValue.position.x.toFixed(

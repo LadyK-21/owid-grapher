@@ -1,13 +1,17 @@
 #! /usr/bin/env jest
-
-import React from "react"
-
-import { DataTable } from "./DataTable"
-import { ChartTypeName, GrapherTabOption } from "../core/GrapherConstants"
-import { childMortalityGrapher, IncompleteDataTable } from "./DataTable.sample"
+import { GRAPHER_CHART_TYPES, GRAPHER_TAB_OPTIONS } from "@ourworldindata/types"
+import {
+    childMortalityGrapher,
+    GrapherWithIncompleteData,
+    GrapherWithAggregates,
+    GrapherWithMultipleVariablesAndMultipleYears,
+} from "./DataTable.sample"
 
 import Enzyme, { ReactWrapper } from "enzyme"
-import Adapter from "enzyme-adapter-react-16"
+import Adapter from "@wojtekmaj/enzyme-adapter-react-17"
+import { LifeExpectancyGrapher } from "../testData/OwidTestData.sample.js"
+import { DataTable } from "./DataTable.js"
+
 Enzyme.configure({ adapter: new Adapter() })
 
 describe("when you render a table", () => {
@@ -18,25 +22,25 @@ describe("when you render a table", () => {
     })
 
     it("renders a table", () => {
-        expect(view.find("table.data-table")).toHaveLength(1)
+        expect(view.find("table")).toHaveLength(1)
     })
 
     it("renders a Country header", () => {
         expect(view.find("thead th.entity").text()).toContain("Country")
     })
 
-    it("renders a variable name in header", () => {
-        const cell = view.find("thead th.dimension .name")
+    it("renders a variable name in the caption", () => {
+        const cell = view.find(".DataTable .caption")
         expect(cell.text()).toContain("Child mortality")
     })
 
-    it("renders a unit name in header", () => {
-        const cell = view.find("thead th.dimension .unit")
+    it("renders a unit name in the caption", () => {
+        const cell = view.find(".DataTable .caption .unit")
         expect(cell.text()).toContain("percent")
     })
 
-    it("renders 'percent' in the column header when unit is '%'", () => {
-        const cell = view.find("thead th.dimension .unit")
+    it("renders 'percent' in the caption when unit is '%'", () => {
+        const cell = view.find(".DataTable .caption .unit")
         expect(cell.text()).toContain("percent")
     })
 
@@ -64,21 +68,12 @@ describe("when you select a range of years", () => {
     let view: ReactWrapper
     beforeAll(() => {
         const grapher = childMortalityGrapher({
-            type: ChartTypeName.LineChart,
-            tab: GrapherTabOption.table,
+            chartTypes: [GRAPHER_CHART_TYPES.LineChart],
+            tab: GRAPHER_TAB_OPTIONS.table,
         })
         grapher.timelineHandleTimeBounds = [1950, 2019]
 
         view = Enzyme.mount(<DataTable manager={grapher} />)
-    })
-
-    it("header is split into two rows", () => {
-        expect(view.find("thead tr")).toHaveLength(2)
-    })
-
-    it("entity header cell spans 2 rows", () => {
-        const cell = view.find("thead .entity").first()
-        expect(cell.prop("rowSpan")).toBe(2)
     })
 
     it("renders start values", () => {
@@ -103,7 +98,7 @@ describe("when you select a range of years", () => {
 })
 
 describe("when the table doesn't have data for all rows", () => {
-    const grapher = IncompleteDataTable()
+    const grapher = GrapherWithIncompleteData()
     grapher.timelineHandleTimeBounds = [2000, 2000]
     const view = Enzyme.mount(<DataTable manager={grapher} />)
 
@@ -111,11 +106,9 @@ describe("when the table doesn't have data for all rows", () => {
         expect(view.find("tbody .dimension").at(0).first().text()).toBe("")
     })
 
-    it("renders a tolerance notice when data is not from targetYear", () => {
+    it("renders an info icon when data is not from targetYear", () => {
         const toleranceNotices = view.find(".closest-time-notice-icon")
         expect(toleranceNotices.length).toBe(2)
-        expect(toleranceNotices.at(0).text()).toContain("2001") // first column
-        expect(toleranceNotices.at(1).text()).toContain("2009") // second column
     })
 
     it("renders a data value for the column with targetTime 2010", () => {
@@ -129,5 +122,55 @@ describe("when the table doesn't have data for all rows", () => {
         expect(timeHeaders.length).toBe(2)
         expect(timeHeaders.at(0).text()).toBe("2000")
         expect(timeHeaders.at(1).text()).toBe("2010")
+    })
+})
+
+describe("when the table has aggregates", () => {
+    let view: ReactWrapper
+    beforeAll(() => {
+        const grapher = GrapherWithAggregates()
+        view = Enzyme.mount(<DataTable manager={grapher} />)
+    })
+
+    it("renders a separating title row for aggregates", () => {
+        const titleRows = view.find("tbody .title")
+        expect(titleRows).toHaveLength(1)
+        expect(titleRows.at(0).text()).toBe("Other")
+    })
+})
+
+describe("when the table has multiple variables and multiple years", () => {
+    let view: ReactWrapper
+    beforeAll(() => {
+        const grapher = GrapherWithMultipleVariablesAndMultipleYears()
+        view = Enzyme.mount(<DataTable manager={grapher} />)
+    })
+
+    it("header is split into two rows", () => {
+        expect(view.find("thead tr")).toHaveLength(2)
+    })
+})
+
+describe("when the table has no filter toggle", () => {
+    it("does not filter by default if we have a map tab", () => {
+        const grapher = LifeExpectancyGrapher({
+            selectedEntityNames: ["World"],
+            hideEntityControls: true, // no filter toggle
+            hasMapTab: true,
+        })
+        const view = Enzyme.mount(<DataTable manager={grapher} />)
+        const rows = view.find("tbody tr:not(.title)")
+        expect(rows).toHaveLength(grapher.availableEntities.length)
+    })
+
+    it("does not filter by default if the selection is empty", () => {
+        const grapher = LifeExpectancyGrapher({
+            selectedEntityNames: [],
+            hideEntityControls: true, // no filter toggle
+            hasMapTab: false,
+        })
+        const view = Enzyme.mount(<DataTable manager={grapher} />)
+        const rows = view.find("tbody tr:not(.title)")
+        expect(rows).toHaveLength(grapher.availableEntities.length)
     })
 })

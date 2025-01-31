@@ -6,9 +6,12 @@ import {
     SynthesizeGDPTable,
 } from "./OwidTableSynthesizers.js"
 import { OwidTable } from "./OwidTable.js"
-import { ColumnTypeNames } from "./CoreColumnDef.js"
+import {
+    ColumnTypeNames,
+    OwidColumnDef,
+    OwidTableSlugs,
+} from "@ourworldindata/types"
 import { ErrorValueTypes } from "./ErrorValues.js"
-import { OwidColumnDef, OwidTableSlugs } from "./OwidTableConstants.js"
 
 const sampleRows = [
     {
@@ -69,7 +72,7 @@ it("can parse data to Javascript data structures", () => {
     table.get("Population").owidRows.forEach((row) => {
         expect(typeof row.entityName).toBe("string")
         expect(row.value).toBeGreaterThan(100)
-        expect(row.time).toBeGreaterThan(1999)
+        expect(row.originalTime).toBeGreaterThan(1999)
     })
 })
 
@@ -94,9 +97,7 @@ it("can group data by entity and time", () => {
 
     const timeValues = Array.from(
         table.get("Population").valueByEntityNameAndOriginalTime.values()
-    )
-        .map((value) => Array.from(value.values()))
-        .flat()
+    ).flatMap((value) => Array.from(value.values()))
 
     expect(timeValues.length).toEqual(50)
     expect(timeValues.filter((value) => isNaN(value as number))).toEqual([])
@@ -631,7 +632,7 @@ describe("tolerance", () => {
     })
 })
 
-it("assigns originalTime as 'time' in owidRows", () => {
+it("assigns originalTime as 'originalTime' in owidRows", () => {
     const csv = `gdp,year,entityName,entityId,entityCode
 1000,2019,USA,,
 1001,2020,UK,,`
@@ -641,7 +642,7 @@ it("assigns originalTime as 'time' in owidRows", () => {
         expect.not.arrayContaining([
             expect.objectContaining({
                 entityName: "USA",
-                time: 2020,
+                originalTime: 2020,
                 value: 1000,
             }),
         ])
@@ -650,7 +651,7 @@ it("assigns originalTime as 'time' in owidRows", () => {
         expect.not.arrayContaining([
             expect.objectContaining({
                 entityName: "UK",
-                time: 2019,
+                originalTime: 2019,
                 value: 1001,
             }),
         ])

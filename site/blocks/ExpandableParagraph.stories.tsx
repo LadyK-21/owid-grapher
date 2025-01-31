@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { ExpandableParagraph } from "./ExpandableParagraph.js"
 
 export default {
@@ -6,7 +6,7 @@ export default {
     component: ExpandableParagraph,
 }
 
-export const Default = (): JSX.Element => (
+export const Default = (): React.ReactElement => (
     <>
         <h2>Usage with children</h2>
         <ExpandableParagraph>

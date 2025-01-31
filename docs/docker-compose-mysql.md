@@ -8,9 +8,10 @@ This page describes how to set up a MySQL database loaded with example charts so
 
 This option uses `make` to spin up all the services with a single command, but it requires a few utilities to be installed:
 
--   [Docker](https://www.docker.com/get-started)
--   [Node.js and Yarn](./local-typescript-setup.md)
--   [tmux](https://github.com/tmux/tmux/wiki/Installing#binary-packages)
+- [Docker](https://www.docker.com/get-started)
+- [Node.js and Yarn](./local-typescript-setup.md)
+- [tmux](https://github.com/tmux/tmux/wiki/Installing#binary-packages)
+- [MySQL client tools](https://dev.mysql.com/doc/refman/8.0/en/mysql.html) (install it e.g. via [this brew package](https://formulae.brew.sh/formula/mysql-client) on MacOS)
 
 If you're using Windows, we recommend you use the Windows Subsystem for Linux, where you'll require some additional utilities. Please also make sure to check out the [before you start on windows guide](before-you-start-on-windows.md). To install the additional tools, run the following in a WSL terminal:
 
@@ -75,8 +76,6 @@ Use this connection configuration:
 
 We also have [a schema diagram for reference.](screenshots/er_diagram.png)
 
-Note that in the MySQL database that was set up, the `data_values` table is incomplete – it only contains data used in charts. In production, this table is >30GB (uncompressed) and contains unreviewed and undocumented data, so we currently don't offer a full export of it.
-
 ## Resetting your environment
 
 If you've modified or broken your database and want to start over from scratch, you'll need to clear the docker volumes that the database persists on.
@@ -104,3 +103,9 @@ rm tmp-downloads/*
 With that done, the next time you run `make up`, the database files will be re-downloaded.
 
 A new database will then be created (expect another 10-20 minutes.)
+
+### Troubleshooting
+
+- For **MacOS** users: Ensure the Docker Desktop is installed and running. If you encounter the error `Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?` then it's most likely that Docker is not running and you need to start (or restart) it
+- If you are blocked by a Docker session that won't delete then restart the machine, don't forget to start Docker for Desktop too.
+- If you see `error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH, out: ''` [see this forum answer](https://forums.docker.com/t/docker-credential-desktop-exe-executable-file-not-found-in-path-using-wsl2/100225/5) - `vim ~/.docker/config.json` then change `credsStore` into `credStore`.

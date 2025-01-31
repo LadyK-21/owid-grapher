@@ -1,0 +1,180 @@
+/*******************************************************************************
+ * Spacing
+ */
+
+$padding-x-sm: 24px;
+$padding-x-md: 80px;
+$vertical-spacing: 16px;
+
+:root {
+    --grid-gap: 24px;
+
+    @media (max-width: 768px) {
+        --grid-gap: 16px;
+    }
+}
+
+/*******************************************************************************
+* Sizes
+*/
+
+$header-border-height: 4px;
+$header-bar-height-sm: 64px;
+$header-bar-height-md: 72px;
+$header-height-sm: $header-bar-height-sm + $header-border-height;
+$header-height-md: $header-bar-height-md + $header-border-height;
+
+$content-max-width: 800px;
+$sidebar-content-width: 224px;
+$sidebar-width: #{$sidebar-content-width + 2 * $padding-x-md};
+$sidebar-padding-top: 32px;
+$sidebar-toggle-width: 32px;
+$sidebar-closed-drawer-width: 0;
+$text-min-content-width: 480px;
+$text-max-content-width: 640px;
+// NB: the side by side layout depends on
+// $graph-min-content-width < $text-max-content-width + $graph-max-content-width
+$graph-min-content-width: 700px;
+$graph-max-content-width: 800px;
+
+$wrapper-max-width: $text-min-content-width + $graph-min-content-width + 3 *
+    $padding-x-md;
+
+$grid-card-min-width: 320px;
+
+$grapher-height: 575px;
+
+$article-cover-height: 224px;
+$article-page-top-offset: 88px;
+
+$search-cta-height: 40px;
+
+// Grapher sizing
+// Keep in sync with DEFAULT_GRAPHER_WIDTH, and the (dynamic/static) thumbnail generation code
+$grapher-thumbnail-width: 850px;
+$grapher-thumbnail-height: 600px;
+
+/*******************************************************************************
+* Breakpoints
+*/
+
+// $sm is duplicated in SiteConstants.ts and @ourworldindata/utils/../image.ts
+// Please change them there if you change them here.
+$sm: 768px;
+$md: 960px;
+$lg: 1280px;
+$xlg: 1440px;
+$xxlg: 1536px;
+
+@mixin sm-only {
+    @media (max-width: $sm) {
+        @content;
+    }
+}
+
+@mixin sm-up {
+    @media (min-width: #{$sm + 1}) {
+        @content;
+    }
+}
+
+@mixin md-only {
+    @media (min-width: #{$sm + 1}) and (max-width: $md) {
+        @content;
+    }
+}
+
+@mixin md-down {
+    @media (max-width: $md) {
+        @content;
+    }
+}
+
+@mixin md-up {
+    @media (min-width: #{$md + 1}) {
+        @content;
+    }
+}
+
+@mixin lg-only {
+    @media (min-width: #{$md + 1}) and (max-width: $lg) {
+        @content;
+    }
+}
+
+@mixin lg-down {
+    @media (max-width: $lg) {
+        @content;
+    }
+}
+
+@mixin lg-up {
+    @media (min-width: #{$lg + 1}) {
+        @content;
+    }
+}
+
+@mixin xlg-only {
+    @media (min-width: #{$lg + 1}) and (max-width: $xlg) {
+        @content;
+    }
+}
+
+// Blocks are shown side-by-side from that breakpoint up (when applicable)
+
+@mixin xlg-up {
+    @media only screen and (min-width: #{$xlg + 1}) {
+        @content;
+    }
+}
+
+// mixin duplicated in packages/@ourworldindata/grapher/src/core/grapher.scss
+@mixin xxlg-down {
+    @media only screen and (max-width: $xxlg) {
+        @content;
+    }
+}
+
+// The sidebar is shown from that breakpoint up
+@mixin xxlg-up {
+    @media only screen and (min-width: #{$xxlg + 1}) {
+        @content;
+    }
+}
+
+@mixin touch-device {
+    @media (hover: none) {
+        @content;
+    }
+}
+
+/*******************************************************************************
+ * Z-index
+ */
+
+$zindex-input: 1;
+$zindex-deprecation-notice: 10;
+$zindex-global-entity-select: 11;
+$zindex-footnote: 15;
+$zindex-sidebar: 20;
+$zindex-sidebar-page-overlay: $zindex-sidebar - 1;
+$zindex-popover: 100;
+$zindex-search-overlay: 100;
+$zindex-cookie-notice: 110;
+$zindex-site-header: 120;
+$zindex-extended-header: $zindex-site-header - 1; // ensures search overlays topic-page headers and ToC does not
+$zindex-tooltip: 1070;
+$zindex-lightbox: 99998;
+$zindex-adminbar: 99999;
+
+/*******************************************************************************
+  * Explorers
+  */
+
+$max-width-data-explorer: 1200px;
+
+/*******************************************************************************
+* Icons
+*/
+
+$right-arrow: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M438.6 278.6l-160 160C272.4 444.9 264.2 448 256 448s-16.38-3.125-22.62-9.375c-12.5-12.5-12.5-32.75 0-45.25L338.8 288H32C14.33 288 .0016 273.7 .0016 256S14.33 224 32 224h306.8l-105.4-105.4c-12.5-12.5-12.5-32.75 0-45.25s32.75-12.5 45.25 0l160 160C451.1 245.9 451.1 266.1 438.6 278.6z"/></svg>';

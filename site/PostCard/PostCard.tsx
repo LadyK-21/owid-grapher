@@ -1,4 +1,3 @@
-import React from "react"
 import { IndexPost, formatDate } from "@ourworldindata/utils"
 import { formatUrls } from "../formatting.js"
 import { formatAuthors } from "../clientFormatting.js"
@@ -17,8 +16,8 @@ const PostCard = ({
                     <div
                         className="cover-image"
                         style={{
-                            backgroundImage: `url(${formatUrls(
-                                post.imageUrl
+                            backgroundImage: `url(${encodeURI(
+                                formatUrls(post.imageUrl)
                             )})`,
                         }}
                     />

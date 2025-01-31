@@ -1,0 +1,511 @@
+@mixin owid-link-90 {
+    color: $blue-90;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+
+    &:visited {
+        color: $purple-90;
+    }
+    &:hover {
+        text-decoration: none;
+    }
+}
+
+@mixin owid-link-60 {
+    color: $blue-60;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+
+    &:visited {
+        color: $purple-60;
+    }
+    &:hover {
+        text-decoration: none;
+    }
+}
+
+@mixin owid-link-40 {
+    color: $blue-40;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+
+    &:visited {
+        color: $blue-30;
+    }
+    &:hover {
+        text-decoration: none;
+    }
+}
+
+@mixin cancel-link-styles {
+    color: $blue-90;
+    text-decoration: none;
+    &:visited {
+        color: $blue-90;
+    }
+    &:hover {
+        text-decoration: none;
+        color: $blue-100;
+    }
+}
+
+@mixin dod-container {
+    padding: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+
+    > p.article-block__text:first-child {
+        font-weight: bold;
+        font-size: 1rem;
+    }
+
+    > p.article-block__text:not(:first-child) {
+        margin-top: 8px;
+        font-size: 0.875rem;
+    }
+}
+
+@mixin dod-span {
+    border-bottom: 1px dotted $blue-90;
+    cursor: help;
+
+    span {
+        pointer-events: none;
+    }
+}
+
+@mixin info {
+    font-size: 0.875rem;
+
+    p {
+        margin-top: 0;
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+}
+
+@mixin block-spacing {
+    margin-bottom: 2rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    @include wrapper-spacing-sm;
+    @include md-up {
+        padding-top: 1.5rem;
+        padding-bottom: 1.5rem;
+        @include wrapper-spacing-md;
+    }
+}
+
+@mixin sticky-child {
+    top: 24px;
+    position: sticky;
+    padding-top: 0;
+}
+
+@mixin grid($columns) {
+    display: grid;
+    grid-template-columns: repeat($columns, 1fr);
+    column-gap: var(--grid-gap);
+}
+
+@mixin left-media-columns {
+    @include md-up {
+        &.with-image .content-wrapper {
+            display: flex;
+            figure {
+                flex: 1 1 40%;
+                margin-right: $padding-x-md;
+                img {
+                    width: 100%;
+                }
+            }
+            .content {
+                flex: 1 1 60%;
+                *:first-child {
+                    margin-top: 0;
+                }
+                *:last-child {
+                    margin-bottom: 0;
+                }
+            }
+        }
+    }
+
+    figure,
+    img {
+        width: 100%;
+        margin: 0;
+    }
+}
+
+@mixin block-shadow {
+    box-shadow: $light-shadow;
+}
+
+@mixin h3-style {
+    font-family: $serif-font-stack;
+    font-size: 1.75rem;
+    @include md-up {
+        font-size: 2.25rem;
+    }
+    font-weight: 400;
+    line-height: 1.25em;
+}
+
+@mixin h4-style {
+    font-family: $serif-font-stack;
+    font-weight: 400;
+    font-size: 1.5rem;
+    line-height: 1.4em;
+
+    @include sm-only {
+        font-size: 1.25rem;
+    }
+}
+
+@mixin button-disabled {
+    &:disabled {
+        opacity: 0.5;
+        cursor: auto;
+    }
+}
+
+@mixin button-hover {
+    &:hover {
+        background-color: $blue-90;
+    }
+}
+
+@mixin popover-box-button {
+    padding: 0.2rem 0.5rem;
+    line-height: 1.6rem;
+    border: none;
+    border-radius: 3px;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.1);
+    color: white;
+    cursor: pointer;
+    font-size: 0.875rem;
+    background: $oxford-blue;
+    outline: none;
+
+    @include button-hover;
+    @include button-disabled;
+
+    svg {
+        margin-right: 0.5rem;
+    }
+}
+
+@mixin popover-box-styles {
+    border-radius: 3px;
+    width: 411px; // see SiteNavigationToggle__dropdown
+    box-shadow:
+        0 1px 3px 0 rgba(0, 0, 0, 0.15),
+        0 3px 15px rgba(0, 0, 0, 0.25);
+    background: hsla(0, 0%, 100%, 0.98);
+    color: #333;
+
+    .header {
+        background: $oxford-blue;
+        color: white;
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 0.5rem 1rem;
+    }
+
+    form {
+        display: flex;
+        flex-direction: column;
+    }
+    button {
+        @include popover-box-button;
+    }
+
+    button.close {
+        align-self: flex-end;
+        color: $oxford-blue;
+        background-color: $white;
+        &:hover {
+            color: $white;
+            background-color: $oxford-blue;
+        }
+    }
+}
+
+@mixin light-blue-button {
+    background-color: $blue-10;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    outline: none;
+    padding: 0.25rem;
+    color: $blue-100;
+    transition: all 150ms;
+    &:hover {
+        background-color: $blue-20;
+    }
+}
+
+@mixin topic-chip {
+    a {
+        display: flex;
+        align-items: center;
+        background-color: $blue-10;
+        border-radius: 50px;
+        padding: 8px 16px;
+        white-space: nowrap;
+        @include body-3-medium;
+        color: $blue-90;
+        transition: background-color 150ms;
+        height: 32px;
+
+        &:hover {
+            background-color: $blue-20;
+        }
+    }
+}
+
+@mixin wrapper-spacing-sm {
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: $padding-x-sm;
+    padding-right: $padding-x-sm;
+}
+
+@mixin wrapper-spacing-md {
+    padding-left: $padding-x-md;
+    padding-right: $padding-x-md;
+}
+
+@mixin wrapper-x-spacing {
+    @include wrapper-spacing-sm;
+
+    @include md-up {
+        @include wrapper-spacing-md;
+    }
+}
+
+@mixin content-wrapper {
+    @include wrapper-x-spacing;
+}
+
+@mixin full-width {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+}
+
+@mixin posts-list {
+    margin-bottom: $vertical-spacing * 2;
+    list-style-type: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax($grid-card-min-width, 1fr));
+    gap: 1rem;
+}
+
+@mixin hide {
+    display: none;
+}
+
+@mixin titling($h1-font-size) {
+    .supertitle {
+        margin-bottom: -($h1-font-size * 0.1);
+        font-size: $h1-font-size * 40 * 0.01;
+    }
+    h1 {
+        font-size: $h1-font-size;
+    }
+}
+
+@mixin image-shadow {
+    display: block;
+    margin: 0 auto 1rem;
+    box-shadow:
+        rgba(0, 0, 0, 0.1) 0px 0px 2px 0px,
+        rgba(0, 0, 0, 0.25) 0px 1px 2px 0px;
+    padding: 10px;
+    background-color: #fff;
+    transition: all 300ms ease;
+}
+
+@mixin image-hover {
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    opacity: 0.9;
+}
+
+@mixin overlay {
+    position: fixed;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+@mixin mobile-toggle-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    font-size: 1.125rem;
+}
+
+// Polyfills for flexbox gap (https://caniuse.com/flexbox-gap)
+// In the (near) future, this can be removed and replaced with (column-)gap: $gap
+@mixin column-gap($gap) {
+    > * {
+        margin-right: $gap;
+        &:last-child {
+            margin-right: 0;
+        }
+    }
+}
+
+@mixin row-gap($gap) {
+    > * {
+        display: block;
+        margin-bottom: $gap !important; // for subscribe popup in navbar
+        &:last-child {
+            margin-bottom: 0 !important;
+        }
+    }
+}
+
+// Adapted from https://coryrylan.com/blog/css-gap-space-with-flexbox
+@mixin gap-wrap($row-gap, $col-gap) {
+    display: flex;
+    flex-wrap: wrap;
+    margin: -#{$row-gap} 0 0 -#{$col-gap};
+    width: calc(100% + #{$col-gap});
+
+    & > * {
+        margin: #{$row-gap} 0 0 #{$col-gap};
+    }
+}
+
+@mixin hide-site-chrome {
+    .site-header,
+    .alert-banner,
+    .offset-subnavigation,
+    .donate-footer,
+    .cookie-notice,
+    .site-footer {
+        display: none;
+    }
+}
+
+@mixin figure-margin {
+    margin: 0 0 1rem;
+}
+
+@mixin figure-grapher-reset {
+    @include figure-margin;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 1rem;
+    text-align: center;
+    line-height: 0;
+    width: 100%;
+}
+
+@mixin datapage-section-title {
+    @include h2-bold;
+    margin: 0 0 24px;
+    @include sm-up {
+        margin: 0 0 32px;
+    }
+}
+
+@mixin expandable-paragraph__expand-button--full {
+    display: block;
+    height: 40px;
+    @include sm-up {
+        display: inline-block;
+    }
+    padding: 8px 24px;
+    @include body-3-medium;
+    text-align: center;
+    color: $blue-90;
+    background-color: $blue-20;
+    cursor: pointer;
+    border: none;
+    transition: background-color 0.1s ease-in-out;
+
+    &:hover {
+        background-color: $blue-10;
+    }
+}
+
+@mixin related-topics {
+    h4 {
+        color: $blue-40;
+    }
+
+    ul {
+        list-style-type: none;
+
+        li {
+            margin-top: 16px;
+
+            a {
+                @include body-3-medium;
+                color: $blue-90;
+                position: relative;
+
+                &:hover {
+                    text-decoration: underline;
+                }
+
+                &:after {
+                    content: "";
+                    background-color: $blue-90;
+                    mask: url($right-arrow) no-repeat;
+                    -webkit-mask: url($right-arrow) no-repeat;
+                    position: absolute;
+                    width: 9px;
+                    top: 0;
+                    height: 12px;
+                    background-repeat: no-repeat;
+                    margin-top: 4px;
+                    margin-left: 6px;
+                }
+            }
+        }
+    }
+}
+
+@mixin owid-checkbox {
+    background: #fff;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    outline: 1px solid $gray-30;
+    border-radius: 0;
+    &:focus {
+        outline-color: $blue-60;
+    }
+
+    &:active {
+        background-color: $blue-10;
+    }
+    &:checked {
+        background-color: $blue-50;
+        outline-color: $blue-50;
+        &:before {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            content: "";
+            clip-path: path(
+                "M3.087,8.509C2.799,8.218 2.802,7.749 3.093,7.461C3.383,7.173 3.853,7.176 4.141,7.466L6.528,9.878L11.862,4.547C12.152,4.257 12.621,4.258 12.91,4.547C13.2,4.836 13.199,5.306 12.91,5.595L7.049,11.453C6.909,11.593 6.72,11.671 6.523,11.67C6.326,11.67 6.137,11.59 5.998,11.45L3.087,8.509Z"
+            );
+            background-color: #fff;
+        }
+        &:focus {
+            outline-color: $blue-90;
+        }
+    }
+}

@@ -1,7 +1,14 @@
-import React from "react"
 import * as db from "../db/db.js"
 import { CountriesIndexPage } from "../site/CountriesIndexPage.js"
-import { GrapherInterface } from "@ourworldindata/grapher"
+import {
+    GrapherInterface,
+    DbRawVariable,
+    DbEnrichedVariable,
+    VariablesTableName,
+    parseVariablesRow,
+    DbRawChartConfig,
+    parseChartConfig,
+} from "@ourworldindata/types"
 import * as lodash from "lodash"
 import {
     CountryProfileIndicator,
@@ -10,12 +17,7 @@ import {
 import { SiteBaker } from "./SiteBaker.js"
 import { countries, getCountryBySlug, JsonError } from "@ourworldindata/utils"
 import { renderToHtmlPage } from "./siteRenderers.js"
-import {
-    parseVariableRows,
-    VariableRow,
-    variableTable,
-    dataAsDF,
-} from "../db/model/Variable.js"
+import { dataAsDF } from "../db/model/Variable.js"
 import pl from "nodejs-polars"
 
 export const countriesIndexPage = (baseUrl: string) =>
@@ -33,37 +35,57 @@ function bakeCache<T>(cacheKey: any, retriever: () => T): T {
     return result
 }
 
+const hasChartTab = (grapher: GrapherInterface): boolean =>
+    !grapher.chartTypes || grapher.chartTypes.length > 0
+
 const checkShouldShowIndicator = (grapher: GrapherInterface) =>
-    (grapher.hasChartTab ?? true) &&
-    (grapher.type ?? "LineChart") === "LineChart" &&
+    hasChartTab(grapher) &&
+    (grapher.chartTypes?.[0] ?? "LineChart") === "LineChart" &&
     grapher.dimensions?.length === 1
 
 // Find the charts that will be shown on the country profile page (if they have that country)
 // TODO: make this page per variable instead
-const countryIndicatorGraphers = async (): Promise<GrapherInterface[]> =>
+const countryIndicatorGraphers = async (
+    trx: db.KnexReadonlyTransaction
+): Promise<GrapherInterface[]> =>
     bakeCache(countryIndicatorGraphers, async () => {
-        const graphers = (
-            await db
-                .knexTable("charts")
-                .whereRaw("publishedAt is not null and is_indexable is true")
-        ).map((c: any) => JSON.parse(c.config)) as GrapherInterface[]
+        const configs = await db.knexRaw<{ config: DbRawChartConfig["full"] }>(
+            trx,
+            `-- sql
+                SELECT cc.full as config
+                FROM charts c
+                JOIN chart_configs cc ON cc.id = c.configId
+                WHERE
+                    c.publishedAt is not null
+                    AND cc.full->>'$.isPublished' = 'true'
+                    AND c.isIndexable is true
+            `
+        )
+
+        const graphers = configs.map((c: any) => parseChartConfig(c.config))
 
         return graphers.filter(checkShouldShowIndicator)
     })
 
-export const countryIndicatorVariables = async (): Promise<VariableRow[]> =>
+export const countryIndicatorVariables = async (
+    trx: db.KnexReadonlyTransaction
+): Promise<DbEnrichedVariable[]> =>
     bakeCache(countryIndicatorVariables, async () => {
-        const variableIds = (await countryIndicatorGraphers()).map(
+        const variableIds = (await countryIndicatorGraphers(trx)).map(
             (c) => c.dimensions![0]!.variableId
         )
-        return parseVariableRows(
-            await db.knexTable(variableTable).whereIn("id", variableIds)
-        )
+        const rows: DbRawVariable[] = await trx
+            .table(VariablesTableName)
+            .whereIn("id", variableIds)
+        return rows.map(parseVariablesRow)
     })
 
-export const denormalizeLatestCountryData = async (variableIds?: number[]) => {
-    const entities = (await db
-        .knexTable("entities")
+export const denormalizeLatestCountryData = async (
+    trx: db.KnexReadWriteTransaction,
+    variableIds?: number[]
+) => {
+    const entities = (await trx
+        .table("entities")
         .select("id", "code")
         .whereRaw("validated is true and code is not null")) as {
         id: number
@@ -74,7 +96,7 @@ export const denormalizeLatestCountryData = async (variableIds?: number[]) => {
     const entityIds = countries.map((c) => entitiesByCode[c.code].id)
 
     if (!variableIds) {
-        variableIds = (await countryIndicatorVariables()).map((v) => v.id)
+        variableIds = (await countryIndicatorVariables(trx)).map((v) => v.id)
 
         // exclude variables that are already in country_latest_data
         // NOTE: we always fetch all variables that don't have country entities because they never
@@ -82,17 +104,24 @@ export const denormalizeLatestCountryData = async (variableIds?: number[]) => {
         // entities used in variables there's no easy way. It's not as bad since this still takes
         // under a minute to run.
         const existingVariableIds = (
-            await db.queryMysql(
-                `select variable_id from country_latest_data where variable_id in (?)`,
+            await db.knexRaw<{ variable_id: number }>(
+                trx,
+                `-- sql
+                SELECT
+                    variable_id
+                FROM
+                    country_latest_data
+                WHERE
+                    variable_id IN (?)`,
                 [variableIds]
             )
-        ).map((r: any) => r.variable_id)
+        ).map((r) => r.variable_id)
         variableIds = lodash.difference(variableIds, existingVariableIds)
     }
 
     const currentYear = new Date().getUTCFullYear()
 
-    const df = (await dataAsDF(variableIds))
+    const df = (await dataAsDF(variableIds, trx))
         .filter(
             pl
                 .col("entityId")
@@ -107,26 +136,27 @@ export const denormalizeLatestCountryData = async (variableIds?: number[]) => {
         .select("variableId", "entityCode", "year", "value")
         .rename({ variableId: "variable_id", entityCode: "country_code" })
 
-    await db.knexInstance().transaction(async (t) => {
-        // Remove existing values
-        await t
-            .table("country_latest_data")
-            .whereIn("variable_id", variableIds as number[])
-            .delete()
+    // Remove existing values
+    await trx
+        .table("country_latest_data")
+        .whereIn("variable_id", variableIds as number[])
+        .delete()
 
-        // Insert new ones
-        if (df.height > 0) {
-            await t.table("country_latest_data").insert(df.toRecords())
-        }
-    })
+    // Insert new ones
+    if (df.height > 0) {
+        await trx.table("country_latest_data").insert(df.toRecords())
+    }
 }
 
-const countryIndicatorLatestData = async (countryCode: string) => {
+const countryIndicatorLatestData = async (
+    trx: db.KnexReadonlyTransaction,
+    countryCode: string
+) => {
     const dataValuesByEntityId = await bakeCache(
         countryIndicatorLatestData,
         async () => {
-            const dataValues = (await db
-                .knexTable("country_latest_data")
+            const dataValues = (await trx
+                .table("country_latest_data")
                 .select(
                     "variable_id AS variableId",
                     "country_code AS code",
@@ -147,14 +177,15 @@ const countryIndicatorLatestData = async (countryCode: string) => {
 }
 
 export const countryProfilePage = async (
+    trx: db.KnexReadonlyTransaction,
     countrySlug: string,
     baseUrl: string
 ) => {
     const country = getCountryBySlug(countrySlug)
     if (!country) throw new JsonError(`No such country ${countrySlug}`, 404)
 
-    const graphers = await countryIndicatorGraphers()
-    const dataValues = await countryIndicatorLatestData(country.code)
+    const graphers = await countryIndicatorGraphers(trx)
+    const dataValues = await countryIndicatorLatestData(trx, country.code)
 
     const valuesByVariableId = lodash.groupBy(dataValues, (v) => v.variableId)
 
@@ -187,14 +218,17 @@ export const countryProfilePage = async (
     )
 }
 
-export const bakeCountries = async (baker: SiteBaker) => {
+export const bakeCountries = async (
+    baker: SiteBaker,
+    trx: db.KnexReadonlyTransaction
+) => {
     const html = await countriesIndexPage(baker.baseUrl)
     await baker.writeFile("/countries.html", html)
 
     await baker.ensureDir("/country")
     for (const country of countries) {
         const path = `/country/${country.slug}.html`
-        const html = await countryProfilePage(country.slug, baker.baseUrl)
+        const html = await countryProfilePage(trx, country.slug, baker.baseUrl)
         await baker.writeFile(path, html)
     }
 

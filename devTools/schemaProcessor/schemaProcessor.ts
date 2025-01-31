@@ -1,12 +1,11 @@
 import fs from "fs-extra"
-import path from "path"
 import {
     extractFieldDescriptionsFromSchema,
     FieldDescription,
-} from "@ourworldindata/utils"
+} from "../../adminShared/schemaProcessing.js"
 import parseArgs from "minimist"
 
-async function main(parsedArgs: parseArgs.ParsedArgs) {
+async function main() {
     const schema = await fs.readJson("schema.json")
 
     const fields: FieldDescription[] =
@@ -18,5 +17,5 @@ const parsedArgs = parseArgs(process.argv.slice(2))
 if (parsedArgs["h"]) {
     console.log(`schemaProcessor.js - extract schema info`)
 } else {
-    main(parsedArgs)
+    void main()
 }

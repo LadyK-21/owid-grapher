@@ -1,7 +1,7 @@
 #! /usr/bin/env jest
 
 import { MapConfig } from "./MapConfig"
-import { MapProjectionName } from "./MapProjections"
+import { MapProjectionName } from "@ourworldindata/types"
 
 it("can serialize for saving", () => {
     expect(new MapConfig().toObject()).toEqual({})
@@ -12,13 +12,5 @@ it("can serialize for saving", () => {
     expect(map.toObject()).toEqual({
         hideTimeline: true,
         projection: "Africa",
-    })
-})
-
-it("works with legacy variableId", () => {
-    const map = new MapConfig({ variableId: 23 })
-    expect(map.columnSlug).toEqual("23")
-    expect(map.toObject()).toEqual({
-        variableId: 23,
     })
 })

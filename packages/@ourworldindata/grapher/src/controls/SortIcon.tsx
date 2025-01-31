@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import classnames from "classnames"
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core/index"
 import {
@@ -8,13 +8,13 @@ import {
     faSortAmountDown,
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { SortOrder } from "@ourworldindata/core-table"
+import { SortOrder } from "@ourworldindata/types"
 
 export function SortIcon(props: {
     type?: "text" | "numeric"
     isActiveIcon?: boolean
     order: SortOrder
-}): JSX.Element {
+}): React.ReactElement {
     const type = props.type ?? "numeric"
     const isActiveIcon = props.isActiveIcon ?? false
 

@@ -14,13 +14,27 @@ export const getFontSize = (
     return minSize
 }
 
-export const getChartPadding = (
-    count: number,
+export const getLabelPadding = (baseFontSize: number): number =>
+    0.5 * baseFontSize
+
+export const getChartPadding = ({
+    baseFontSize,
+    isSharedXAxis,
+}: {
     baseFontSize: number
-): { rowPadding: number; columnPadding: number; outerPadding: number } => {
+    isSharedXAxis: boolean
+}): { rowPadding: number; columnPadding: number; outerPadding: number } => {
+    const labelHeight = baseFontSize
+    const labelPadding = getLabelPadding(baseFontSize)
+
+    const rowPadding = isSharedXAxis ? 0 : 1
+    const columnPadding = 1
+
     return {
-        rowPadding: Math.round(baseFontSize * 3.5),
-        columnPadding: Math.round(baseFontSize),
+        rowPadding: Math.round(
+            labelHeight + labelPadding + rowPadding * baseFontSize
+        ),
+        columnPadding: Math.round(columnPadding * baseFontSize),
         outerPadding: 0,
     }
 }

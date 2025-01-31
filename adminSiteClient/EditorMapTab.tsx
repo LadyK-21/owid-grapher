@@ -1,36 +1,37 @@
 import {
+    GrapherInterface,
+    MapProjectionName,
+    GRAPHER_MAP_TYPE,
+} from "@ourworldindata/types"
+import {
     ChartDimension,
-    ChartTypeName,
     MapChart,
     MapConfig,
     MapProjectionLabels,
-    MapProjectionName,
 } from "@ourworldindata/grapher"
-import {
-    isEmpty,
-    OwidVariableId,
-    ToleranceStrategy,
-} from "@ourworldindata/utils"
+import { ColumnSlug, isEmpty, ToleranceStrategy } from "@ourworldindata/utils"
 import { action, computed } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
-import { ChartEditor } from "./ChartEditor.js"
+import { Component, Fragment } from "react"
 import { EditorColorScaleSection } from "./EditorColorScaleSection.js"
-import {
-    NumberField,
-    NumericSelectField,
-    Section,
-    SelectField,
-    Toggle,
-} from "./Forms.js"
+import { NumberField, Section, SelectField, Toggle } from "./Forms.js"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
 
 @observer
-class VariableSection extends React.Component<{
+class VariableSection extends Component<{
     mapConfig: MapConfig
     filledDimensions: ChartDimension[]
+    parentConfig?: GrapherInterface
 }> {
-    @action.bound onVariableId(variableId: OwidVariableId) {
-        this.props.mapConfig.columnSlug = variableId.toString()
+    @action.bound onColumnSlug(columnSlug: ColumnSlug) {
+        this.props.mapConfig.columnSlug = columnSlug
+    }
+
+    @action.bound onBlurColumnSlug() {
+        if (this.props.mapConfig.columnSlug === undefined) {
+            this.props.mapConfig.columnSlug =
+                this.props.parentConfig?.map?.columnSlug
+        }
     }
 
     @action.bound onProjection(projection: string | undefined) {
@@ -52,18 +53,15 @@ class VariableSection extends React.Component<{
 
         return (
             <Section name="Map">
-                <NumericSelectField
+                <SelectField
                     label="Indicator"
-                    value={
-                        mapConfig.columnSlug
-                            ? parseInt(mapConfig.columnSlug)
-                            : undefined
-                    }
+                    value={mapConfig.columnSlug}
                     options={filledDimensions.map((d) => ({
-                        value: d.variableId,
+                        value: d.columnSlug,
                         label: d.column.displayName,
                     }))}
-                    onValue={this.onVariableId}
+                    onValue={this.onColumnSlug}
+                    onBlur={this.onBlurColumnSlug}
                 />
                 <SelectField
                     label="Region"
@@ -79,7 +77,7 @@ class VariableSection extends React.Component<{
 }
 
 @observer
-class TimelineSection extends React.Component<{ mapConfig: MapConfig }> {
+class TimelineSection extends Component<{ mapConfig: MapConfig }> {
     @action.bound onToggleHideTimeline(value: boolean) {
         this.props.mapConfig.hideTimeline = value || undefined
     }
@@ -152,7 +150,7 @@ class TimelineSection extends React.Component<{ mapConfig: MapConfig }> {
 }
 
 @observer
-class TooltipSection extends React.Component<{ mapConfig: MapConfig }> {
+class TooltipSection extends Component<{ mapConfig: MapConfig }> {
     @action.bound onTooltipUseCustomLabels(tooltipUseCustomLabels: boolean) {
         this.props.mapConfig.tooltipUseCustomLabels = tooltipUseCustomLabels
             ? true
@@ -176,7 +174,9 @@ class TooltipSection extends React.Component<{ mapConfig: MapConfig }> {
 }
 
 @observer
-export class EditorMapTab extends React.Component<{ editor: ChartEditor }> {
+export class EditorMapTab<
+    Editor extends AbstractChartEditor,
+> extends Component<{ editor: Editor }> {
     @computed get grapher() {
         return this.props.editor.grapher
     }
@@ -195,13 +195,14 @@ export class EditorMapTab extends React.Component<{ editor: ChartEditor }> {
                 <VariableSection
                     mapConfig={mapConfig}
                     filledDimensions={grapher.filledDimensions}
+                    parentConfig={this.props.editor.activeParentConfig}
                 />
                 {isReady && (
-                    <React.Fragment>
+                    <Fragment>
                         <TimelineSection mapConfig={mapConfig} />
                         <EditorColorScaleSection
                             scale={colorScale}
-                            chartType={ChartTypeName.WorldMap}
+                            chartType={GRAPHER_MAP_TYPE}
                             showLineChartColors={false}
                             features={{
                                 visualScaling: true,
@@ -209,7 +210,7 @@ export class EditorMapTab extends React.Component<{ editor: ChartEditor }> {
                             }}
                         />
                         <TooltipSection mapConfig={mapConfig} />
-                    </React.Fragment>
+                    </Fragment>
                 )}
             </div>
         )

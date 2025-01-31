@@ -1,17 +1,20 @@
-import React, { useState, useEffect, useRef } from "react"
-import ReactDOM from "react-dom"
+import { useState, useEffect, useRef } from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faBars, faTimes } from "@fortawesome/free-solid-svg-icons"
 import { useTriggerWhenClickOutside } from "./hooks.js"
-import { wrapInDiv, TocHeading } from "@ourworldindata/utils"
+import { TocHeading } from "@ourworldindata/utils"
 import classNames from "classnames"
 
-const TOC_WRAPPER_CLASSNAME = "toc-wrapper"
+export const TOC_WRAPPER_CLASSNAME = "toc-wrapper"
 
-interface TableOfContentsData {
+export interface TableOfContentsData {
     headings: TocHeading[]
     pageTitle: string
     hideSubheadings?: boolean
+    headingLevels?: {
+        primary: number
+        secondary: number
+    }
 }
 
 const isRecordTopViewport = (record: IntersectionObserverEntry) => {
@@ -34,16 +37,30 @@ export const TableOfContents = ({
     headings,
     pageTitle,
     hideSubheadings,
+    // Original WP articles used a hierarchy of h2 and h3 headings
+    // New Gdoc articles use a hierarchy of h1 and h2 headings
+    headingLevels = {
+        primary: 2,
+        secondary: 3,
+    },
 }: TableOfContentsData) => {
     const [isOpen, setIsOpen] = useState(false)
     const [activeHeading, setActiveHeading] = useState("")
+    const { primary, secondary } = headingLevels
     const tocRef = useRef<HTMLElement>(null)
 
     const toggleIsOpen = () => {
         setIsOpen(!isOpen)
     }
+    // The Gdocs sidebar can't rely on the same CSS logic that old-style entries use, so we need to
+    // explicitly trigger these toggles based on screen width
+    const toggleIsOpenOnMobile = () => {
+        if (window.innerWidth < 1536) {
+            toggleIsOpen()
+        }
+    }
 
-    useTriggerWhenClickOutside(tocRef, isOpen, setIsOpen)
+    useTriggerWhenClickOutside(tocRef, isOpen, () => setIsOpen(false))
 
     useEffect(() => {
         if ("IntersectionObserver" in window) {
@@ -107,19 +124,34 @@ export const TableOfContents = ({
             )
 
             let contentHeadings = null
+            // In Gdocs articles, these sections are ID'd via unique elements
+            const appendixDivs =
+                ", h3#article-endnotes, section#article-citation, section#article-licence"
             if (hideSubheadings) {
-                contentHeadings = document.querySelectorAll("h2")
+                contentHeadings = document.querySelectorAll(
+                    `h${secondary} ${appendixDivs}`
+                )
             } else {
-                contentHeadings = document.querySelectorAll("h2, h3")
+                contentHeadings = document.querySelectorAll(
+                    `h${primary}, h${secondary} ${appendixDivs}`
+                )
             }
             contentHeadings.forEach((contentHeading) => {
                 observer.observe(contentHeading)
             })
+
+            return () => observer.disconnect()
         }
-    }, [headings, hideSubheadings])
+        return
+    }, [headings, hideSubheadings, primary, secondary])
 
     return (
         <div className={TOC_WRAPPER_CLASSNAME}>
+            <div
+                className={classNames({
+                    "entry-sidebar__overlay": isOpen,
+                })}
+            />
             <aside
                 className={classNames("entry-sidebar", {
                     "entry-sidebar--is-open": isOpen,
@@ -131,11 +163,11 @@ export const TableOfContents = ({
                         <li>
                             <a
                                 onClick={() => {
-                                    toggleIsOpen()
+                                    toggleIsOpenOnMobile()
                                     setActiveHeading("")
                                 }}
                                 href="#"
-                                data-track-note="toc-header"
+                                data-track-note="toc_header"
                             >
                                 {pageTitle}
                             </a>
@@ -159,9 +191,9 @@ export const TableOfContents = ({
                                     }
                                 >
                                     <a
-                                        onClick={toggleIsOpen}
+                                        onClick={toggleIsOpenOnMobile}
                                         href={`#${heading.slug}`}
-                                        data-track-note="toc-link"
+                                        data-track-note="toc_link"
                                     >
                                         {heading.text}
                                     </a>
@@ -171,7 +203,7 @@ export const TableOfContents = ({
                 </nav>
                 <div className="toggle-toc">
                     <button
-                        data-track-note="page-toggle-toc"
+                        data-track-note="page_toggle_toc"
                         aria-label={`${
                             isOpen ? "Close" : "Open"
                         } table of contents`}
@@ -186,14 +218,4 @@ export const TableOfContents = ({
             </aside>
         </div>
     )
-}
-
-export const runTableOfContents = (tocData: TableOfContentsData) => {
-    const tocWrapperEl = document.querySelector<HTMLElement>(
-        `.${TOC_WRAPPER_CLASSNAME}`
-    )
-    if (!tocWrapperEl) return
-
-    const sidebarRootEl = wrapInDiv(tocWrapperEl, ["sidebar-root"])
-    ReactDOM.hydrate(<TableOfContents {...tocData} />, sidebarRootEl)
 }

@@ -1,0 +1,90 @@
+.person {
+    display: flex;
+    gap: var(--grid-gap);
+
+    @include sm-only {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    & :last-child {
+        margin-bottom: 0;
+    }
+}
+
+.person-image-container {
+    display: flex;
+    flex: 0 0 193px;
+    gap: 16px;
+
+    @include sm-only {
+        align-items: center;
+        flex: initial;
+    }
+}
+
+.person-image,
+.person-image--link-wrapper {
+    picture {
+        display: flex; // Fix extra padding at the bottom.
+    }
+
+    img {
+        border-radius: 50%;
+    }
+
+    @include sm-only {
+        flex: 0 0 76px;
+    }
+}
+
+.person-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+
+    a {
+        color: inherit;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}
+
+.person-heading {
+    @include h2-bold;
+    margin: 0;
+
+    @include sm-only {
+        @include h3-bold;
+        margin: 0;
+    }
+}
+
+.person-title {
+    line-height: 19px;
+    color: $blue-60;
+}
+
+.person-socials {
+    margin-top: 16px;
+    font-size: 14px;
+
+    ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        list-style-type: none;
+        list-style-position: inside;
+    }
+
+    svg {
+        color: $blue-60;
+    }
+
+    a {
+        @include owid-link-90;
+    }
+}

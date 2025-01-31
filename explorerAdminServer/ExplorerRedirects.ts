@@ -1,5 +1,5 @@
 import { CoreTable } from "@ourworldindata/core-table"
-import { ExplorerUrlMigrationId } from "../explorer/urlMigrations/ExplorerUrlMigrations.js"
+import { ExplorerUrlMigrationId } from "@ourworldindata/explorer"
 
 const explorerRedirectTableMatrix = [
     ["migrationId", "path", "baseQueryStr"],
@@ -196,7 +196,7 @@ const explorerRedirectTableMatrix = [
     [
         "legacyToGridCovidExplorer",
         "/coronavirus-data-explorer",
-        "zoomToSelection=true&time=2020-03-01..latest&country=USA~GBR~CAN~DEU~ITA~IND&region=World&casesMetric=true&interval=smoothed&perCapita=true&smoothing=7&pickerMetric=location&pickerSort=asc",
+        "zoomToSelection=true&country=USA~GBR~CAN~DEU~ITA~IND&pickerSort=asc&pickerMetric=location&Metric=Excess+mortality+(estimates)&Interval=Cumulative&Relative+to+Population=true&Color+by+test+positivity=false",
     ],
 ]
 

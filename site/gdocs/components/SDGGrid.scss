@@ -1,0 +1,56 @@
+.sdg-grid {
+    margin-top: 24px;
+    row-gap: var(--grid-gap);
+    &:before {
+        content: "";
+        @include sm-up {
+            grid-column: 1 / span 2;
+            grid-row: 6;
+        }
+        @include lg-up {
+            grid-column: 1 / span 1;
+            grid-row: 3;
+        }
+    }
+
+    li {
+        list-style-type: none;
+        a {
+            display: flex;
+            flex-direction: column;
+            height: 193px;
+            text-align: center;
+            padding: 0 20px;
+            border: 2px solid $blue-30;
+            text-decoration: none;
+            color: $blue-100;
+            background-color: $white;
+            transition: 0.15s all;
+
+            h4 {
+                margin: 0;
+                color: $blue-30;
+            }
+
+            .sdg-grid__icon {
+                height: 64px;
+                width: 64px;
+                margin: 0 auto;
+                margin-top: 16px;
+                transition: 0.15s all;
+                background-color: $blue-30;
+            }
+
+            .goal {
+                margin: 0;
+            }
+
+            &:hover {
+                border-color: var(--sdg-color);
+                .sdg-grid__icon {
+                    background-color: var(--sdg-color);
+                }
+            }
+        }
+    }
+}

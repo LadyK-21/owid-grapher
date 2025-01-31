@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { Footer } from "../footer/Footer"
 import { FooterManager } from "./FooterManager"
 
@@ -13,4 +13,4 @@ const manager: FooterManager = {
     sourcesLine: "These are my sources",
 }
 
-export const Default = (): JSX.Element => <Footer manager={manager} />
+export const Default = (): React.ReactElement => <Footer manager={manager} />

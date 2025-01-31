@@ -1,43 +1,61 @@
-import React from "react"
+import * as React from "react"
 import cx from "classnames"
 import { AdminLayout } from "./AdminLayout.js"
-import { EditableTags, Modal, SearchField } from "./Forms.js"
+import { Modal, SearchField } from "./Forms.js"
+import { EditableTags } from "./EditableTags.js"
 import {
     faCirclePlus,
+    faHouse,
     faLightbulb,
     faNewspaper,
     faPuzzlePiece,
+    faQuestion,
+    faThList,
+    faBuildingNgo,
+    faUserPen,
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import {
-    OwidGdocTag,
-    OwidGdocInterface,
+    DbChartTagJoin,
     OwidGdocType,
+    spansToUnformattedPlainText,
+    checkIsGdocPost,
+    OwidGdocIndexItem,
 } from "@ourworldindata/utils"
+import {
+    buildSearchWordsFromSearchString,
+    filterFunctionForSearchWords,
+    SearchWord,
+} from "../adminShared/search.js"
 import { Route, RouteComponentProps } from "react-router-dom"
 import { Link } from "./Link.js"
 import { GdocsAdd } from "./GdocsAdd.js"
 import { observer } from "mobx-react"
-import { GdocsStoreContext } from "./GdocsStore.js"
+import { GdocsStoreContext } from "./GdocsStoreContext.js"
 import { computed, observable } from "mobx"
 import { BAKED_BASE_URL } from "../settings/clientSettings.js"
-import fuzzysort from "fuzzysort"
 import { GdocsEditLink } from "./GdocsEditLink.js"
 
 const iconGdocTypeMap = {
     [OwidGdocType.Fragment]: <FontAwesomeIcon icon={faPuzzlePiece} />,
     [OwidGdocType.Article]: <FontAwesomeIcon icon={faNewspaper} />,
     [OwidGdocType.TopicPage]: <FontAwesomeIcon icon={faLightbulb} />,
+    [OwidGdocType.LinearTopicPage]: <FontAwesomeIcon icon={faLightbulb} />,
+    [OwidGdocType.DataInsight]: <FontAwesomeIcon icon={faThList} />,
+    [OwidGdocType.Homepage]: <FontAwesomeIcon icon={faHouse} />,
+    [OwidGdocType.AboutPage]: <FontAwesomeIcon icon={faBuildingNgo} />,
+    [OwidGdocType.Author]: <FontAwesomeIcon icon={faUserPen} />,
 }
 
-interface Searchable {
-    gdoc: OwidGdocInterface
-    term?: Fuzzysort.Prepared
+enum GdocPublishStatus {
+    All = "all",
+    Published = "published",
+    Unpublished = "unpublished",
 }
 
 @observer
 class GdocsIndexPageSearch extends React.Component<{
-    filters: Record<OwidGdocType, boolean>
+    filters: GdocsSearchFilters
     search: { value: string }
 }> {
     toggleGdocTypeFilter = (type: OwidGdocType) => {
@@ -49,6 +67,10 @@ class GdocsIndexPageSearch extends React.Component<{
             OwidGdocType.Fragment,
             OwidGdocType.Article,
             OwidGdocType.TopicPage,
+            OwidGdocType.LinearTopicPage,
+            OwidGdocType.DataInsight,
+            OwidGdocType.AboutPage,
+            OwidGdocType.Author,
         ]
         return (
             <div className="d-flex flex-grow-1 flex-wrap">
@@ -84,6 +106,23 @@ class GdocsIndexPageSearch extends React.Component<{
                             </label>
                         )
                     })}
+                    <label className="gdoc-index-filter-checkbox">
+                        <select
+                            id="shouldShowPublishedOnly"
+                            onChange={({ target }) => {
+                                const value = target.value as GdocPublishStatus
+                                this.props.filters.publishStatus = value
+                            }}
+                        >
+                            <option value={GdocPublishStatus.All}>All</option>
+                            <option value={GdocPublishStatus.Published}>
+                                Published
+                            </option>
+                            <option value={GdocPublishStatus.Unpublished}>
+                                Unpublished
+                            </option>
+                        </select>
+                    </label>
                 </div>
             </div>
         )
@@ -96,18 +135,33 @@ interface GdocsMatchParams {
 
 export type GdocsMatchProps = RouteComponentProps<GdocsMatchParams>
 
+type GdocsSearchFilters = Record<OwidGdocType, boolean> & {
+    publishStatus: GdocPublishStatus
+}
+
 @observer
 export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
     static contextType = GdocsStoreContext
     context!: React.ContextType<typeof GdocsStoreContext>
 
-    @observable filters: Record<OwidGdocType, boolean> = {
+    @observable filters: GdocsSearchFilters = {
         [OwidGdocType.Fragment]: false,
         [OwidGdocType.Article]: false,
         [OwidGdocType.TopicPage]: false,
+        [OwidGdocType.LinearTopicPage]: false,
+        [OwidGdocType.DataInsight]: false,
+        [OwidGdocType.Homepage]: false,
+        [OwidGdocType.AboutPage]: false,
+        [OwidGdocType.Author]: false,
+        publishStatus: GdocPublishStatus.All,
     }
 
     @observable search = { value: "" }
+
+    @computed get searchWords(): SearchWord[] {
+        const { search } = this
+        return buildSearchWordsFromSearchString(search.value)
+    }
 
     async componentDidMount(): Promise<void> {
         await this.context?.fetchTags()
@@ -115,68 +169,78 @@ export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
     }
 
     @computed
-    get tags(): OwidGdocTag[] {
+    get tags(): DbChartTagJoin[] {
         return this.context?.availableTags || []
     }
 
-    @computed get searchIndex(): Searchable[] {
-        if (!this.context) return []
-        const searchIndex: Searchable[] = []
-        for (const gdoc of this.context.gdocs) {
-            searchIndex.push({
-                gdoc,
-                term: fuzzysort.prepare(
-                    `${gdoc.content.title} ${gdoc.content.authors?.join(
-                        " "
-                    )} ${gdoc.tags?.map(({ name }) => name).join(" ")}`
-                ),
-            })
-        }
-
-        return searchIndex
-    }
-
-    @computed
-    get visibleGdocs(): OwidGdocInterface[] {
-        const { context, search, searchIndex } = this
+    @computed get allGdocsToShow(): OwidGdocIndexItem[] {
+        const { searchWords, context } = this
         if (!context) return []
+
         // Don't filter unless at least one filter is active
-        const shouldUseFilters = !!Object.values(this.filters).find(
+        const { publishStatus, ...typeFilters } = this.filters
+        const areAnyTypeFiltersActive = Object.values(typeFilters).some(
             (isFilterActive) => isFilterActive
         )
+        const shouldUseFilters =
+            areAnyTypeFiltersActive || publishStatus !== GdocPublishStatus.All
 
         const filteredByType = shouldUseFilters
-            ? context.gdocs.filter(
-                  (gdoc) =>
-                      // don't filter docs with no type set
-                      !gdoc.content.type || !!this.filters[gdoc.content.type]
-              )
+            ? context.gdocs.filter((gdoc) => {
+                  const isPublished = gdoc.published
+                  const shouldFilterByType =
+                      // don't filter if no type filters are active
+                      !areAnyTypeFiltersActive ||
+                      // don't filter gdocs with no type
+                      !gdoc.type ||
+                      // if any type filter is active, and the gdoc has a type,
+                      // show this document if its type is active
+                      this.filters[gdoc.type]
+
+                  switch (publishStatus) {
+                      case GdocPublishStatus.All:
+                          return shouldFilterByType
+                      case GdocPublishStatus.Published:
+                          return shouldFilterByType && isPublished
+                      case GdocPublishStatus.Unpublished:
+                          return shouldFilterByType && !isPublished
+                  }
+              })
             : context.gdocs
-        if (!search.value) return filteredByType
 
-        const fuzzysorted = fuzzysort.go(search.value, searchIndex, {
-            limit: 50,
-            key: "term",
-        })
+        if (searchWords.length > 0) {
+            const filterFn = filterFunctionForSearchWords(
+                searchWords,
+                (gdoc: OwidGdocIndexItem) => {
+                    const properties = [
+                        gdoc.title,
+                        gdoc.slug,
+                        gdoc.authors?.join(" "),
+                        gdoc.tags?.map(({ name }) => name).join(" "),
+                        gdoc.id,
+                    ]
 
-        const uniqueFiltered = fuzzysorted.reduce(
-            (acc: Set<OwidGdocInterface>, { obj: { gdoc } }) => {
-                const shouldInclude =
-                    // Don't filter unless at least one filter is active
-                    !shouldUseFilters ||
-                    !gdoc.content.type ||
-                    this.filters[gdoc.content.type]
-
-                if (shouldInclude) {
-                    acc.add(gdoc)
+                    if (checkIsGdocPost(gdoc)) {
+                        properties.push(
+                            ...[
+                                gdoc.content.subtitle,
+                                gdoc.content.summary
+                                    ? spansToUnformattedPlainText(
+                                          gdoc.content.summary.flatMap(
+                                              (block) => block.value
+                                          )
+                                      )
+                                    : undefined,
+                            ]
+                        )
+                    }
+                    return properties
                 }
-
-                return acc
-            },
-            new Set<OwidGdocInterface>()
-        )
-
-        return [...uniqueFiltered]
+            )
+            return filteredByType.filter(filterFn)
+        } else {
+            return filteredByType
+        }
     }
 
     render() {
@@ -189,6 +253,15 @@ export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
                             search={this.search}
                         />
                         <div>
+                            <a
+                                className="btn btn-secondary gdoc-index__help-link"
+                                target="_blank"
+                                href="https://docs.google.com/document/d/1OLoTWloy4VecOjKTjB1wLV6tEphHJIMXfexrf1ZYJzU/edit"
+                                rel="noopener"
+                            >
+                                <FontAwesomeIcon icon={faQuestion} /> Open
+                                documentation
+                            </a>
                             <button
                                 className="btn btn-primary"
                                 onClick={() =>
@@ -203,21 +276,20 @@ export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
                         </div>
                     </div>
 
-                    {this.visibleGdocs.map((gdoc) => (
+                    {this.allGdocsToShow.map((gdoc) => (
                         <div
                             key={gdoc.id}
                             className={cx(`gdoc-index-item`, {
-                                [`gdoc-index-item__${gdoc.content.type}`]:
-                                    gdoc.content.type,
+                                [`gdoc-index-item__${gdoc.type}`]: gdoc.type,
                             })}
                         >
                             <div className="gdoc-index-item__content">
-                                {gdoc.content.type ? (
+                                {gdoc.type ? (
                                     <span
                                         className="gdoc-index-item__type-icon"
-                                        title={gdoc.content.type}
+                                        title={gdoc.type}
                                     >
-                                        {iconGdocTypeMap[gdoc.content.type]}
+                                        {iconGdocTypeMap[gdoc.type]}
                                     </span>
                                 ) : null}
                                 <Link
@@ -227,16 +299,20 @@ export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
                                         className="gdoc-index-item__title"
                                         title="Preview article"
                                     >
-                                        {gdoc.content.title}
+                                        {gdoc.title || "Untitled"}
                                     </h5>
                                 </Link>
                                 <GdocsEditLink gdocId={gdoc.id} />
                                 <p className="gdoc-index-item__byline">
-                                    {gdoc.content.authors?.join(", ")}
+                                    {gdoc.authors?.join(", ")}
                                 </p>
                                 <span className="gdoc-index-item__tags">
-                                    {gdoc.content.type !==
-                                        OwidGdocType.Fragment && gdoc.tags ? (
+                                    {gdoc.type &&
+                                    ![
+                                        OwidGdocType.Fragment,
+                                        OwidGdocType.AboutPage,
+                                    ].includes(gdoc.type) &&
+                                    gdoc.tags ? (
                                         <EditableTags
                                             tags={gdoc.tags}
                                             onSave={(tags) =>
@@ -261,8 +337,7 @@ export class GdocsIndexPage extends React.Component<GdocsMatchProps> {
                                                 : undefined
                                         }
                                         href={
-                                            gdoc.content.type !==
-                                            OwidGdocType.Fragment
+                                            gdoc.type !== OwidGdocType.Fragment
                                                 ? `${BAKED_BASE_URL}/${gdoc.slug}`
                                                 : undefined
                                         }

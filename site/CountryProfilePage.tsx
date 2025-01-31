@@ -1,8 +1,9 @@
-import React from "react"
 import { Head } from "./Head.js"
 import { SiteHeader } from "./SiteHeader.js"
 import { SiteFooter } from "./SiteFooter.js"
 import urljoin from "url-join"
+import { Country } from "@ourworldindata/utils"
+import { Html } from "./Html.js"
 
 export interface CountryProfileIndicator {
     name: string
@@ -21,11 +22,7 @@ export interface CountryProfileKeyStats {
 }
 
 export interface CountryProfilePageProps {
-    country: {
-        name: string
-        slug: string
-        code: string
-    }
+    country: Country
     indicators: CountryProfileIndicator[]
     baseUrl: string
 }
@@ -38,7 +35,7 @@ export const CountryProfilePage = (props: CountryProfilePageProps) => {
     const script = `window.runCountryProfilePage()`
 
     return (
-        <html>
+        <Html>
             <Head
                 canonicalUrl={`${baseUrl}/country/${country.slug}`}
                 pageTitle={`${country.name}`}
@@ -47,7 +44,7 @@ export const CountryProfilePage = (props: CountryProfilePageProps) => {
             />
             <body className="CountryProfilePage">
                 <SiteHeader baseUrl={baseUrl} />
-                <main>
+                <main className="wrapper">
                     <header>
                         <img
                             className="flag"
@@ -104,6 +101,6 @@ export const CountryProfilePage = (props: CountryProfilePageProps) => {
                     dangerouslySetInnerHTML={{ __html: script }}
                 />
             </body>
-        </html>
+        </Html>
     )
 }

@@ -1,6 +1,5 @@
 import "./core/grapher.scss"
 
-export { BinningStrategy } from "./color/BinningStrategy"
 export { binningStrategyLabels } from "./color/BinningStrategies"
 export {
     NumericBin,
@@ -9,50 +8,40 @@ export {
 } from "./color/ColorScaleBin"
 export { ChartDimension } from "./chart/ChartDimension"
 export {
-    ChartTypeName,
     GRAPHER_EMBEDDED_FIGURE_ATTR,
     GRAPHER_EMBEDDED_FIGURE_CONFIG_ATTR,
+    GRAPHER_CHART_VIEW_EMBEDDED_FIGURE_CONFIG_ATTR,
     GRAPHER_PAGE_BODY_CLASS,
     GRAPHER_IS_IN_IFRAME_CLASS,
     DEFAULT_GRAPHER_WIDTH,
     DEFAULT_GRAPHER_HEIGHT,
+    GRAPHER_SQUARE_SIZE,
     STATIC_EXPORT_DETAIL_SPACING,
+    DEFAULT_GRAPHER_ENTITY_TYPE,
+    GRAPHER_LOADED_EVENT_NAME,
     CookieKey,
-    EntitySelectionMode,
-    StackMode,
     BASE_FONT_SIZE,
-    FacetStrategy,
-    FacetAxisDomain,
-    SeriesStrategy,
-    MissingDataStrategy,
     ThereWasAProblemLoadingThisChart,
-    type SeriesColorMap,
-    GrapherTabOption,
-    ScaleType,
-    type RelatedQuestionsConfig,
-    type Topic,
     WorldEntityName,
-    ScatterPointLabelStrategy,
-    type SeriesName,
-    GRAPHER_VARIABLES_ROUTE,
-    GRAPHER_VARIABLE_DATA_ROUTE,
-    GRAPHER_VARIABLE_METADATA_ROUTE,
+    Patterns,
+    grapherInterfaceWithHiddenControls,
+    grapherInterfaceWithHiddenTabs,
+    CONTINENTS_INDICATOR_ID,
+    POPULATION_INDICATOR_ID_USED_IN_ADMIN,
+    latestGrapherConfigSchema,
+} from "./core/GrapherConstants"
+export {
     getVariableDataRoute,
     getVariableMetadataRoute,
-    Patterns,
-    grapherInterfaceWithHiddenControlsOnly,
-    grapherInterfaceWithHiddenTabsOnly,
-} from "./core/GrapherConstants"
+} from "./core/loadVariable"
 export { ColorScale } from "./color/ColorScale"
 export { ColorScaleConfig } from "./color/ColorScaleConfig"
 export { ColorScheme } from "./color/ColorScheme"
-export { ColorSchemeName } from "./color/ColorConstants"
 export {
     getColorNameOwidDistinctAndSemanticPalettes,
     getColorNameOwidDistinctLinesAndSemanticPalettes,
 } from "./color/CustomSchemes"
 export { ColorSchemes } from "./color/ColorSchemes"
-export type { ComparisonLineConfig } from "./scatterCharts/ComparisonLine"
 export { DimensionSlot } from "./chart/DimensionSlot"
 export { EntityPicker } from "./controls/entityPicker/EntityPicker"
 export type { EntityPickerManager } from "./controls/entityPicker/EntityPickerConstants"
@@ -69,14 +58,7 @@ export {
     type GrapherManager,
     getErrorMessageRelatedQuestionUrl,
 } from "./core/Grapher"
-export { GrapherAnalytics } from "./core/GrapherAnalytics"
-export {
-    type GrapherInterface,
-    type GrapherQueryParams,
-    type LegacyGrapherInterface,
-    type LegacyGrapherQueryParams,
-    grapherKeysToSerialize,
-} from "./core/GrapherInterface"
+export { GrapherAnalytics, EventCategory } from "./core/GrapherAnalytics"
 import fuzzysort from "fuzzysort"
 export { fuzzysort }
 export { highlight } from "./controls/FuzzySearch"
@@ -84,22 +66,25 @@ export { hydrateGlobalEntitySelectorIfAny } from "./controls/globalEntitySelecto
 export { legacyToCurrentGrapherUrl } from "./core/GrapherUrlMigrations"
 export { legacyToOwidTableAndDimensions } from "./core/LegacyToOwidTable"
 export { LoadingIndicator } from "./loadingIndicator/LoadingIndicator"
-export { LogoOption } from "./captionedChart/Logos"
 export { MapChart } from "./mapCharts/MapChart"
 export { MapConfig } from "./mapCharts/MapConfig"
 export {
-    MapProjectionName,
     MapProjectionLabels,
     MapProjectionGeos,
 } from "./mapCharts/MapProjections"
 export { SelectionArray } from "./selection/SelectionArray"
+export { FocusArray } from "./focus/FocusArray"
 export {
     setSelectedEntityNamesParam,
     migrateSelectedEntityNamesParam,
     getSelectedEntityNamesParam,
+    generateSelectedEntityNamesParam,
 } from "./core/EntityUrlBuilder"
-export { SparkBars, type SparkBarsProps } from "./sparkBars/SparkBars"
+export { grapherConfigToQueryParams } from "./core/GrapherUrl.js"
 export {
     type SlideShowManager,
     SlideShowController,
 } from "./slideshowController/SlideShowController"
+export { defaultGrapherConfig } from "./schema/defaultGrapherConfig"
+export { migrateGrapherConfigToLatestVersion } from "./schema/migrations/migrate"
+export { generateGrapherImageSrcSet } from "./chart/ChartUtils.js"

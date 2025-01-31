@@ -1,10 +1,10 @@
-import React from "react"
+import { Component } from "react"
 import { computed, action } from "mobx"
 import Select from "react-select"
+import { GrapherChartOrMapType } from "@ourworldindata/types"
 import {
-    getColorSchemeForChartType,
     ColorScheme,
-    ChartTypeName,
+    getColorSchemeForChartType,
 } from "@ourworldindata/grapher"
 import { observer } from "mobx-react"
 import { bind } from "decko"
@@ -21,12 +21,13 @@ interface ColorSchemeDropdownProps {
     value?: string
     gradientColorCount: number
     invertedColorScheme: boolean
-    chartType: ChartTypeName
+    chartType: GrapherChartOrMapType
     onChange: (selected: ColorSchemeOption) => void
+    onBlur?: () => void
 }
 
 @observer
-export class ColorSchemeDropdown extends React.Component<ColorSchemeDropdownProps> {
+export class ColorSchemeDropdown extends Component<ColorSchemeDropdownProps> {
     static defaultProps = {
         additionalOptions: [],
         gradientColorCount: 6,
@@ -116,6 +117,7 @@ export class ColorSchemeDropdown extends React.Component<ColorSchemeDropdownProp
                 options={this.allOptions}
                 formatOptionLabel={this.formatOptionLabel}
                 onChange={this.onChange}
+                onBlur={this.props.onBlur}
                 value={this.allOptions.find(
                     (scheme) => scheme.value === this.props.value
                 )}

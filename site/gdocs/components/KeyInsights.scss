@@ -1,0 +1,156 @@
+$slide-content-height: $grapher-height;
+
+@import "react-horizontal-scrolling-menu/styles.css";
+
+.key-insights {
+    .react-horizontal-scrolling-menu--wrapper {
+        position: relative;
+    }
+
+    .react-horizontal-scrolling-menu--scroll-container {
+        &::-webkit-scrollbar {
+            display: none;
+        }
+        scrollbar-width: none;
+    }
+
+    .arrow {
+        position: absolute;
+        z-index: $zindex-input;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        background: $white;
+        border: none;
+        font-size: 1.5rem;
+        width: 3rem;
+        padding: 0;
+        transition: all 0.2s;
+        cursor: pointer;
+        animation: fadeIn 850ms;
+        color: $blue-90;
+
+        &:hover {
+            color: $blue-60;
+        }
+
+        &.left {
+            left: 0;
+            @include lg-up {
+                left: -48px;
+            }
+            border-right: 1px solid $blue-10;
+            clip-path: inset(0 -2.5rem 0 0);
+        }
+        &.right {
+            right: 0;
+            @include lg-up {
+                right: -48px;
+            }
+            border-left: 1px solid $blue-10;
+            clip-path: inset(0 0 0 -2.5rem);
+        }
+    }
+
+    .thumbs {
+        padding-bottom: 24px;
+        // Make sure this stays below the sticky nav
+        z-index: 0;
+    }
+
+    .thumb {
+        width: 250px;
+        min-height: 104px;
+        height: 100%;
+        margin-right: 8px;
+        padding: 16px 24px;
+        border: 1px solid $blue-10;
+        color: $blue-60;
+        transition: background-color 0.2s;
+        background-color: $white;
+        text-align: left;
+        line-height: 1.5;
+
+        &:hover {
+            cursor: pointer;
+            background-color: $gray-10;
+            border-color: $gray-10;
+        }
+
+        &[aria-selected="true"] {
+            background-color: $accent-pale-blue;
+            border-color: $accent-pale-blue;
+            font-weight: 700;
+            color: $blue-90;
+            letter-spacing: -0.2px;
+        }
+        &:focus {
+            border-color: $gray-50;
+            outline: none;
+        }
+    }
+
+    .slides {
+        figure.chart:not(.grapherPreview) {
+            height: $slide-content-height;
+        }
+
+        @include sm-only {
+            figure.chart {
+                // override default full-width behaviour
+                width: auto;
+                margin: auto;
+            }
+        }
+
+        @include lg-up {
+            .wp-block-columns.is-style-sticky-right .wp-block-column {
+                &:first-child {
+                    height: $slide-content-height;
+                    overflow-y: auto;
+                    -webkit-mask-image: linear-gradient(
+                        180deg,
+                        #000 90%,
+                        transparent
+                    );
+                    // Shifting margin to padding to make space for scrollbar
+                    margin-right: 0;
+                    padding-right: 16px;
+                    scrollbar-color: #ddd #0000;
+                    scrollbar-width: thin;
+
+                    > *:first-child {
+                        margin-top: 0;
+                    }
+
+                    > *:last-child {
+                        margin-bottom: 3rem;
+                    }
+                }
+
+                &:last-child {
+                    > *:last-child {
+                        margin-bottom: 0;
+                    }
+                }
+            }
+        }
+    }
+
+    .slide {
+        display: none;
+        &[data-active="true"] {
+            display: block;
+        }
+
+        h4 {
+            @include h2-bold;
+            margin: 0 0 $vertical-spacing;
+        }
+
+        p {
+            @include body-2-regular;
+        }
+    }
+}

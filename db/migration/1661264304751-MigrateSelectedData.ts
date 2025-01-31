@@ -3,7 +3,9 @@ import { MigrationInterface, QueryRunner } from "typeorm"
 
 import { entityNameById } from "./data/entityNameById.js"
 
-import { ChartTypeName, GrapherInterface } from "@ourworldindata/grapher"
+import { GRAPHER_CHART_TYPES, GrapherChartType } from "@ourworldindata/types"
+
+type GrapherInterface = Record<string, any>
 
 /**
  * Migrate the legacy `selectedData` and get rid of it.
@@ -65,8 +67,7 @@ export class MigrateSelectedData1661264304751 implements MigrationInterface {
                 if (item.entityId && item.color) {
                     // migrate entity color
                     if (!legacyConfig.selectedEntityColors) {
-                        newConfig.selectedEntityColors =
-                            newConfig.selectedEntityColors ?? {}
+                        newConfig.selectedEntityColors ??= {}
                         const entityName = entityNameById[item.entityId]
                         if (entityName) {
                             newConfig.selectedEntityColors[entityName] ??=
@@ -77,17 +78,17 @@ export class MigrateSelectedData1661264304751 implements MigrationInterface {
                     // migrate dimension color
                     const dimension = newConfig.dimensions?.[item.index]
                     if (dimension?.variableId) {
-                        dimension.display = dimension.display ?? {}
+                        dimension.display ??= {}
                         dimension.display.color ??= item.color
                     }
                 }
             })
 
-        const migrateDimensionsTypes: ChartTypeName[] = [
-            ChartTypeName.Marimekko,
-            ChartTypeName.StackedArea,
-            ChartTypeName.StackedBar,
-            ChartTypeName.StackedDiscreteBar,
+        const migrateDimensionsTypes: GrapherChartType[] = [
+            GRAPHER_CHART_TYPES.Marimekko,
+            GRAPHER_CHART_TYPES.StackedArea,
+            GRAPHER_CHART_TYPES.StackedBar,
+            GRAPHER_CHART_TYPES.StackedDiscreteBar,
         ]
 
         // Migrate order of dimensions.

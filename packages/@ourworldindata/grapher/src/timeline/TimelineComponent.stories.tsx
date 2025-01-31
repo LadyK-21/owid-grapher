@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { TimelineComponent } from "./TimelineComponent"
 import { action, computed, observable } from "mobx"
 import { range } from "@ourworldindata/utils"
@@ -6,7 +6,6 @@ import { TimelineController, TimelineManager } from "./TimelineController"
 
 class TimelineManagerMock implements TimelineManager {
     @observable isPlaying = false
-    @observable userHasSetTimeline = true
     @observable times = range(1900, 2021)
 
     @observable protected _endTime = 2020
@@ -54,26 +53,26 @@ class SingleYearManager extends TimelineManagerMock {
     @observable protected _endTime = 1950
 }
 
-export const Default = (): JSX.Element => {
+export const Default = (): React.ReactElement => {
     const manager = new TimelineManagerMock()
     manager.startHandleTimeBound = 1900
     const timelineController = new TimelineController(manager)
     return <TimelineComponent timelineController={timelineController} />
 }
 
-export const StartPartialRange = (): JSX.Element => (
+export const StartPartialRange = (): React.ReactElement => (
     <TimelineComponent
         timelineController={new TimelineController(new TimelineManagerMock())}
     />
 )
 
-export const OneYearAtATime = (): JSX.Element => (
+export const OneYearAtATime = (): React.ReactElement => (
     <TimelineComponent
         timelineController={new TimelineController(new SingleYearManager())}
     />
 )
 
-export const DisablePlayButton = (): JSX.Element => {
+export const DisablePlayButton = (): React.ReactElement => {
     const manager = new TimelineManagerMock()
     manager.disablePlay = true
     return (

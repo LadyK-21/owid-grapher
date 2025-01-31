@@ -1,5 +1,5 @@
 // This implements the line labels that appear to the right of the lines/polygons in LineCharts/StackedAreas.
-import React from "react"
+import * as React from "react"
 import {
     Bounds,
     noop,
@@ -7,49 +7,38 @@ import {
     max,
     min,
     sortBy,
+    makeIdForHumanConsumption,
+    excludeUndefined,
     sumBy,
-    flatten,
-    TextWrap,
 } from "@ourworldindata/utils"
+import { TextWrap, Halo, MarkdownTextWrap } from "@ourworldindata/components"
 import { computed } from "mobx"
 import { observer } from "mobx-react"
 import { VerticalAxis } from "../axis/Axis"
-import { EntityName } from "@ourworldindata/core-table"
-import { BASE_FONT_SIZE } from "../core/GrapherConstants"
-import { ChartSeries } from "../chart/ChartInterface"
+import {
+    Color,
+    EntityName,
+    SeriesName,
+    VerticalAlign,
+} from "@ourworldindata/types"
+import { BASE_FONT_SIZE, GRAPHER_FONT_SCALE_12 } from "../core/GrapherConstants"
 import { darkenColorForText } from "../color/ColorUtils"
-
-// Minimum vertical space between two legend items
-const LEGEND_ITEM_MIN_SPACING = 2
-// Horizontal distance from the end of the chart to the start of the marker
-const MARKER_MARGIN = 4
-// Need a constant button height which we can use in positioning calculations
-const ADD_BUTTON_HEIGHT = 30
-
-const DEFAULT_FONT_WEIGHT = 400
-
-export interface LineLabelSeries extends ChartSeries {
-    label: string
-    yValue: number
-    annotation?: string
-    yRange?: [number, number]
-}
-
-interface SizedSeries extends LineLabelSeries {
-    textWrap: TextWrap
-    annotationTextWrap?: TextWrap
-    width: number
-    height: number
-}
-
-interface PlacedSeries extends SizedSeries {
-    origBounds: Bounds
-    bounds: Bounds
-    isOverlap: boolean
-    repositions: number
-    level: number
-    totalLevels: number
-}
+import { AxisConfig } from "../axis/AxisConfig.js"
+import { GRAPHER_BACKGROUND_DEFAULT, GRAY_30 } from "../color/ColorConstants"
+import {
+    findImportantSeriesThatFitIntoTheAvailableSpace,
+    findSeriesThatFitIntoTheAvailableSpace,
+} from "./LineLegendFilterAlgorithms.js"
+import {
+    ANNOTATION_PADDING,
+    DEFAULT_CONNECTOR_LINE_WIDTH,
+    DEFAULT_FONT_WEIGHT,
+    LEGEND_ITEM_MIN_SPACING,
+    MARKER_MARGIN,
+    NON_FOCUSED_TEXT_COLOR,
+} from "./LineLegendConstants.js"
+import { getSeriesKey } from "./LineLegendHelpers"
+import { LineLabelSeries, PlacedSeries, SizedSeries } from "./LineLegendTypes"
 
 function groupBounds(group: PlacedSeries[]): Bounds {
     const first = group[0]
@@ -73,222 +62,493 @@ function stackGroupVertically(
 }
 
 @observer
-class Label extends React.Component<{
-    series: PlacedSeries
-    manager: LineLegend
-    isFocus?: boolean
-    needsLines?: boolean
-    onMouseOver: () => void
-    onClick: () => void
-    onMouseLeave?: () => void
+class LineLabels extends React.Component<{
+    series: PlacedSeries[]
+    needsConnectorLines: boolean
+    showTextOutline?: boolean
+    textOutlineColor?: Color
+    anchor?: "start" | "end"
+    isStatic?: boolean
+    cursor?: string
+    onClick?: (series: PlacedSeries) => void
+    onMouseOver?: (series: PlacedSeries) => void
+    onMouseLeave?: (series: PlacedSeries) => void
 }> {
-    render(): JSX.Element {
-        const {
-            series,
-            manager,
-            isFocus,
-            needsLines,
-            onMouseOver,
-            onMouseLeave,
-            onClick,
-        } = this.props
-        const x = series.origBounds.x
-        const markerX1 = x + MARKER_MARGIN
-        const markerX2 = x + manager.leftPadding - MARKER_MARGIN
-        const step = (markerX2 - markerX1) / (series.totalLevels + 1)
-        const markerXMid = markerX1 + step + series.level * step
-        const lineColor = isFocus ? "#999" : "#eee"
-        const textColor = isFocus ? darkenColorForText(series.color) : "#ddd"
-        const annotationColor = isFocus ? "#333" : "#ddd"
-        return (
-            <g
-                className="legendMark"
-                onMouseOver={onMouseOver}
-                onMouseLeave={onMouseLeave}
-                onClick={onClick}
-            >
-                {needsLines && (
-                    <g className="indicator">
-                        <path
-                            d={`M${markerX1},${series.origBounds.centerY} H${markerXMid} V${series.bounds.centerY} H${markerX2}`}
-                            stroke={lineColor}
-                            strokeWidth={0.5}
-                            fill="none"
-                        />
-                    </g>
-                )}
-                <rect
-                    x={x}
-                    y={series.bounds.y}
-                    width={series.bounds.width}
-                    height={series.bounds.height}
-                    fill="#fff"
-                    opacity={0}
-                />
-                {series.textWrap.render(
-                    needsLines ? markerX2 + MARKER_MARGIN : markerX1,
-                    series.bounds.y,
-                    { fill: textColor }
-                )}
-                {series.annotationTextWrap &&
-                    series.annotationTextWrap.render(
-                        needsLines ? markerX2 + MARKER_MARGIN : markerX1,
-                        series.bounds.y + series.textWrap.height,
-                        {
-                            fill: annotationColor,
-                            className: "textAnnotation",
-                            style: { fontWeight: "lighter" },
-                        }
-                    )}
-            </g>
-        )
-    }
-}
-
-export interface LineLegendManager {
-    startSelectingWhenLineClicked?: boolean
-    canAddData?: boolean
-    isSelectingData?: boolean
-    entityType?: string
-    labelSeries: LineLabelSeries[]
-    maxLineLegendWidth?: number
-    fontSize?: number
-    fontWeight?: number
-    onLineLegendMouseOver?: (key: EntityName) => void
-    onLineLegendClick?: (key: EntityName) => void
-    onLineLegendMouseLeave?: () => void
-    focusedSeriesNames: EntityName[]
-    yAxis: VerticalAxis
-    lineLegendX?: number
-}
-
-@observer
-export class LineLegend extends React.Component<{
-    manager: LineLegendManager
-}> {
-    leftPadding = 35
-
-    @computed private get fontSize(): number {
-        return 0.75 * (this.manager.fontSize ?? BASE_FONT_SIZE)
+    @computed private get anchor(): "start" | "end" {
+        return this.props.anchor ?? "start"
     }
 
-    @computed private get fontWeight(): number {
-        return this.manager.fontWeight ?? DEFAULT_FONT_WEIGHT
+    @computed private get showTextOutline(): boolean {
+        return this.props.showTextOutline ?? false
     }
 
-    @computed private get maxWidth(): number {
-        return this.manager.maxLineLegendWidth ?? 300
+    @computed private get textOutlineColor(): Color {
+        return this.props.textOutlineColor ?? GRAPHER_BACKGROUND_DEFAULT
     }
 
-    @computed.struct get sizedLabels(): SizedSeries[] {
-        const { fontSize, fontWeight, leftPadding, maxWidth } = this
-        const maxTextWidth = maxWidth - leftPadding
-        const maxAnnotationWidth = Math.min(maxTextWidth, 150)
+    private textOpacityForSeries(series: PlacedSeries): number {
+        return series.hover?.background && !series.focus?.background ? 0.6 : 1
+    }
 
-        return this.manager.labelSeries.map((label) => {
-            const annotationTextWrap = label.annotation
-                ? new TextWrap({
-                      text: label.annotation,
-                      maxWidth: maxAnnotationWidth,
-                      fontSize: fontSize * 0.9,
-                      lineHeight: 1,
-                  })
-                : undefined
-            const textWrap = new TextWrap({
-                text: label.label,
-                maxWidth: maxTextWidth,
-                fontSize,
-                fontWeight,
-                lineHeight: 1,
-            })
+    @computed private get markers(): {
+        series: PlacedSeries
+        labelText: { x: number; y: number }
+        connectorLine: { x1: number; x2: number }
+    }[] {
+        return this.props.series.map((series) => {
+            const direction = this.anchor === "start" ? 1 : -1
+            const markerMargin = direction * MARKER_MARGIN
+            const connectorLineWidth = direction * DEFAULT_CONNECTOR_LINE_WIDTH
+
+            const { x } = series.origBounds
+            const connectorLine = {
+                x1: x + markerMargin,
+                x2: x + connectorLineWidth - markerMargin,
+            }
+
+            const textX = this.props.needsConnectorLines
+                ? connectorLine.x2 + markerMargin
+                : x + markerMargin
+            const textY = series.bounds.y
+
             return {
-                ...label,
-                textWrap,
-                annotationTextWrap,
-                width:
-                    leftPadding +
-                    Math.max(
-                        textWrap.width,
-                        annotationTextWrap ? annotationTextWrap.width : 0
-                    ),
-                height:
-                    textWrap.height +
-                    (annotationTextWrap ? annotationTextWrap.height : 0),
+                series,
+                labelText: { x: textX, y: textY },
+                connectorLine,
             }
         })
     }
 
+    @computed private get textLabels(): React.ReactElement {
+        return (
+            <g id={makeIdForHumanConsumption("text-labels")}>
+                {this.markers.map(({ series, labelText }, index) => {
+                    const textColor =
+                        !series.focus?.background || series.hover?.active
+                            ? darkenColorForText(series.color)
+                            : NON_FOCUSED_TEXT_COLOR
+                    const textProps = {
+                        fill: textColor,
+                        opacity: this.textOpacityForSeries(series),
+                        textAnchor: this.anchor,
+                    }
+
+                    return (
+                        <Halo
+                            id={series.seriesName}
+                            key={getSeriesKey(series, index)}
+                            show={this.showTextOutline}
+                            outlineColor={this.textOutlineColor}
+                        >
+                            {series.textWrapForRendering.renderSVG(
+                                labelText.x,
+                                labelText.y,
+                                { textProps }
+                            )}
+                        </Halo>
+                    )
+                })}
+            </g>
+        )
+    }
+
+    @computed private get textAnnotations(): React.ReactElement | void {
+        const markersWithAnnotations = this.markers.filter(
+            ({ series }) => series.annotationTextWrap !== undefined
+        )
+        if (!markersWithAnnotations) return
+        return (
+            <g id={makeIdForHumanConsumption("text-annotations")}>
+                {markersWithAnnotations.map(({ series, labelText }, index) => {
+                    if (!series.annotationTextWrap) return
+                    return (
+                        <Halo
+                            id={series.seriesName}
+                            key={getSeriesKey(series, index)}
+                            show={this.showTextOutline}
+                            outlineColor={this.textOutlineColor}
+                        >
+                            {series.annotationTextWrap.renderSVG(
+                                labelText.x,
+                                labelText.y +
+                                    series.textWrap.height +
+                                    ANNOTATION_PADDING,
+                                {
+                                    textProps: {
+                                        fill: "#333",
+                                        opacity:
+                                            this.textOpacityForSeries(series),
+                                        textAnchor: this.anchor,
+                                        style: { fontWeight: 300 },
+                                    },
+                                }
+                            )}
+                        </Halo>
+                    )
+                })}
+            </g>
+        )
+    }
+
+    @computed private get connectorLines(): React.ReactElement | void {
+        if (!this.props.needsConnectorLines) return
+        return (
+            <g id={makeIdForHumanConsumption("connectors")}>
+                {this.markers.map(({ series, connectorLine }, index) => {
+                    const { x1, x2 } = connectorLine
+                    const {
+                        level,
+                        totalLevels,
+                        origBounds: { centerY: leftCenterY },
+                        bounds: { centerY: rightCenterY },
+                    } = series
+
+                    const step = (x2 - x1) / (totalLevels + 1)
+                    const markerXMid = x1 + step + level * step
+                    const d = `M${x1},${leftCenterY} H${markerXMid} V${rightCenterY} H${x2}`
+                    const lineColor = series.hover?.background
+                        ? "#eee"
+                        : series.focus?.background
+                          ? GRAY_30
+                          : "#999"
+
+                    return (
+                        <path
+                            id={makeIdForHumanConsumption(series.seriesName)}
+                            key={getSeriesKey(series, index)}
+                            d={d}
+                            stroke={lineColor}
+                            strokeWidth={0.5}
+                            fill="none"
+                        />
+                    )
+                })}
+            </g>
+        )
+    }
+
+    @computed private get interactions(): React.ReactElement | void {
+        return (
+            <g>
+                {this.props.series.map((series, index) => {
+                    const x =
+                        this.anchor === "start"
+                            ? series.origBounds.x
+                            : series.origBounds.x - series.bounds.width
+                    return (
+                        <g
+                            key={getSeriesKey(series, index)}
+                            onMouseOver={() => this.props.onMouseOver?.(series)}
+                            onMouseLeave={() =>
+                                this.props.onMouseLeave?.(series)
+                            }
+                            onClick={() => this.props.onClick?.(series)}
+                            style={{ cursor: this.props.cursor }}
+                        >
+                            <rect
+                                x={x}
+                                y={series.bounds.y}
+                                width={series.bounds.width}
+                                height={series.bounds.height}
+                                fill="#fff"
+                                opacity={0}
+                            />
+                        </g>
+                    )
+                })}
+            </g>
+        )
+    }
+
+    render(): React.ReactElement {
+        return (
+            <>
+                {this.connectorLines}
+                {this.textAnnotations}
+                {this.textLabels}
+                {!this.props.isStatic && this.interactions}
+            </>
+        )
+    }
+}
+
+export interface LineLegendProps {
+    series: LineLabelSeries[]
+    yAxis?: VerticalAxis
+
+    // positioning
+    x?: number
+    yRange?: [number, number]
+    maxWidth?: number
+    xAnchor?: "start" | "end"
+    verticalAlign?: VerticalAlign
+
+    // presentation
+    fontSize?: number
+    fontWeight?: number
+    showTextOutlines?: boolean
+    textOutlineColor?: Color
+
+    // used to determine which series should be labelled when there is limited space
+    seriesNamesSortedByImportance?: SeriesName[]
+
+    // interactions
+    isStatic?: boolean // don't add interactions if true
+    onClick?: (key: SeriesName) => void
+    onMouseOver?: (key: SeriesName) => void
+    onMouseLeave?: () => void
+}
+
+@observer
+export class LineLegend extends React.Component<LineLegendProps> {
+    /**
+     * Larger than the actual width since the width of the connector lines
+     * is always added, even if they're not rendered.
+     *
+     * This is partly due to a circular dependency (in line and stacked area
+     * charts), partly to avoid jumpy layout changes (slope charts).
+     */
+    static stableWidth(props: LineLegendProps): number {
+        const test = new LineLegend(props)
+        return test.stableWidth
+    }
+
+    static width(props: LineLegendProps): number {
+        const test = new LineLegend(props)
+        return test.width
+    }
+
+    static fontSize(props: Partial<LineLegendProps>): number {
+        const test = new LineLegend(props as LineLegendProps)
+        return test.fontSize
+    }
+
+    static maxLevel(props: Partial<LineLegendProps>): number {
+        const test = new LineLegend(props as LineLegendProps)
+        return test.maxLevel
+    }
+
+    static visibleSeriesNames(props: LineLegendProps): SeriesName[] {
+        const test = new LineLegend(props as LineLegendProps)
+        return test.visibleSeriesNames
+    }
+
+    @computed private get fontSize(): number {
+        return GRAPHER_FONT_SCALE_12 * (this.props.fontSize ?? BASE_FONT_SIZE)
+    }
+
+    @computed private get fontWeight(): number {
+        return this.props.fontWeight ?? DEFAULT_FONT_WEIGHT
+    }
+
+    @computed private get maxWidth(): number {
+        return this.props.maxWidth ?? 300
+    }
+
+    @computed private get yAxis(): VerticalAxis {
+        return this.props.yAxis ?? new VerticalAxis(new AxisConfig())
+    }
+
+    @computed private get verticalAlign(): VerticalAlign {
+        return this.props.verticalAlign ?? VerticalAlign.middle
+    }
+
+    @computed private get textMaxWidth(): number {
+        return this.maxWidth - DEFAULT_CONNECTOR_LINE_WIDTH
+    }
+
+    private makeLabelTextWrap(
+        series: LineLabelSeries,
+        { fontWeights }: { fontWeights: { label: number; value?: number } }
+    ): TextWrap | MarkdownTextWrap {
+        if (!series.formattedValue) {
+            return new TextWrap({
+                text: series.label,
+                maxWidth: this.textMaxWidth,
+                fontSize: this.fontSize,
+                fontWeight: fontWeights?.label,
+            })
+        }
+
+        const isTextLabelBold = (fontWeights?.label ?? 400) >= 700
+        const isValueLabelBold = (fontWeights?.value ?? 400) >= 700
+
+        // text label fragments
+        const textLabel = { text: series.label, bold: isTextLabelBold }
+        const valueLabel = {
+            text: series.formattedValue,
+            bold: isValueLabelBold,
+        }
+
+        const newLine = series.placeFormattedValueInNewLine
+            ? "always"
+            : "avoid-wrap"
+
+        return MarkdownTextWrap.fromFragments({
+            main: textLabel,
+            secondary: valueLabel,
+            newLine,
+            textWrapProps: {
+                maxWidth: this.textMaxWidth,
+                fontSize: this.fontSize,
+            },
+        })
+    }
+
+    private makeAnnotationTextWrap(
+        series: LineLabelSeries
+    ): TextWrap | undefined {
+        if (!series.annotation) return undefined
+        const maxWidth = Math.min(this.textMaxWidth, 150)
+        return new TextWrap({
+            text: series.annotation,
+            maxWidth,
+            fontSize: this.fontSize * 0.9,
+            lineHeight: 1,
+        })
+    }
+
+    @computed.struct get sizedSeries(): SizedSeries[] {
+        const { fontWeight: globalFontWeight } = this
+        return this.props.series.map((series) => {
+            // font weight priority:
+            // series focus state > presense of value label > globally set font weight
+            const activeFontWeight = series.focus?.active ? 700 : undefined
+            const seriesFontWeight = series.formattedValue ? 700 : undefined
+            const fontWeight =
+                activeFontWeight ?? seriesFontWeight ?? globalFontWeight
+
+            // line labels might be focused/unfocused, which affects their font weight.
+            // if we used the actual font weight for measuring the text width,
+            // the layout would be jumpy when focusing/unfocusing a series.
+            const fontWeightsForMeasuring = { label: 700, value: 700 }
+            const fontWeightsForRendering = { label: fontWeight, value: 400 }
+            const textWrap = this.makeLabelTextWrap(series, {
+                fontWeights: fontWeightsForMeasuring,
+            })
+            const textWrapForRendering = this.makeLabelTextWrap(series, {
+                fontWeights: fontWeightsForRendering,
+            })
+
+            const annotationTextWrap = this.makeAnnotationTextWrap(series)
+            const annotationWidth = annotationTextWrap?.width ?? 0
+            const annotationHeight = annotationTextWrap
+                ? ANNOTATION_PADDING + annotationTextWrap.height
+                : 0
+
+            return {
+                ...series,
+                textWrap,
+                textWrapForRendering,
+                annotationTextWrap,
+                width: Math.max(textWrap.width, annotationWidth),
+                height: textWrap.height + annotationHeight,
+            }
+        })
+    }
+
+    @computed private get maxLabelWidth(): number {
+        const { sizedSeries = [] } = this
+        return max(sizedSeries.map((d) => d.width)) ?? 0
+    }
+
+    @computed get stableWidth(): number {
+        return this.maxLabelWidth + DEFAULT_CONNECTOR_LINE_WIDTH + MARKER_MARGIN
+    }
+
     @computed get width(): number {
-        if (this.sizedLabels.length === 0) return 0
-        return max(this.sizedLabels.map((d) => d.width)) ?? 0
+        return this.needsLines
+            ? this.stableWidth
+            : this.maxLabelWidth + MARKER_MARGIN
     }
 
     @computed get onMouseOver(): any {
-        return this.manager.onLineLegendMouseOver ?? noop
+        return this.props.onMouseOver ?? noop
     }
     @computed get onMouseLeave(): any {
-        return this.manager.onLineLegendMouseLeave ?? noop
+        return this.props.onMouseLeave ?? noop
     }
     @computed get onClick(): any {
-        return this.manager.onLineLegendClick ?? noop
-    }
-
-    @computed get isFocusMode(): boolean {
-        return this.sizedLabels.some((label) =>
-            this.manager.focusedSeriesNames.includes(label.seriesName)
-        )
+        return this.props.onClick ?? noop
     }
 
     @computed get legendX(): number {
-        return this.manager.lineLegendX ?? 0
+        return this.props.x ?? 0
+    }
+
+    @computed get legendY(): [number, number] {
+        const range = this.props.yRange ?? this.yAxis.range
+        return [Math.min(range[1], range[0]), Math.max(range[1], range[0])]
+    }
+
+    private getYPositionForSeriesLabel(series: SizedSeries): number {
+        const y = this.yAxis.place(series.yValue)
+        const lineHeight = series.textWrap.singleLineHeight
+        switch (this.verticalAlign) {
+            case VerticalAlign.middle:
+                return y - series.height / 2
+            case VerticalAlign.top:
+                return y - lineHeight / 2
+            case VerticalAlign.bottom:
+                return y - series.height + lineHeight / 2
+        }
     }
 
     // Naive initial placement of each mark at the target height, before collision detection
-    @computed private get initialSeries(): PlacedSeries[] {
-        const { yAxis } = this.manager
-        const { legendX } = this
+    @computed private get initialPlacedSeries(): PlacedSeries[] {
+        const { yAxis, legendX, legendY } = this
 
-        return sortBy(
-            this.sizedLabels.map((label) => {
-                // place vertically centered at Y value
-                const initialY = yAxis.place(label.yValue) - label.height / 2
-                const origBounds = new Bounds(
-                    legendX,
-                    initialY,
-                    label.width,
-                    label.height
-                )
+        const [legendYMin, legendYMax] = legendY
 
-                // ensure label doesn't go beyond the top or bottom of the chart
-                const y = Math.min(
-                    Math.max(initialY, yAxis.rangeMin),
-                    yAxis.rangeMax - label.height
-                )
-                const bounds = new Bounds(legendX, y, label.width, label.height)
+        return this.sizedSeries.map((series) => {
+            const labelHeight = series.height
+            const labelWidth = series.width + DEFAULT_CONNECTOR_LINE_WIDTH
 
-                return {
-                    ...label,
-                    y,
-                    origBounds,
-                    bounds,
-                    isOverlap: false,
-                    repositions: 0,
-                    level: 0,
-                    totalLevels: 0,
-                }
+            const midY = yAxis.place(series.yValue)
+            const origBounds = new Bounds(
+                legendX,
+                midY - series.height / 2,
+                labelWidth,
+                labelHeight
+            )
 
-                // Ensure list is sorted by the visual position in ascending order
-            }),
-            (label) => yAxis.place(label.yValue)
-        )
+            // ensure label doesn't go beyond the top or bottom of the chart
+            const initialY = this.getYPositionForSeriesLabel(series)
+            const y = Math.min(
+                Math.max(initialY, legendYMin),
+                legendYMax - labelHeight
+            )
+            const bounds = new Bounds(legendX, y, labelWidth, labelHeight)
+
+            return {
+                ...series,
+                y,
+                midY,
+                origBounds,
+                bounds,
+                repositions: 0,
+                level: 0,
+                totalLevels: 0,
+            }
+        })
     }
 
-    @computed get standardPlacement(): PlacedSeries[] {
-        const { yAxis } = this.manager
+    @computed get initialPlacedSeriesByName(): Map<EntityName, PlacedSeries> {
+        return new Map(this.initialPlacedSeries.map((d) => [d.seriesName, d]))
+    }
 
-        const groups: PlacedSeries[][] = cloneDeep(this.initialSeries).map(
-            (mark) => [mark]
+    @computed get placedSeries(): PlacedSeries[] {
+        const [yLegendMin, yLegendMax] = this.legendY
+
+        // ensure list is sorted by the visual position in ascending order
+        const sortedSeries = sortBy(
+            this.visiblePlacedSeries,
+            (label) => label.midY
         )
+
+        const groups: PlacedSeries[][] = cloneDeep(sortedSeries).map((mark) => [
+            mark,
+        ])
 
         let hasOverlap
 
@@ -313,9 +573,9 @@ export class LineLegend extends React.Component<{
                         overlapHeight *
                             (bottomGroup.length /
                                 (topGroup.length + bottomGroup.length))
-                    const overflowTop = Math.max(yAxis.rangeMin - targetY, 0)
+                    const overflowTop = Math.max(yLegendMin - targetY, 0)
                     const overflowBottom = Math.max(
-                        targetY + newHeight - yAxis.rangeMax,
+                        targetY + newHeight - yLegendMax,
                         0
                     )
                     const newY = targetY + overflowTop - overflowBottom
@@ -349,65 +609,54 @@ export class LineLegend extends React.Component<{
             }
         }
 
-        return flatten(groups)
+        return groups.flat()
     }
 
-    // Overlapping placement, for when we really can't find a solution without overlaps.
-    @computed get overlappingPlacement(): PlacedSeries[] {
-        const series = cloneDeep(this.initialSeries)
-        for (let i = 0; i < series.length; i++) {
-            const m1 = series[i]
+    @computed get seriesSortedByImportance(): PlacedSeries[] | undefined {
+        if (!this.props.seriesNamesSortedByImportance) return undefined
+        return excludeUndefined(
+            this.props.seriesNamesSortedByImportance.map((seriesName) =>
+                this.initialPlacedSeriesByName.get(seriesName)
+            )
+        )
+    }
 
-            for (let j = i + 1; j < series.length; j++) {
-                const m2 = series[j]
-                const isOverlap =
-                    !m1.isOverlap && m1.bounds.intersects(m2.bounds)
-                if (isOverlap) m2.isOverlap = true
-            }
+    private computeHeight(series: PlacedSeries[]): number {
+        return (
+            sumBy(series, (series) => series.bounds.height) +
+            (series.length - 1) * LEGEND_ITEM_MIN_SPACING
+        )
+    }
+
+    @computed get visiblePlacedSeries(): PlacedSeries[] {
+        const { initialPlacedSeries, seriesSortedByImportance, legendY } = this
+        const availableHeight = Math.abs(legendY[1] - legendY[0])
+        const totalHeight = this.computeHeight(initialPlacedSeries)
+
+        // early return if filtering is not needed
+        if (totalHeight <= availableHeight) return initialPlacedSeries
+
+        // if a list of series sorted by importance is provided, use it
+        if (seriesSortedByImportance) {
+            return findImportantSeriesThatFitIntoTheAvailableSpace(
+                seriesSortedByImportance,
+                availableHeight
+            )
         }
-        return series
-    }
 
-    @computed get placedSeries(): PlacedSeries[] {
-        const nonOverlappingMinHeight =
-            sumBy(this.initialSeries, (series) => series.bounds.height) +
-            this.initialSeries.length * LEGEND_ITEM_MIN_SPACING
-        const availableHeight = this.manager.canAddData
-            ? this.manager.yAxis.rangeSize - ADD_BUTTON_HEIGHT
-            : this.manager.yAxis.rangeSize
-
-        // Need to be careful here – the controls overlay will automatically add padding if
-        // needed to fit the floating 'Add country' button, therefore decreasing the space
-        // available to render the legend.
-        // At a certain height, this ends up infinitely toggling between the two placement
-        // modes. The overlapping placement allows the button to float without additional
-        // padding, which then frees up space, causing the legend to render with
-        // standardPlacement.
-        // This is why we need to take into account the height of the 'Add country' button.
-        if (nonOverlappingMinHeight > availableHeight)
-            return this.overlappingPlacement
-
-        return this.standardPlacement
-    }
-
-    @computed private get backgroundSeries(): PlacedSeries[] {
-        const { focusedSeriesNames } = this.manager
-        const { isFocusMode } = this
-        return this.placedSeries.filter((mark) =>
-            isFocusMode
-                ? !focusedSeriesNames.includes(mark.seriesName)
-                : mark.isOverlap
+        // otherwise use the default filtering
+        return findSeriesThatFitIntoTheAvailableSpace(
+            initialPlacedSeries,
+            availableHeight
         )
     }
 
-    @computed private get focusedSeries(): PlacedSeries[] {
-        const { focusedSeriesNames } = this.manager
-        const { isFocusMode } = this
-        return this.placedSeries.filter((mark) =>
-            isFocusMode
-                ? focusedSeriesNames.includes(mark.seriesName)
-                : !mark.isOverlap
-        )
+    @computed get visibleSeriesNames(): SeriesName[] {
+        return this.visiblePlacedSeries.map((series) => series.seriesName)
+    }
+
+    @computed get visibleSeriesHeight(): number {
+        return this.computeHeight(this.visiblePlacedSeries)
     }
 
     // Does this placement need line markers or is the position of the labels already clear?
@@ -415,51 +664,32 @@ export class LineLegend extends React.Component<{
         return this.placedSeries.some((series) => series.totalLevels > 1)
     }
 
-    private renderBackground(): JSX.Element[] {
-        return this.backgroundSeries.map((series, index) => (
-            <Label
-                key={`background-${index}-` + series.seriesName}
-                series={series}
-                manager={this}
-                needsLines={this.needsLines}
-                onMouseOver={(): void => this.onMouseOver(series.seriesName)}
-                onClick={(): void => this.onClick(series.seriesName)}
-            />
-        ))
+    @computed private get maxLevel(): number {
+        return max(this.placedSeries.map((series) => series.totalLevels)) ?? 0
     }
 
-    // All labels are focused by default, moved to background when mouseover of other label
-    private renderFocus(): JSX.Element[] {
-        return this.focusedSeries.map((series, index) => (
-            <Label
-                key={`focus-${index}-` + series.seriesName}
-                series={series}
-                manager={this}
-                isFocus={true}
-                needsLines={this.needsLines}
-                onMouseOver={(): void => this.onMouseOver(series.seriesName)}
-                onClick={(): void => this.onClick(series.seriesName)}
-                onMouseLeave={(): void => this.onMouseLeave(series.seriesName)}
-            />
-        ))
-    }
-
-    @computed get manager(): LineLegendManager {
-        return this.props.manager
-    }
-
-    render(): JSX.Element {
+    render(): React.ReactElement {
         return (
             <g
+                id={makeIdForHumanConsumption("line-labels")}
                 className="LineLabels"
-                style={{
-                    cursor: this.manager.startSelectingWhenLineClicked
-                        ? "pointer"
-                        : "default",
-                }}
             >
-                {this.renderBackground()}
-                {this.renderFocus()}
+                <LineLabels
+                    series={this.placedSeries}
+                    needsConnectorLines={this.needsLines}
+                    showTextOutline={this.props.showTextOutlines}
+                    textOutlineColor={this.props.textOutlineColor}
+                    anchor={this.props.xAnchor}
+                    isStatic={this.props.isStatic}
+                    onMouseOver={(series): void =>
+                        this.onMouseOver(series.seriesName)
+                    }
+                    onClick={(series): void => this.onClick(series.seriesName)}
+                    onMouseLeave={(series): void =>
+                        this.onMouseLeave(series.seriesName)
+                    }
+                    cursor={this.props.onClick ? "pointer" : "default"}
+                />
             </g>
         )
     }

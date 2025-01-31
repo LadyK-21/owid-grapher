@@ -10,7 +10,12 @@
             "name": "Jest Tests",
             "program": "${workspaceFolder}/node_modules/jest/bin/jest.js",
             "request": "launch",
-            "skipFiles": ["<node_internals>/**"],
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
             "type": "node"
         },
         {
@@ -19,7 +24,14 @@
             "request": "launch",
             "name": "Jest Test current file",
             "program": "${workspaceFolder}/node_modules/.bin/jest",
-            "args": ["${fileBasenameNoExtension}.js", "--watch"],
+            "args": [
+                "${fileBasenameNoExtension}.js",
+                "--watch"
+            ],
+            "args": [
+                "${fileBasenameNoExtension}.js",
+                "--watch"
+            ],
             "console": "integratedTerminal"
             // "internalConsoleOptions": "neverOpen"
         },
@@ -53,29 +65,73 @@
             "name": "Run migrate WP to ArchieML",
             "program": "${workspaceFolder}/itsJustJavascript/db/migrateWpPostsToArchieMl.js",
             "request": "launch",
-            "skipFiles": ["<node_internals>/**"],
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
             "type": "node"
         },
         {
             "name": "Sync WP posts to grapher",
             "program": "${workspaceFolder}/itsJustJavascript/db/syncPostsToGrapher.js",
             "request": "launch",
-            "skipFiles": ["<node_internals>/**"],
-            "type": "node"
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node",
         },
         {
             "name": "Run SVGTester",
             "program": "${workspaceFolder}/itsJustJavascript/devTools/svgTester/verify-graphs.js",
             "request": "launch",
-            "skipFiles": ["<node_internals>/**"],
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
             "type": "node",
-            "args": ["-g", "367"]
+            "args": [
+                "-g",
+                "367"
+            ]
         },
         {
             "name": "Launch admin server",
-            "program": "${workspaceFolder}/itsJustJavascript/adminSiteServer/app.js",
+            "program": "${workspaceFolder}/adminSiteServer/app.ts",
             "request": "launch",
-            "type": "node"
+            "type": "node",
+            "runtimeExecutable": "yarn",
+            "runtimeArgs": [
+                "tsx",
+                "--tsconfig",
+                "tsconfig.tsx.json"
+            ],
+            // Files to exclude from debugger (e.g. call stack)
+            "skipFiles": [
+                // Node.js internal core modules
+                "<node_internals>/**",
+                // Ignore all dependencies (optional)
+                "${workspaceFolder}/node_modules/**",
+            ],
+        },
+        {
+            "name": "Launch admin server (via fnm)",
+            "program": "${workspaceFolder}/adminSiteServer/app.ts",
+            "request": "launch",
+            "type": "node",
+            "runtimeExecutable": "fnm",
+            "runtimeArgs": [
+                "exec",
+                "--",
+                "yarn",
+                "tsx",
+                "--tsconfig",
+                "tsconfig.tsx.json"
+            ],
+            // Files to exclude from debugger (e.g. call stack)
+            "skipFiles": [
+                // Node.js internal core modules
+                "<node_internals>/**",
+                // Ignore all dependencies (optional)
+                "${workspaceFolder}/node_modules/**",
+            ],
         },
         {
             "name": "Attach to node",
@@ -83,22 +139,5 @@
             "request": "attach",
             "restart": true
         },
-        {
-            "name": "Listen for XDebug",
-            "type": "php",
-            "request": "launch",
-            "port": 9003,
-            "pathMappings": {
-                "/app/": "${workspaceFolder}/wordpress"
-            }
-        },
-        {
-            "name": "Launch currently open script",
-            "type": "php",
-            "request": "launch",
-            "program": "${file}",
-            "cwd": "${fileDirname}",
-            "port": 9000
-        }
     ]
 }

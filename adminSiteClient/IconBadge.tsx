@@ -1,8 +1,8 @@
-import React from "react"
+import * as React from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import {
     faExclamationTriangle,
-    faExclamationCircle,
+    faCircleXmark,
 } from "@fortawesome/free-solid-svg-icons"
 import { OwidGdocErrorMessageType } from "@ourworldindata/utils"
 import { Badge } from "antd"
@@ -22,7 +22,7 @@ export const IconBadge = ({
             icon = faExclamationTriangle
             break
         case OwidGdocErrorMessageType.Error:
-            icon = faExclamationCircle
+            icon = faCircleXmark
             break
     }
 

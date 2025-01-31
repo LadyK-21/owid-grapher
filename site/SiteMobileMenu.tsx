@@ -1,8 +1,9 @@
-import React, { useState } from "react"
+import { useState } from "react"
 import { CategoryWithEntries } from "@ourworldindata/utils"
 import classnames from "classnames"
 import { SiteNavigationToggle } from "./SiteNavigationToggle.js"
-import { Menu } from "./SiteNavigation.js"
+import { Menu } from "./SiteConstants.js"
+import { SiteAbout } from "./SiteAbout.js"
 import { SiteResources } from "./SiteResources.js"
 import { SiteMobileCategory } from "./SiteMobileCategory.js"
 
@@ -45,12 +46,13 @@ export const SiteMobileMenu = ({
                     </ul>
                 </li>
                 <li>
-                    <a href="/blog" className="section__header">
+                    <a href="/latest" className="section__header">
                         Latest
                     </a>
                 </li>
                 <li>
                     <SiteNavigationToggle
+                        ariaLabel="Toggle resources menu"
                         isActive={menu === Menu.Resources}
                         onToggle={() =>
                             toggleMenu(
@@ -67,9 +69,20 @@ export const SiteMobileMenu = ({
                     </SiteNavigationToggle>
                 </li>
                 <li>
-                    <a href="/about" className="section__header">
+                    <SiteNavigationToggle
+                        ariaLabel="Toggle about menu"
+                        isActive={menu === Menu.About}
+                        onToggle={() =>
+                            toggleMenu(
+                                menu === Menu.About ? Menu.Topics : Menu.About
+                            )
+                        }
+                        dropdown={<SiteAbout />}
+                        withCaret={true}
+                        className="SiteNavigationToggle--lvl1"
+                    >
                         About
-                    </a>
+                    </SiteNavigationToggle>
                 </li>
                 <li>
                     <a href="/donate" className="donate">

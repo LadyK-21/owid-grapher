@@ -6,6 +6,7 @@ import {
     RawBlockAside,
     RawBlockChart,
     RawBlockChartStory,
+    RawBlockDonorList,
     RawBlockGraySection,
     RawBlockHeading,
     RawBlockHtml,
@@ -31,7 +32,25 @@ import {
     RawBlockTopicPageIntro,
     EnrichedBlockResearchAndWritingLink,
     RawBlockResearchAndWritingLink,
-} from "@ourworldindata/utils"
+    RawBlockAlign,
+    RawBlockEntrySummary,
+    RawBlockVideo,
+    RawBlockTable,
+    RawBlockBlockquote,
+    RawBlockExplorerTiles,
+    RawBlockKeyIndicator,
+    RawBlockKeyIndicatorCollection,
+    RawBlockPillRow,
+    RawBlockHomepageSearch,
+    RawBlockHomepageIntro,
+    RawBlockLatestDataInsights,
+    RawBlockSocials,
+    RawBlockPeople,
+    RawBlockPeopleRows,
+    RawBlockPerson,
+    RawBlockNarrativeChart,
+    RawBlockCode,
+} from "@ourworldindata/types"
 import { spanToHtmlString } from "./gdocUtils.js"
 import { match, P } from "ts-pattern"
 
@@ -70,7 +89,9 @@ export function enrichedBlockToRawBlock(
             { type: "additional-charts" },
             (b): RawBlockAdditionalCharts => ({
                 type: b.type,
-                value: b.items.map(spansToHtmlText),
+                value: {
+                    list: b.items.map(spansToHtmlText),
+                },
             })
         )
         .with(
@@ -79,10 +100,13 @@ export function enrichedBlockToRawBlock(
                 type: b.type,
                 value: {
                     title: b.title,
-                    text: b.text.map((enrichedTextBlock) => ({
-                        type: "text",
-                        value: spansToHtmlText(enrichedTextBlock.value),
-                    })),
+                    text: b.text.map(
+                        (enriched) =>
+                            enrichedBlockToRawBlock(enriched) as
+                                | RawBlockText
+                                | RawBlockList
+                                | RawBlockHeading
+                    ),
                 },
             })
         )
@@ -98,6 +122,37 @@ export function enrichedBlockToRawBlock(
                     position: b.position,
                     caption: b.caption ? spansToHtmlText(b.caption) : undefined,
                 },
+            })
+        )
+        .with(
+            { type: "narrative-chart" },
+            (b): RawBlockNarrativeChart => ({
+                type: b.type,
+                value: {
+                    name: b.name,
+                    height: b.height,
+                    row: b.row,
+                    column: b.column,
+                    position: b.position,
+                    caption: b.caption ? spansToHtmlText(b.caption) : undefined,
+                },
+            })
+        )
+        .with(
+            { type: "code" },
+            (b): RawBlockCode => ({
+                type: b.type,
+                value: b.text.map((text) => ({
+                    type: "text",
+                    value: text.value.text,
+                })),
+            })
+        )
+        .with(
+            { type: "donors" },
+            (b): RawBlockDonorList => ({
+                type: b.type,
+                value: b.value,
             })
         )
         .with(
@@ -123,9 +178,11 @@ export function enrichedBlockToRawBlock(
                 value: b.items.map((item) => ({
                     narrative: spansToHtmlText(item.narrative.value),
                     chart: item.chart.url,
-                    technical: item.technical.map((t) =>
-                        spansToHtmlText(t.value)
-                    ),
+                    technical: {
+                        list: item.technical.map((t) =>
+                            spansToHtmlText(t.value)
+                        ),
+                    },
                 })),
             })
         )
@@ -135,7 +192,23 @@ export function enrichedBlockToRawBlock(
                 type: b.type,
                 value: {
                     filename: b.filename,
+                    smallFilename: b.smallFilename,
                     alt: b.alt,
+                    caption: b.caption && spansToHtmlText(b.caption),
+                    size: b.size,
+                    hasOutline: String(b.hasOutline),
+                },
+            })
+        )
+        .with(
+            { type: "video" },
+            (b): RawBlockVideo => ({
+                type: b.type,
+                value: {
+                    url: b.url,
+                    filename: b.filename,
+                    caption: b.caption ? spansToHtmlText(b.caption) : undefined,
+                    shouldLoop: String(b.shouldLoop),
                 },
             })
         )
@@ -144,6 +217,43 @@ export function enrichedBlockToRawBlock(
             (b): RawBlockList => ({
                 type: b.type,
                 value: b.items.map((item) => spansToHtmlText(item.value)),
+            })
+        )
+        .with(
+            { type: "people" },
+            (b): RawBlockPeople => ({
+                type: b.type,
+                value: b.items.map(enrichedBlockToRawBlock) as RawBlockPerson[],
+            })
+        )
+        .with(
+            { type: "people-rows" },
+            (b): RawBlockPeopleRows => ({
+                type: b.type,
+                value: {
+                    columns: b.columns,
+                    people: b.people.map(
+                        enrichedBlockToRawBlock
+                    ) as RawBlockPerson[],
+                },
+            })
+        )
+        .with(
+            { type: "person" },
+            (b): RawBlockPerson => ({
+                type: "person",
+                value: {
+                    image: b.image,
+                    name: b.name,
+                    title: b.title,
+                    url: b.url,
+                    text: b.text.map(enrichedBlockToRawBlock) as RawBlockText[],
+                    socials: b.socials?.map((social) => ({
+                        type: social.type,
+                        url: social.url,
+                        text: social.text,
+                    })),
+                },
             })
         )
         .with(
@@ -256,13 +366,6 @@ export function enrichedBlockToRawBlock(
             })
         )
         .with(
-            { type: "additional-charts" },
-            (b): RawBlockAdditionalCharts => ({
-                type: b.type,
-                value: b.items.map(spansToHtmlText),
-            })
-        )
-        .with(
             { type: "numbered-list" },
             (b): RawBlockNumberedList => ({
                 type: b.type,
@@ -325,6 +428,7 @@ export function enrichedBlockToRawBlock(
                         title: insight.title,
                         filename: insight.filename,
                         url: insight.url,
+                        narrativeChartName: insight.narrativeChartName,
                         content: insight.content?.map((content) =>
                             enrichedBlockToRawBlock(content)
                         ),
@@ -346,9 +450,27 @@ export function enrichedBlockToRawBlock(
                 return {
                     type: b.type,
                     value: {
-                        primary: enrichedLinkToRawLink(b.primary),
-                        secondary: enrichedLinkToRawLink(b.secondary),
-                        more: b.more.map(enrichedLinkToRawLink),
+                        heading: b.heading,
+                        "hide-authors": b["hide-authors"].toString(),
+                        primary: b.primary.map((enriched) =>
+                            enrichedLinkToRawLink(enriched)
+                        ),
+                        secondary: b.secondary.map((enriched) =>
+                            enrichedLinkToRawLink(enriched)
+                        ),
+                        more: b.more
+                            ? {
+                                  heading: b.more.heading,
+                                  articles: b.more.articles.map(
+                                      enrichedLinkToRawLink
+                                  ),
+                              }
+                            : undefined,
+                        latest: b.latest
+                            ? {
+                                  heading: b.latest.heading,
+                              }
+                            : undefined,
                         rows: b.rows.map(({ heading, articles }) => ({
                             heading: heading,
                             articles: articles.map(enrichedLinkToRawLink),
@@ -357,5 +479,136 @@ export function enrichedBlockToRawBlock(
                 }
             }
         )
+        .with({ type: "align" }, (b): RawBlockAlign => {
+            return {
+                type: b.type,
+                value: {
+                    alignment: b.alignment as string,
+                    content: b.content.map(enrichedBlockToRawBlock),
+                },
+            }
+        })
+        .with({ type: "entry-summary" }, (b): RawBlockEntrySummary => {
+            return {
+                type: b.type,
+                value: {
+                    items: b.items,
+                },
+            }
+        })
+        .with({ type: "table" }, (b): RawBlockTable => {
+            return {
+                type: b.type,
+                value: {
+                    template: b.template,
+                    rows: b.rows.map((row) => ({
+                        type: row.type,
+                        value: {
+                            cells: row.cells.map((cell) => ({
+                                type: cell.type,
+                                value: cell.content.map(
+                                    enrichedBlockToRawBlock
+                                ),
+                            })),
+                        },
+                    })),
+                },
+            }
+        })
+        .with({ type: "explorer-tiles" }, (b): RawBlockExplorerTiles => {
+            return {
+                type: "explorer-tiles",
+                value: {
+                    title: b.title,
+                    subtitle: b.subtitle,
+                    explorers: b.explorers,
+                },
+            }
+        })
+        .with({ type: "blockquote" }, (b): RawBlockBlockquote => {
+            return {
+                type: "blockquote",
+                value: {
+                    text: b.text.map((enriched) => ({
+                        type: "text",
+                        value: spansToHtmlText(enriched.value),
+                    })),
+                    citation: b.citation,
+                },
+            }
+        })
+        .with({ type: "key-indicator" }, (b): RawBlockKeyIndicator => {
+            return {
+                type: "key-indicator",
+                value: {
+                    datapageUrl: b.datapageUrl,
+                    title: b.title,
+                    text: b.text.map((enriched) => ({
+                        type: "text",
+                        value: spansToHtmlText(enriched.value),
+                    })),
+                    source: b.source,
+                },
+            }
+        })
+        .with(
+            { type: "latest-data-insights" },
+            (_): RawBlockLatestDataInsights => ({
+                type: "latest-data-insights",
+                value: {},
+            })
+        )
+        .with(
+            { type: "key-indicator-collection" },
+            (b): RawBlockKeyIndicatorCollection => {
+                return {
+                    type: "key-indicator-collection",
+                    value: {
+                        indicators: b.blocks.map(enrichedBlockToRawBlock),
+                    },
+                }
+            }
+        )
+        .with({ type: "pill-row" }, (b): RawBlockPillRow => {
+            return {
+                type: "pill-row",
+                value: {
+                    title: b.title,
+                    pills: b.pills,
+                },
+            }
+        })
+        .with({ type: "homepage-search" }, (_): RawBlockHomepageSearch => {
+            return {
+                type: "homepage-search",
+                value: {},
+            }
+        })
+        .with({ type: "homepage-intro" }, (b): RawBlockHomepageIntro => {
+            return {
+                type: "homepage-intro",
+                value: {
+                    ["featured-work"]: b.featuredWork.map(
+                        ({ type, authors, ...value }) => ({
+                            type,
+                            value: {
+                                ...value,
+                                authors: authors?.join(", "),
+                            },
+                        })
+                    ),
+                },
+            }
+        })
+        .with({ type: "socials" }, (b): RawBlockSocials => {
+            return {
+                type: "socials",
+                value: b.links.map(({ url, text, type }) => ({
+                    url,
+                    text,
+                    type,
+                })),
+            }
+        })
         .exhaustive()
 }

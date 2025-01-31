@@ -3,7 +3,6 @@
 import timezoneMock from "timezone-mock"
 import {
     findClosestTime,
-    getStartEndValues,
     formatDay,
     retryPromise,
     rollingMap,
@@ -27,10 +26,15 @@ import {
     slugifySameCase,
     greatestCommonDivisor,
     findGreatestCommonDivisorOfArray,
-    traverseEnrichedBlocks,
+    traverseEnrichedBlock,
+    cartesian,
+    formatInlineList,
 } from "./Util.js"
-import { OwidEnrichedGdocBlock, SortOrder } from "./owidTypes.js"
-import { BlockImageSize } from "./index.js"
+import {
+    BlockImageSize,
+    OwidEnrichedGdocBlock,
+    SortOrder,
+} from "@ourworldindata/types"
 
 describe(findClosestTime, () => {
     describe("without tolerance", () => {
@@ -84,28 +88,6 @@ describe(findClosestTime, () => {
             expect(findClosestTime(years, -99)).toEqual(-100)
             expect(findClosestTime(years, 99)).toEqual(100)
         })
-    })
-})
-
-describe(getStartEndValues, () => {
-    it("handles an empty array", () => {
-        const extent = getStartEndValues([])
-        expect(extent[0]).toEqual(undefined)
-        expect(extent[1]).toEqual(undefined)
-    })
-    it("handles a single element array", () => {
-        const extent = getStartEndValues([{ time: 2016, value: 1 }])
-        expect(extent[0]!.time).toEqual(2016)
-        expect(extent[1]!.time).toEqual(2016)
-    })
-    it("handles a multi-element array", () => {
-        const extent = getStartEndValues([
-            { time: 2016, value: -20 },
-            { time: 2014, value: 5 },
-            { time: 2017, value: 7 },
-        ])
-        expect(extent[0]!.time).toEqual(2014)
-        expect(extent[1]!.time).toEqual(2017)
     })
 })
 
@@ -209,17 +191,23 @@ describe(retryPromise, () => {
 
     it("resolves when promise succeeds first-time", async () => {
         const promiseGetter = resolveAfterNthRetry(0, "success")
-        expect(retryPromise(promiseGetter, 1)).resolves.toEqual("success")
+        return expect(
+            retryPromise(promiseGetter, { maxRetries: 1 })
+        ).resolves.toEqual("success")
     })
 
     it("resolves when promise succeeds before retry limit", async () => {
         const promiseGetter = resolveAfterNthRetry(2, "success")
-        expect(retryPromise(promiseGetter, 3)).resolves.toEqual("success")
+        return expect(
+            retryPromise(promiseGetter, { maxRetries: 3 })
+        ).resolves.toEqual("success")
     })
 
     it("rejects when promise doesn't succeed within retry limit", async () => {
         const promiseGetter = resolveAfterNthRetry(3, "success")
-        expect(retryPromise(promiseGetter, 3)).rejects.toBeUndefined()
+        return expect(
+            retryPromise(promiseGetter, { maxRetries: 3 })
+        ).rejects.toBeUndefined()
     })
 })
 
@@ -524,6 +512,13 @@ describe("slugifySameCase", () => {
     cases.forEach(([input, output]) => {
         expect(slugifySameCase(input)).toBe(output)
     })
+
+    describe("it can allow slashes", () => {
+        expect(slugifySameCase("sdgs/energy", true)).toBe("sdgs/energy")
+        expect(slugifySameCase("sdgs/economic development", true)).toBe(
+            "sdgs/economic-development"
+        )
+    })
 })
 
 describe(greatestCommonDivisor, () => {
@@ -552,7 +547,7 @@ describe(findGreatestCommonDivisorOfArray, () => {
     })
 })
 
-describe(traverseEnrichedBlocks, () => {
+describe(traverseEnrichedBlock, () => {
     const enrichedBlocks: OwidEnrichedGdocBlock[] = [
         {
             type: "prominent-link",
@@ -622,6 +617,7 @@ describe(traverseEnrichedBlocks, () => {
                 {
                     type: "image",
                     filename: "logo.png",
+                    hasOutline: false,
                     size: BlockImageSize.Narrow,
                     parseErrors: [],
                 },
@@ -672,7 +668,7 @@ describe(traverseEnrichedBlocks, () => {
         const seen: string[] = []
 
         enrichedBlocks.forEach((block) => {
-            traverseEnrichedBlocks(block, (block) => {
+            traverseEnrichedBlock(block, (block) => {
                 seen.push(block.type)
             })
         })
@@ -695,7 +691,7 @@ describe(traverseEnrichedBlocks, () => {
         const seen: string[] = []
 
         enrichedBlocks.forEach((block) => {
-            traverseEnrichedBlocks(
+            traverseEnrichedBlock(
                 block,
                 (block) => {
                     seen.push(block.type)
@@ -729,5 +725,73 @@ describe(traverseEnrichedBlocks, () => {
             "span-underline",
             "span-simple-text",
         ])
+    })
+})
+
+describe(cartesian, () => {
+    it("returns an empty list when no arrays are provided", () => {
+        expect(cartesian([])).toEqual([])
+    })
+
+    it("returns individual items if a single array is given", () => {
+        expect(cartesian([["a", "b"]])).toEqual([["a"], ["b"]])
+    })
+
+    it("returns all possible combinations if multiple arrays are given", () => {
+        expect(cartesian([["a", "b"], ["x"]])).toEqual([
+            ["a", "x"],
+            ["b", "x"],
+        ])
+        expect(
+            cartesian([
+                ["a", "b"],
+                ["x", "y"],
+            ])
+        ).toEqual([
+            ["a", "x"],
+            ["a", "y"],
+            ["b", "x"],
+            ["b", "y"],
+        ])
+        expect(
+            cartesian([
+                ["a", "b"],
+                ["x", "y"],
+                ["+", "-"],
+            ])
+        ).toEqual([
+            ["a", "x", "+"],
+            ["a", "x", "-"],
+            ["a", "y", "+"],
+            ["a", "y", "-"],
+            ["b", "x", "+"],
+            ["b", "x", "-"],
+            ["b", "y", "+"],
+            ["b", "y", "-"],
+        ])
+    })
+})
+
+describe(formatInlineList, () => {
+    it("returns an empty string when no items are given", () => {
+        expect(formatInlineList([])).toEqual("")
+    })
+
+    it("returns a single item as a string", () => {
+        expect(formatInlineList(["a"])).toEqual("a")
+    })
+
+    it("formats two items correctly", () => {
+        expect(formatInlineList(["a", "b"])).toEqual("a and b")
+    })
+
+    it("formats three items correctly using 'and'", () => {
+        expect(formatInlineList(["a", "b", "c"])).toEqual("a, b and c")
+    })
+
+    it("formats four items correctly using 'or'", () => {
+        expect(formatInlineList(["a", "b", "c", "d"], "or")).toEqual(
+            "a, b, c or d"
+        )
     })
 })

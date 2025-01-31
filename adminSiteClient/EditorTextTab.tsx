@@ -1,22 +1,15 @@
 import { faMinus, faPlus } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import {
-    getErrorMessageRelatedQuestionUrl,
-    Grapher,
-    LogoOption,
-    RelatedQuestionsConfig,
-    Topic,
-} from "@ourworldindata/grapher"
-import { getIndexableKeys, slugify } from "@ourworldindata/utils"
-import { action, computed, runInAction } from "mobx"
+import { LogoOption, RelatedQuestionsConfig } from "@ourworldindata/types"
+import { getErrorMessageRelatedQuestionUrl } from "@ourworldindata/grapher"
+import { slugify } from "@ourworldindata/utils"
+import { action, computed } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
-import Select from "react-select"
-import { TOPICS_CONTENT_GRAPH } from "../settings/clientSettings.js"
-import { ChartEditor } from "./ChartEditor.js"
+import { Component } from "react"
+import { isChartEditorInstance } from "./ChartEditor.js"
 import {
     AutoTextField,
-    BindAutoString,
+    BindAutoStringExt,
     BindString,
     Button,
     RadioGroup,
@@ -24,9 +17,14 @@ import {
     TextField,
     Toggle,
 } from "./Forms.js"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
+import { ErrorMessages } from "./ChartEditorTypes.js"
+import { isChartViewEditorInstance } from "./ChartViewEditor.js"
 
 @observer
-export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
+export class EditorTextTab<
+    Editor extends AbstractChartEditor,
+> extends Component<{ editor: Editor; errorMessages: ErrorMessages }> {
     @action.bound onSlug(slug: string) {
         this.props.editor.grapher.slug = slugify(slug)
     }
@@ -42,6 +40,7 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
 
     @action.bound onAddRelatedQuestion() {
         const { grapher } = this.props.editor
+        if (!grapher.relatedQuestions) grapher.relatedQuestions = []
         grapher.relatedQuestions.push({
             text: "",
             url: "",
@@ -50,6 +49,7 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
 
     @action.bound onRemoveRelatedQuestion(idx: number) {
         const { grapher } = this.props.editor
+        if (!grapher.relatedQuestions) grapher.relatedQuestions = []
         grapher.relatedQuestions.splice(idx, 1)
     }
 
@@ -72,54 +72,68 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
     }
 
     @computed get errorMessages() {
-        const { invalidDetailReferences } = this.props.editor.manager
-        const keys = getIndexableKeys(invalidDetailReferences)
-
-        const errorMessages: Partial<Record<(typeof keys)[number], string>> = {}
-
-        keys.forEach((key) => {
-            const references = invalidDetailReferences[key]
-            if (references.length) {
-                errorMessages[
-                    key
-                ] = `Invalid detail(s) specified: ${references.join(", ")}`
-            }
-        })
-        return errorMessages
+        return this.props.errorMessages
     }
 
-    @computed get showChangeInPrefixToggle() {
-        const { grapher } = this.props.editor
+    @computed get showChartSlug() {
+        return !isChartViewEditorInstance(this.props.editor)
+    }
+
+    @computed get showAnyAnnotationFieldInTitleToggle() {
+        const { features } = this.props.editor
         return (
-            grapher.isLineChart &&
-            (grapher.isRelativeMode || grapher.canToggleRelativeMode)
+            features.showEntityAnnotationInTitleToggle ||
+            features.showTimeAnnotationInTitleToggle ||
+            features.showChangeInPrefixToggle
         )
     }
 
     render() {
-        const { grapher, references } = this.props.editor
-        const { relatedQuestions } = grapher
+        const { editor } = this.props
+        const { grapher, features } = editor
+        const { relatedQuestions = [] } = grapher
 
         return (
             <div className="EditorTextTab">
                 <Section name="Header">
-                    <BindAutoString
-                        field="title"
+                    <BindAutoStringExt
+                        label="Title"
+                        readFn={(grapher) => grapher.displayTitle}
+                        writeFn={(grapher, newVal) => (grapher.title = newVal)}
+                        auto={
+                            editor.couldPropertyBeInherited("title")
+                                ? editor.activeParentConfig!.title
+                                : undefined
+                        }
+                        isAuto={
+                            editor.isPropertyInherited("title") ||
+                            grapher.title === undefined
+                        }
                         store={grapher}
-                        auto={grapher.displayTitle}
                         softCharacterLimit={100}
                     />
-                    <Toggle
-                        label="Hide automatic entity (where possible)"
-                        value={!!grapher.hideAnnotationFieldsInTitle?.entity}
-                        onValue={this.onToggleTitleAnnotationEntity}
-                    />
-                    <Toggle
-                        label="Hide automatic time (where possible)"
-                        value={!!grapher.hideAnnotationFieldsInTitle?.time}
-                        onValue={this.onToggleTitleAnnotationTime}
-                    />
-                    {this.showChangeInPrefixToggle && (
+                    {features.showEntityAnnotationInTitleToggle && (
+                        <Toggle
+                            label="Hide automatic entity"
+                            value={
+                                !!grapher.hideAnnotationFieldsInTitle?.entity
+                            }
+                            onValue={this.onToggleTitleAnnotationEntity}
+                        />
+                    )}
+                    {features.showTimeAnnotationInTitleToggle && (
+                        <Toggle
+                            label="Hide automatic time"
+                            secondaryLabel={
+                                "Grapher makes sure to include the current time in the title if " +
+                                "omitting it would lead to SVG exports with no reference " +
+                                "to the time. In such cases, your preference is ignored."
+                            }
+                            value={!!grapher.hideAnnotationFieldsInTitle?.time}
+                            onValue={this.onToggleTitleAnnotationTime}
+                        />
+                    )}
+                    {features.showChangeInPrefixToggle && (
                         <Toggle
                             label="Don't prepend 'Change in' in relative line charts"
                             value={
@@ -129,22 +143,37 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                             onValue={this.onToggleTitleAnnotationChangeInPrefix}
                         />
                     )}
-                    <hr />
-                    <AutoTextField
-                        label="/grapher"
-                        value={grapher.displaySlug}
-                        onValue={this.onSlug}
-                        isAuto={grapher.slug === undefined}
-                        onToggleAuto={() =>
-                            (grapher.slug =
-                                grapher.slug === undefined
-                                    ? grapher.displaySlug
-                                    : undefined)
+                    {this.showAnyAnnotationFieldInTitleToggle && <hr />}
+                    {this.showChartSlug && (
+                        <AutoTextField
+                            label="/grapher"
+                            value={grapher.displaySlug}
+                            onValue={this.onSlug}
+                            isAuto={grapher.slug === undefined}
+                            onToggleAuto={() =>
+                                (grapher.slug =
+                                    grapher.slug === undefined
+                                        ? grapher.displaySlug
+                                        : undefined)
+                            }
+                            helpText="Human-friendly URL for this chart"
+                        />
+                    )}
+                    <BindAutoStringExt
+                        label="Subtitle"
+                        readFn={(grapher) => grapher.currentSubtitle}
+                        writeFn={(grapher, newVal) =>
+                            (grapher.subtitle = newVal)
                         }
-                        helpText="Human-friendly URL for this chart"
-                    />
-                    <BindString
-                        field="subtitle"
+                        auto={
+                            editor.couldPropertyBeInherited("subtitle")
+                                ? editor.activeParentConfig!.subtitle
+                                : undefined
+                        }
+                        isAuto={
+                            editor.isPropertyInherited("subtitle") ||
+                            grapher.subtitle === undefined
+                        }
                         store={grapher}
                         placeholder="Briefly describe the context of the data. It's best to avoid duplicating any information which can be easily inferred from other visual elements of the chart."
                         textarea
@@ -166,11 +195,22 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                     />
                 </Section>
                 <Section name="Footer">
-                    <BindAutoString
+                    <BindAutoStringExt
                         label="Source"
-                        field="sourceDesc"
+                        readFn={(grapher) => grapher.sourcesLine}
+                        writeFn={(grapher, newVal) =>
+                            (grapher.sourceDesc = newVal)
+                        }
+                        auto={
+                            editor.couldPropertyBeInherited("sourceDesc")
+                                ? editor.activeParentConfig!.sourceDesc
+                                : undefined
+                        }
+                        isAuto={
+                            editor.isPropertyInherited("sourceDesc") ||
+                            grapher.sourceDesc === undefined
+                        }
                         store={grapher}
-                        auto={grapher.sourcesLine}
                         helpText="Short comma-separated list of source names"
                         softCharacterLimit={60}
                     />
@@ -181,15 +221,17 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                         placeholder={grapher.originUrlWithProtocol}
                         helpText="The page containing this chart where more context can be found"
                     />
-                    {references &&
-                        (references.postsWordpress.length > 0 ||
-                            references.postsGdocs.length > 0) && (
+                    {isChartEditorInstance(editor) &&
+                        editor.references &&
+                        (editor.references.postsWordpress?.length ||
+                            editor.references.postsGdocs?.length) && (
                             <div className="originSuggestions">
                                 <p>Origin url suggestions</p>
                                 <ul>
                                     {[
-                                        ...references.postsWordpress,
-                                        ...references.postsGdocs,
+                                        ...(editor.references.postsWordpress ??
+                                            []),
+                                        ...(editor.references.postsGdocs ?? []),
                                     ].map((post) => (
                                         <li key={post.id}>{post.url}</li>
                                     ))}
@@ -197,9 +239,16 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                             </div>
                         )}
 
-                    <BindString
+                    <BindAutoStringExt
                         label="Footer note"
-                        field="note"
+                        readFn={(grapher) => grapher.note ?? ""}
+                        writeFn={(grapher, newVal) => (grapher.note = newVal)}
+                        auto={
+                            editor.couldPropertyBeInherited("note")
+                                ? editor.activeParentConfig?.note
+                                : undefined
+                        }
+                        isAuto={editor.isPropertyInherited("note")}
                         store={grapher}
                         helpText="Any important clarification needed to avoid miscommunication"
                         softCharacterLimit={140}
@@ -207,11 +256,6 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                         textarea
                     />
                 </Section>
-
-                <TopicsSection
-                    allTopics={this.props.editor.allTopics}
-                    grapher={grapher}
-                />
 
                 <Section name="Related">
                     {relatedQuestions.map(
@@ -276,39 +320,6 @@ export class EditorTextTab extends React.Component<{ editor: ChartEditor }> {
                     />
                 </Section>
             </div>
-        )
-    }
-}
-@observer
-class TopicsSection extends React.Component<{
-    allTopics: Topic[]
-    grapher: Grapher
-}> {
-    render() {
-        const { grapher } = this.props
-
-        return (
-            <Section name="Topics">
-                <Select
-                    isDisabled={!TOPICS_CONTENT_GRAPH}
-                    options={this.props.allTopics}
-                    getOptionValue={(topic) => topic.id.toString()}
-                    getOptionLabel={(topic) => topic.name}
-                    isMulti={true}
-                    value={grapher.topicIds.map((topicId) => ({
-                        id: topicId,
-                        name:
-                            this.props.allTopics.find((t) => t.id === topicId)
-                                ?.name || "TOPIC NOT FOUND",
-                    }))}
-                    onChange={(topics) =>
-                        runInAction(() => {
-                            grapher.topicIds = topics.map((topic) => topic.id)
-                        })
-                    }
-                    menuPlacement="auto"
-                />
-            </Section>
         )
     }
 }

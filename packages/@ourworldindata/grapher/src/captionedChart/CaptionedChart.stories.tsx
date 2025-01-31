@@ -1,12 +1,12 @@
 import { SynthesizeGDPTable } from "@ourworldindata/core-table"
 import {
-    ChartTypeName,
+    GRAPHER_CHART_TYPES,
     FacetStrategy,
-    GrapherTabOption,
+    GRAPHER_TAB_OPTIONS,
     SeriesStrategy,
-} from "../core/GrapherConstants"
+} from "@ourworldindata/types"
 import { DEFAULT_BOUNDS } from "@ourworldindata/utils"
-import React from "react"
+import * as React from "react"
 import {
     CaptionedChart,
     CaptionedChartManager,
@@ -21,7 +21,7 @@ export default {
 const table = SynthesizeGDPTable({ entityCount: 5 })
 
 const manager: CaptionedChartManager = {
-    tabBounds: DEFAULT_BOUNDS,
+    captionedChartBounds: DEFAULT_BOUNDS,
     table,
     selection: table.availableEntityNames,
     currentTitle: "This is the Title",
@@ -32,36 +32,38 @@ const manager: CaptionedChartManager = {
     detailRenderers: [],
 }
 
-export const LineChart = (): JSX.Element => <CaptionedChart manager={manager} />
+export const LineChart = (): React.ReactElement => (
+    <CaptionedChart manager={manager} />
+)
 
-export const StaticLineChartForExport = (): JSX.Element => {
+export const StaticLineChartForExport = (): React.ReactElement => {
     return (
         <StaticCaptionedChart
             manager={{
                 ...manager,
-                isExportingtoSvgOrPng: true,
+                isExportingToSvgOrPng: true,
             }}
         />
     )
 }
 
-export const MapChart = (): JSX.Element => (
-    <CaptionedChart manager={{ ...manager, tab: GrapherTabOption.map }} />
+export const MapChart = (): React.ReactElement => (
+    <CaptionedChart manager={{ ...manager, tab: GRAPHER_TAB_OPTIONS.map }} />
 )
-export const StackedArea = (): JSX.Element => (
+export const StackedArea = (): React.ReactElement => (
     <CaptionedChart
         manager={{
             ...manager,
-            type: ChartTypeName.StackedArea,
+            type: GRAPHER_CHART_TYPES.StackedArea,
             seriesStrategy: SeriesStrategy.entity,
         }}
     />
 )
-export const Scatter = (): JSX.Element => (
+export const Scatter = (): React.ReactElement => (
     <CaptionedChart
         manager={{
             ...manager,
-            type: ChartTypeName.ScatterPlot,
+            type: GRAPHER_CHART_TYPES.ScatterPlot,
             table: table.filterByTargetTimes([1999], 0),
         }}
     />

@@ -1,12 +1,6 @@
 import { ScaleLinear } from "d3-scale"
-import {
-    CoreColumn,
-    Color,
-    Time,
-    EntityId,
-    EntityName,
-    OwidTable,
-} from "@ourworldindata/core-table"
+import { Quadtree } from "d3-quadtree"
+import { OwidTable } from "@ourworldindata/core-table"
 import { DualAxis } from "../axis/Axis"
 import { ChartManager } from "../chart/ChartManager"
 import { NoDataModalManager } from "../noDataModal/NoDataModal"
@@ -15,6 +9,16 @@ import {
     ScatterPointLabelStrategy,
     EntitySelectionMode,
     SeriesName,
+    Color,
+    Time,
+    EntityId,
+    EntityName,
+} from "@ourworldindata/types"
+import {
+    GRAPHER_FONT_SCALE_10,
+    GRAPHER_FONT_SCALE_10_5,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_FONT_SCALE_13,
 } from "../core/GrapherConstants"
 
 import { Bounds, PointVector } from "@ourworldindata/utils"
@@ -28,22 +32,14 @@ export interface ScatterPlotManager extends ChartManager {
     tableAfterAuthorTimelineAndActiveChartTransform?: OwidTable
     includedEntities?: EntityId[]
     excludedEntities?: EntityId[]
-    backgroundSeriesLimit?: number
-    hideLinesOutsideTolerance?: boolean
     startTime?: Time
     endTime?: Time
     hasTimeline?: boolean
     hideScatterLabels?: boolean
-}
-
-export interface ScatterTooltipProps {
-    yColumn: CoreColumn
-    xColumn: CoreColumn
-    series: ScatterSeries
-    maxWidth: number
-    fontSize: number
-    x: number
-    y: number
+    isModalOpen?: boolean
+    isSingleTimeScatterAnimationActive?: boolean
+    animationStartTime?: number
+    animationEndTime?: number
 }
 
 export interface ScatterSeries extends ChartSeries {
@@ -86,10 +82,12 @@ export const SCATTER_POINT_DEFAULT_RADIUS: number = 3
 export const SCATTER_LINE_MIN_WIDTH: number = 0.5 // only enforced in rendered lines, not in scale
 export const SCATTER_LINE_MAX_WIDTH: number = 2
 export const SCATTER_LINE_DEFAULT_WIDTH: number = 1
-export const SCATTER_LABEL_MIN_FONT_SIZE: number = 10
-export const SCATTER_LABEL_MAX_FONT_SIZE: number = 13
-export const SCATTER_LABEL_DEFAULT_FONT_SIZE: number = 10.5
-export const SCATTER_LABEL_FONT_SIZE_WHEN_HIDDEN_LINES: number = 12
+export const SCATTER_LABEL_MIN_FONT_SIZE_FACTOR: number = GRAPHER_FONT_SCALE_10
+export const SCATTER_LABEL_MAX_FONT_SIZE_FACTOR: number = GRAPHER_FONT_SCALE_13
+export const SCATTER_LABEL_DEFAULT_FONT_SIZE_FACTOR: number =
+    GRAPHER_FONT_SCALE_10_5
+export const SCATTER_LABEL_FONT_SIZE_FACTOR_WHEN_HIDDEN_LINES: number =
+    GRAPHER_FONT_SCALE_12
 
 export interface ScatterRenderSeries extends ChartSeries {
     displayKey: string
@@ -98,6 +96,7 @@ export interface ScatterRenderSeries extends ChartSeries {
     points: ScatterRenderPoint[]
     text: string
     isHover?: boolean
+    isTooltip?: boolean
     isFocus?: boolean
     isForeground?: boolean
     offsetVector: PointVector
@@ -124,11 +123,13 @@ export interface ScatterPointsWithLabelsProps {
     seriesArray: ScatterSeries[]
     hoveredSeriesNames: SeriesName[]
     focusedSeriesNames: SeriesName[]
+    tooltipSeriesName?: SeriesName
     dualAxis: DualAxis
     colorScale?: ColorScale
     sizeScale: ScaleLinear<number, number>
     fontScale: ScaleLinear<number, number>
-    onMouseOver: (series: ScatterSeries) => void
+    baseFontSize: number
+    onMouseEnter: (series: ScatterSeries) => void
     onMouseLeave: () => void
     onClick: () => void
     isConnected: boolean
@@ -136,4 +137,15 @@ export interface ScatterPointsWithLabelsProps {
     noDataModalManager: NoDataModalManager
     disableIntroAnimation?: boolean
     hideScatterLabels?: boolean
+    quadtree: Quadtree<ScatterPointQuadtreeNode>
+    backgroundColor?: Color
+}
+
+export const SCATTER_QUADTREE_SAMPLING_DISTANCE = 10
+export const SCATTER_POINT_HOVER_TARGET_RANGE = 20
+
+export interface ScatterPointQuadtreeNode {
+    series: ScatterSeries
+    x: number
+    y: number
 }

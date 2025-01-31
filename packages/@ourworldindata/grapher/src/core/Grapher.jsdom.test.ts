@@ -1,17 +1,16 @@
 #! /usr/bin/env jest
 import { Grapher, GrapherProgrammaticInterface } from "../core/Grapher"
 import {
-    ChartTypeName,
+    GRAPHER_CHART_TYPES,
     EntitySelectionMode,
-    GrapherTabOption,
+    GRAPHER_TAB_OPTIONS,
     ScaleType,
-} from "./GrapherConstants"
-import {
     GrapherInterface,
     GrapherQueryParams,
     LegacyGrapherInterface,
     LegacyGrapherQueryParams,
-} from "../core/GrapherInterface"
+    GRAPHER_TAB_NAMES,
+} from "@ourworldindata/types"
 import {
     TimeBoundValue,
     TimeBound,
@@ -19,13 +18,13 @@ import {
     isSubsetOf,
     orderBy,
     queryParamsToStr,
+    ColumnTypeNames,
     Url,
     DimensionProperty,
 } from "@ourworldindata/utils"
 import {
     SampleColumnSlugs,
     SynthesizeGDPTable,
-    ColumnTypeNames,
     OwidTable,
 } from "@ourworldindata/core-table"
 import { legacyToCurrentGrapherQueryParams } from "./GrapherUrlMigrations"
@@ -36,6 +35,7 @@ import {
     OwidDistinctColorScheme,
     OwidDistinctLinesColorScheme,
 } from "../color/CustomSchemes"
+import { latestGrapherConfigSchema } from "./GrapherConstants.js"
 
 const TestGrapherConfig = (): {
     table: OwidTable
@@ -63,7 +63,8 @@ const TestGrapherConfig = (): {
 it("regression fix: container options are not serialized", () => {
     const grapher = new Grapher({ xAxis: { min: 1 } })
     const obj = grapher.toObject().xAxis!
-    expect(obj.max).toBe(undefined)
+    expect(obj.min).toBe(1)
+    expect(obj.scaleType).toBe(undefined)
     expect((obj as any).containerOptions).toBe(undefined) // Regression test: should never be a containerOptions
 })
 
@@ -71,21 +72,30 @@ it("can get dimension slots", () => {
     const grapher = new Grapher()
     expect(grapher.dimensionSlots.length).toBe(2)
 
-    grapher.type = ChartTypeName.ScatterPlot
+    grapher.chartTypes = [GRAPHER_CHART_TYPES.ScatterPlot]
     expect(grapher.dimensionSlots.length).toBe(4)
 })
 
-it("an empty Grapher serializes to an empty object", () => {
-    expect(new Grapher().toObject()).toEqual({})
+it("an empty Grapher serializes to an object that includes only the schema", () => {
+    expect(new Grapher().toObject()).toEqual({
+        $schema: latestGrapherConfigSchema,
+    })
 })
 
 it("a bad chart type does not crash grapher", () => {
-    const input = { type: "fff" as any }
-    expect(new Grapher(input).toObject()).toEqual(input)
+    const input = {
+        chartTypes: ["fff" as any],
+    }
+    expect(new Grapher(input).toObject()).toEqual({
+        ...input,
+        $schema: latestGrapherConfigSchema,
+    })
 })
 
-it("does not preserve defaults in the object", () => {
-    expect(new Grapher({ tab: GrapherTabOption.chart }).toObject()).toEqual({})
+it("does not preserve defaults in the object (except for the schema)", () => {
+    expect(new Grapher({ tab: GRAPHER_TAB_OPTIONS.chart }).toObject()).toEqual({
+        $schema: latestGrapherConfigSchema,
+    })
 })
 
 const unit = "% of children under 5"
@@ -193,40 +203,27 @@ it("can generate a url with country selection even if there is no entity code", 
 describe("hasTimeline", () => {
     it("charts with timeline", () => {
         const grapher = new Grapher(legacyConfig)
-        grapher.type = ChartTypeName.LineChart
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.LineChart]
         expect(grapher.hasTimeline).toBeTruthy()
-        grapher.type = ChartTypeName.SlopeChart
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.SlopeChart]
         expect(grapher.hasTimeline).toBeTruthy()
-        grapher.type = ChartTypeName.StackedArea
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.StackedArea]
         expect(grapher.hasTimeline).toBeTruthy()
-        grapher.type = ChartTypeName.StackedBar
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.StackedBar]
         expect(grapher.hasTimeline).toBeTruthy()
-        grapher.type = ChartTypeName.DiscreteBar
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.DiscreteBar]
         expect(grapher.hasTimeline).toBeTruthy()
     })
 
     it("map tab has timeline even if chart doesn't", () => {
         const grapher = new Grapher(legacyConfig)
         grapher.hideTimeline = true
-        grapher.type = ChartTypeName.LineChart
+        grapher.chartTypes = [GRAPHER_CHART_TYPES.LineChart]
         expect(grapher.hasTimeline).toBeFalsy()
-        grapher.tab = GrapherTabOption.map
+        grapher.tab = GRAPHER_TAB_OPTIONS.map
         expect(grapher.hasTimeline).toBeTruthy()
         grapher.map.hideTimeline = true
         expect(grapher.hasTimeline).toBeFalsy()
-    })
-
-    it("source and download tabs do not show a timeline", () => {
-        const grapher = new Grapher(legacyConfig)
-        grapher.type = ChartTypeName.LineChart
-
-        grapher.currentTab = GrapherTabOption.sources
-        expect(grapher.hasTimeline).toBeTruthy()
-        expect(grapher.showTimeline).toBeFalsy()
-
-        grapher.currentTab = GrapherTabOption.download
-        expect(grapher.hasTimeline).toBeTruthy()
-        expect(grapher.showTimeline).toBeFalsy()
     })
 })
 
@@ -374,7 +371,7 @@ describe("authors can use maxTime", () => {
         const table = SynthesizeGDPTable({ timeRange: [2000, 2010] })
         const grapher = new Grapher({
             table,
-            type: ChartTypeName.DiscreteBar,
+            chartTypes: [GRAPHER_CHART_TYPES.DiscreteBar],
             selectedEntityNames: table.availableEntityNames,
             maxTime: 2005,
             ySlugs: "GDP",
@@ -390,7 +387,7 @@ describe("line chart to bar chart and bar chart race", () => {
     it("can create a new line chart with different start and end times", () => {
         expect(
             grapher.typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart
-        ).toEqual(ChartTypeName.LineChart)
+        ).toEqual(GRAPHER_CHART_TYPES.LineChart)
         expect(grapher.endHandleTimeBound).toBeGreaterThan(
             grapher.startHandleTimeBound
         )
@@ -402,13 +399,13 @@ describe("line chart to bar chart and bar chart race", () => {
 
         expect(
             grapher.typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart
-        ).toEqual(ChartTypeName.LineChart)
+        ).toEqual(GRAPHER_CHART_TYPES.LineChart)
 
         grapher.startHandleTimeBound = 2000
         grapher.endHandleTimeBound = 2000
         expect(
             grapher.typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart
-        ).toEqual(ChartTypeName.DiscreteBar)
+        ).toEqual(GRAPHER_CHART_TYPES.DiscreteBar)
 
         it("still has a timeline even though its now a bar chart", () => {
             expect(grapher.hasTimeline).toBe(true)
@@ -438,13 +435,13 @@ describe("line chart to bar chart and bar chart race", () => {
     it("turns into a line chart race when playing a line chart that currently shows as a bar chart", () => {
         grapher.startHandleTimeBound = -Infinity
         grapher.endHandleTimeBound = -Infinity
-        grapher.timelineController.play(1)
+        void grapher.timelineController.play(1)
         expect(grapher.startHandleTimeBound).not.toEqual(
             grapher.endHandleTimeBound
         )
         expect(
             grapher.typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart
-        ).toEqual(ChartTypeName.LineChart)
+        ).toEqual(GRAPHER_CHART_TYPES.LineChart)
     })
 
     it("turns into a bar chart when constrained start & end handles are equal", () => {
@@ -452,7 +449,7 @@ describe("line chart to bar chart and bar chart race", () => {
         grapher.endHandleTimeBound = Infinity
         expect(
             grapher.typeExceptWhenLineChartAndSingleTimeThenWillBeBarChart
-        ).toEqual(ChartTypeName.DiscreteBar)
+        ).toEqual(GRAPHER_CHART_TYPES.DiscreteBar)
     })
 })
 
@@ -470,6 +467,16 @@ describe("urls", () => {
         const grapher = new Grapher(legacyConfig)
         grapher.isPublished = true
         expect(grapher.canonicalUrl?.includes("country")).toBeFalsy()
+    })
+
+    it("includes the tab param in embed url even if it's the default value", () => {
+        const grapher = new Grapher({
+            isPublished: true,
+            slug: "foo",
+            bakedGrapherURL: "/grapher",
+            tab: GRAPHER_TAB_OPTIONS.map,
+        })
+        expect(grapher.embedUrl).toEqual("/grapher/foo?tab=map")
     })
 
     it("can upgrade legacy urls", () => {
@@ -493,6 +500,84 @@ describe("urls", () => {
         ])
         grapher.populateFromQueryParams(url.queryParams)
         expect(grapher.selection.selectedEntityNames).toEqual(["usa", "canada"])
+    })
+
+    it("parses tab=table correctly", () => {
+        const grapher = new Grapher()
+        grapher.populateFromQueryParams({ tab: "table" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.Table)
+    })
+
+    it("parses tab=map correctly", () => {
+        const grapher = new Grapher()
+        grapher.populateFromQueryParams({ tab: "map" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.WorldMap)
+    })
+
+    it("parses tab=chart correctly", () => {
+        const grapher = new Grapher({
+            chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        })
+        grapher.populateFromQueryParams({ tab: "chart" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.ScatterPlot)
+    })
+
+    it("parses tab=line and tab=slope correctly", () => {
+        const grapher = new Grapher({
+            chartTypes: [
+                GRAPHER_CHART_TYPES.LineChart,
+                GRAPHER_CHART_TYPES.SlopeChart,
+            ],
+        })
+        grapher.populateFromQueryParams({ tab: "line" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.LineChart)
+        grapher.populateFromQueryParams({ tab: "slope" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.SlopeChart)
+    })
+
+    it("switches to the first chart tab if the given chart isn't available", () => {
+        const grapher = new Grapher({
+            chartTypes: [
+                GRAPHER_CHART_TYPES.LineChart,
+                GRAPHER_CHART_TYPES.SlopeChart,
+            ],
+        })
+        grapher.populateFromQueryParams({ tab: "bar" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.LineChart)
+    })
+
+    it("switches to the map tab if no chart is available", () => {
+        const grapher = new Grapher({ chartTypes: [], hasMapTab: true })
+        grapher.populateFromQueryParams({ tab: "line" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.WorldMap)
+    })
+
+    it("switches to the table tab if it's the only tab available", () => {
+        const grapher = new Grapher({ chartTypes: [] })
+        grapher.populateFromQueryParams({ tab: "line" })
+        expect(grapher.activeTab).toEqual(GRAPHER_TAB_NAMES.Table)
+    })
+
+    it("adds tab=chart to the URL if there is a single chart tab", () => {
+        const grapher = new Grapher({
+            hasMapTab: true,
+            tab: GRAPHER_TAB_OPTIONS.map,
+        })
+        grapher.setTab(GRAPHER_TAB_NAMES.LineChart)
+        expect(grapher.changedParams.tab).toEqual("chart")
+    })
+
+    it("adds the chart type name as tab query param if there are multiple chart tabs", () => {
+        const grapher = new Grapher({
+            chartTypes: [
+                GRAPHER_CHART_TYPES.LineChart,
+                GRAPHER_CHART_TYPES.SlopeChart,
+            ],
+            hasMapTab: true,
+            tab: GRAPHER_TAB_OPTIONS.map,
+        })
+        grapher.setTab(GRAPHER_TAB_NAMES.LineChart)
+        expect(grapher.changedParams.tab).toEqual("line")
     })
 })
 
@@ -819,7 +904,7 @@ describe("year parameter (applies to map only)", () => {
             })
             it(`encode ${test.name}`, () => {
                 const params = toQueryParams({
-                    tab: GrapherTabOption.map,
+                    tab: GRAPHER_TAB_OPTIONS.map,
                     map: { time: test.param },
                 })
                 expect(params.time).toEqual(test.query)
@@ -885,7 +970,7 @@ describe("year parameter (applies to map only)", () => {
                 it(`encode ${test.name}`, () => {
                     const grapher = getGrapher()
                     grapher.updateFromObject({
-                        tab: GrapherTabOption.map,
+                        tab: GRAPHER_TAB_OPTIONS.map,
                         map: { time: test.param },
                     })
                     const params = grapher.changedParams
@@ -896,14 +981,6 @@ describe("year parameter (applies to map only)", () => {
     })
 })
 
-// TODO migrate the database property
-it("migrates map.targetYear correctly", () => {
-    const grapher = new Grapher({
-        map: { targetYear: 2005 } as any,
-    })
-    expect(grapher.map.time).toEqual(2005)
-})
-
 it("correctly identifies activeColumnSlugs", () => {
     const table =
         new OwidTable(`entityName,entityId,entityColor,year,gdp,gdp-annotations,child_mortality,population,continent,happiness
@@ -911,7 +988,7 @@ it("correctly identifies activeColumnSlugs", () => {
     `)
     const grapher = new Grapher({
         table,
-        type: ChartTypeName.ScatterPlot,
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
         xSlug: "gdp",
         ySlugs: "child_mortality",
         colorSlug: "continent",
@@ -948,9 +1025,9 @@ it("considers map tolerance before using column tolerance", () => {
 
     const grapher = new Grapher({
         table,
-        type: ChartTypeName.WorldMap,
         ySlugs: "gdp",
-        tab: GrapherTabOption.map,
+        tab: GRAPHER_TAB_OPTIONS.map,
+        hasMapTab: true,
         map: new MapConfig({ timeTolerance: 1, columnSlug: "gdp", time: 2002 }),
     })
 
@@ -1009,7 +1086,7 @@ describe("tableForSelection", () => {
 
         const grapher = new Grapher({
             table,
-            type: ChartTypeName.ScatterPlot,
+            chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
             excludedEntities: [3],
             xSlug: "x",
             ySlugs: "y",
@@ -1045,7 +1122,7 @@ it("handles tolerance when there are gaps in ScatterPlot data", () => {
 
     const grapher = new Grapher({
         table,
-        type: ChartTypeName.ScatterPlot,
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
         xSlug: "x",
         ySlugs: "y",
         minTime: 1999,

@@ -1,5 +1,5 @@
 import {
-    OwidGdocContent,
+    OwidGdocPostContent,
     EnrichedBlockText,
     EnrichedBlockSimpleText,
 } from "@ourworldindata/utils"
@@ -11,12 +11,12 @@ import {
 import { GDOCS_BACKPORTING_TARGET_FOLDER } from "../../../settings/serverSettings.js"
 import { enrichedBlockToRawBlock } from "./enrichedToRaw.js"
 import { google, docs_v1, drive_v3 } from "googleapis"
-import { Gdoc } from "./Gdoc.js"
+import { OwidGoogleAuth } from "../../OwidGoogleAuth.js"
 import cheerio from "cheerio"
 
 function* yieldMultiBlockPropertyIfDefined(
-    property: keyof OwidGdocContent,
-    article: OwidGdocContent,
+    property: keyof OwidGdocPostContent,
+    article: OwidGdocPostContent,
     target: (EnrichedBlockText | EnrichedBlockSimpleText)[] | undefined
 ): Generator<string, void, undefined> {
     if (property in article && target) {
@@ -32,7 +32,7 @@ function* yieldMultiBlockPropertyIfDefined(
 }
 
 function* owidArticleToArchieMLStringGenerator(
-    article: OwidGdocContent
+    article: OwidGdocPostContent
 ): Generator<string, void, undefined> {
     yield* propertyToArchieMLString("title", article)
     yield* propertyToArchieMLString("subtitle", article)
@@ -41,9 +41,18 @@ function* owidArticleToArchieMLStringGenerator(
     yield* propertyToArchieMLString("dateline", article)
     yield* propertyToArchieMLString("excerpt", article)
     yield* propertyToArchieMLString("type", article)
+    if (article["sticky-nav"]) {
+        yield "[.sticky-nav]"
+        for (const item of article["sticky-nav"]) {
+            yield* propertyToArchieMLString("target", item)
+            yield* propertyToArchieMLString("text", item)
+        }
+        yield "[]"
+    }
+    yield* propertyToArchieMLString("sidebar-toc", article)
     // TODO: inline refs
     yieldMultiBlockPropertyIfDefined("summary", article, article.summary)
-    yieldMultiBlockPropertyIfDefined("citation", article, article.summary)
+    yield* propertyToArchieMLString("hide-citation", article)
     yield* propertyToArchieMLString("cover-image", article)
     yield* propertyToArchieMLString("cover-color", article)
     yield* propertyToArchieMLString("featured-image", article)
@@ -163,7 +172,7 @@ function* lineToBatchUpdates(line: Line): Generator<docs_v1.Schema$Request> {
 }
 
 function articleToBatchUpdates(
-    content: OwidGdocContent
+    content: OwidGdocPostContent
 ): docs_v1.Schema$Request[] {
     const archieMlLines = [...owidArticleToArchieMLStringGenerator(content)]
 
@@ -263,8 +272,8 @@ async function createGdoc(
     return createResp.data.id!
 }
 
-export async function createGdocAndInsertOwidGdocContent(
-    content: OwidGdocContent,
+export async function createGdocAndInsertOwidGdocPostContent(
+    content: OwidGdocPostContent,
     existingGdocId: string | null
 ): Promise<string> {
     const batchUpdates = articleToBatchUpdates(content)
@@ -272,7 +281,7 @@ export async function createGdocAndInsertOwidGdocContent(
     const targetFolder = GDOCS_BACKPORTING_TARGET_FOLDER
     if (targetFolder === undefined || targetFolder === "")
         throw new Error("GDOCS_BACKPORTING_TARGET_FOLDER is not set")
-    const auth = Gdoc.getGoogleReadWriteAuth()
+    const auth = OwidGoogleAuth.getGoogleReadWriteAuth()
     const client = google.docs({
         version: "v1",
         auth,

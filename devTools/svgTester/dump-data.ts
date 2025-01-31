@@ -2,7 +2,7 @@
 
 import { getPublishedGraphersBySlug } from "../../baker/GrapherImageBaker.js"
 
-import { closeTypeOrmAndKnexConnections } from "../../db/db.js"
+import { TransactionCloseMode, knexReadonlyTransaction } from "../../db/db.js"
 
 import fs from "fs-extra"
 
@@ -12,22 +12,26 @@ import pMap from "p-map"
 
 async function main(parsedArgs: parseArgs.ParsedArgs) {
     try {
-        const outDir = parsedArgs["o"] ?? "grapherData"
+        const outDir = parsedArgs["o"] ?? utils.DEFAULT_CONFIGS_DIR
         if (!fs.existsSync(outDir)) fs.mkdirSync(outDir)
 
-        const { graphersBySlug } = await getPublishedGraphersBySlug()
+        const { graphersBySlug } = await knexReadonlyTransaction(
+            async (trx) => {
+                return getPublishedGraphersBySlug(trx)
+            },
+            TransactionCloseMode.Close
+        )
         const allGraphers = [...graphersBySlug.values()]
         const saveJobs: utils.SaveGrapherSchemaAndDataJob[] = allGraphers.map(
-            (grapher) => ({ config: grapher, outDir })
+            (grapher) => {
+                return { config: grapher, outDir }
+            }
         )
 
         await pMap(saveJobs, utils.saveGrapherSchemaAndData, {
             concurrency: 32,
         })
-
-        await closeTypeOrmAndKnexConnections()
     } catch (error) {
-        await closeTypeOrmAndKnexConnections()
         console.error("Encountered an error: ", error)
         // This call to exit is necessary for some unknown reason to make sure that the process terminates. It
         // was not required before introducing the multiprocessing library.
@@ -38,15 +42,15 @@ async function main(parsedArgs: parseArgs.ParsedArgs) {
 const parsedArgs = parseArgs(process.argv.slice(2))
 
 if (parsedArgs["h"] || parsedArgs["help"]) {
-    console.log(`dump-data.js - utility to export configs and data for all graphers.
+    console.log(`Export configs and data for all graphers
 
 Usage:
-    dump-data.js (-o DIR)
+    dump-data.js [-o]
 
 Options:
-    -o DIR   Output directory. Inside it one dir per grapher will be created. [default: grapherData]
+    -o   Output directory. Inside it one dir per grapher will be created. [default: ${utils.DEFAULT_CONFIGS_DIR}]
     `)
     process.exit(0)
 } else {
-    main(parsedArgs)
+    void main(parsedArgs)
 }

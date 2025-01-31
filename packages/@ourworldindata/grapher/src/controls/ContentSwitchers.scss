@@ -1,0 +1,44 @@
+.Tabs.ContentSwitchers {
+    // keep in sync with variables in ContentSwitchers.tsx and Tabs.scss
+    $icon-width: 13px;
+    $icon-padding: 6px;
+
+    $active-icon: $blue-50;
+
+    .Tabs__tab {
+        .label {
+            margin-left: $icon-padding;
+        }
+
+        svg {
+            color: $gray-60;
+
+            &.custom-icon {
+                --size: $icon-width;
+
+                display: inline-block;
+                height: var(--size);
+                width: var(--size);
+                vertical-align: -1.625px;
+
+                &.scatter,
+                &.marimekko,
+                &.slope {
+                    --size: 14px;
+                }
+            }
+        }
+    }
+
+    .Tabs__tab.active {
+        svg {
+            color: $active-icon;
+        }
+    }
+}
+
+&.GrapherComponentMedium {
+    .ContentSwitchers:not(.iconOnly) .Tabs__tab {
+        --outer-padding: 8px;
+    }
+}

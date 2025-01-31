@@ -1,10 +1,6 @@
 import { computed, toJS } from "mobx"
 import { mean, deviation } from "d3-array"
-import {
-    ColorScaleConfig,
-    ColorScaleConfigDefaults,
-    ColorScaleConfigInterface,
-} from "./ColorScaleConfig"
+import { ColorScaleConfig, ColorScaleConfigDefaults } from "./ColorScaleConfig"
 import {
     isEmpty,
     reverse,
@@ -13,13 +9,20 @@ import {
     roundSigFig,
     mapNullToUndefined,
 } from "@ourworldindata/utils"
-import { Color, CoreValueType, CoreColumn } from "@ourworldindata/core-table"
 import { ColorSchemes } from "../color/ColorSchemes"
 import { ColorScheme } from "../color/ColorScheme"
 import { ColorScaleBin, NumericBin, CategoricalBin } from "./ColorScaleBin"
-import { ColorSchemeName, OwidNoDataGray } from "./ColorConstants"
+import { OWID_NO_DATA_GRAY } from "./ColorConstants"
 import { getBinMaximums } from "./BinningStrategies"
-import { BinningStrategy } from "./BinningStrategy"
+import {
+    ColorScaleConfigInterface,
+    ColorSchemeName,
+    BinningStrategy,
+    Color,
+    CoreValueType,
+    OwidVariableRoundingMode,
+} from "@ourworldindata/types"
+import { CoreColumn } from "@ourworldindata/core-table"
 
 export const NO_DATA_LABEL = "No data"
 
@@ -40,7 +43,9 @@ export class ColorScale {
     // Config accessors
 
     @computed get config(): ColorScaleConfigDefaults {
-        return this.manager.colorScaleConfig ?? new ColorScaleConfig()
+        return this.manager.colorScaleConfig
+            ? this.manager.colorScaleConfig
+            : new ColorScaleConfig()
     }
 
     @computed get customNumericValues(): number[] {
@@ -92,11 +97,11 @@ export class ColorScale {
     }
 
     @computed private get defaultColorScheme(): ColorScheme {
-        return ColorSchemes[ColorSchemeName.BuGn]
+        return ColorSchemes.get(ColorSchemeName.BuGn)
     }
 
     @computed private get defaultNoDataColor(): Color {
-        return this.manager.defaultNoDataColor ?? OwidNoDataGray
+        return this.manager.defaultNoDataColor ?? OWID_NO_DATA_GRAY
     }
 
     @computed get colorScaleColumn(): CoreColumn | undefined {
@@ -134,7 +139,7 @@ export class ColorScale {
     }
 
     @computed private get colorScheme(): ColorScheme {
-        return ColorSchemes[this.baseColorScheme] ?? this.defaultColorScheme
+        return ColorSchemes.get(this.baseColorScheme) ?? this.defaultColorScheme
     }
 
     @computed get singleColorScale(): boolean {
@@ -267,10 +272,15 @@ export class ColorScale {
             const color = customNumericColors[index] ?? baseColor
             const label = customNumericLabels[index]
 
+            const roundingOptions = {
+                roundingMode: OwidVariableRoundingMode.decimalPlaces,
+            }
             const displayMin =
-                this.colorScaleColumn?.formatValueShort(min) ?? min.toString()
+                this.colorScaleColumn?.formatValueShort(min, roundingOptions) ??
+                min.toString()
             const displayMax =
-                this.colorScaleColumn?.formatValueShort(max) ?? max.toString()
+                this.colorScaleColumn?.formatValueShort(max, roundingOptions) ??
+                max.toString()
 
             const currentMin = min
             const isFirst = index === 0

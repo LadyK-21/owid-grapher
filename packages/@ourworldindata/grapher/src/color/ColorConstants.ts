@@ -1,88 +1,20 @@
-import { Color } from "@ourworldindata/core-table"
+// gray shades
+export const GRAY_90 = "#4e4e4e"
+export const GRAY_80 = "#5b5b5b"
+export const GRAY_70 = "#858585"
+export const GRAY_60 = "#a1a1a1"
+export const GRAY_50 = "#c6c6c6"
+export const GRAY_30 = "#dadada"
+export const GRAY_20 = "#e7e7e7"
+export const GRAY_10 = "#f2f2f2"
+export const GRAY_5 = "#f7f7f7"
 
-export interface ColorSchemeInterface {
-    name: string
-    colorSets: Color[][] // Different color sets depending on how many distinct colors you want
-    singleColorScale?: boolean
-    isDistinct?: boolean
-    displayName?: string
-}
+export const GRAPHER_BACKGROUND_DEFAULT = "#ffffff"
+export const GRAPHER_BACKGROUND_BEIGE = "#fbf9f3"
 
-// Note: TypeScript does not currently support extending or merging enums. Ideally we would have 2 enums here (one for custom and one for brewer) and then just merge them.
-// https://github.com/microsoft/TypeScript/issues/17592
-export enum ColorSchemeName {
-    // Brewer schemes:
-    YlGn = "YlGn",
-    YlGnBu = "YlGnBu",
-    GnBu = "GnBu",
-    BuGn = "BuGn",
-    PuBuGn = "PuBuGn",
-    BuPu = "BuPu",
-    RdPu = "RdPu",
-    PuRd = "PuRd",
-    OrRd = "OrRd",
-    YlOrRd = "YlOrRd",
-    YlOrBr = "YlOrBr",
-    Purples = "Purples",
-    Blues = "Blues",
-    Greens = "Greens",
-    Oranges = "Oranges",
-    Reds = "Reds",
-    Greys = "Greys",
-    PuOr = "PuOr",
-    BrBG = "BrBG",
-    PRGn = "PRGn",
-    PiYG = "PiYG",
-    RdBu = "RdBu",
-    RdGy = "RdGy",
-    RdYlBu = "RdYlBu",
-    Spectral = "Spectral",
-    RdYlGn = "RdYlGn",
-    Accent = "Accent",
-    Dark2 = "Dark2",
-    Paired = "Paired",
-    Pastel1 = "Pastel1",
-    Pastel2 = "Pastel2",
-    Set1 = "Set1",
-    Set2 = "Set2",
-    Set3 = "Set3",
-    PuBu = "PuBu",
-    "hsv-RdBu" = "hsv-RdBu",
-    "hsv-CyMg" = "hsv-CyMg",
+export const GRAPHER_DARK_TEXT = GRAY_80
+export const GRAPHER_LIGHT_TEXT = GRAY_70
 
-    // Custom schemes:
-    Magma = "Magma",
-    Inferno = "Inferno",
-    Plasma = "Plasma",
-    Viridis = "Viridis",
-    continents = "continents",
-    ContinentsLines = "ContinentsLines",
-    stackedAreaDefault = "stackedAreaDefault",
-    "owid-distinct" = "owid-distinct",
-    SingleColorDenim = "SingleColorDenim",
-    SingleColorTeal = "SingleColorTeal",
-    SingleColorPurple = "SingleColorPurple",
-    SingleColorDustyCoral = "SingleColorDustyCoral",
-    SingleColorDarkCopper = "SingleColorDarkCopper",
-    OwidCategoricalA = "OwidCategoricalA",
-    OwidCategoricalB = "OwidCategoricalB",
-    OwidCategoricalC = "OwidCategoricalC",
-    OwidCategoricalD = "OwidCategoricalD",
-    OwidCategoricalE = "OwidCategoricalE",
-    OwidEnergy = "OwidEnergy",
-    OwidEnergyLines = "OwidEnergyLines",
-    OwidDistinctLines = "OwidDistinctLines",
-    BinaryMapPaletteA = "BinaryMapPaletteA",
-    BinaryMapPaletteB = "BinaryMapPaletteB",
-    BinaryMapPaletteC = "BinaryMapPaletteC",
-    BinaryMapPaletteD = "BinaryMapPaletteD",
-    BinaryMapPaletteE = "BinaryMapPaletteE",
-    SingleColorGradientDenim = "SingleColorGradientDenim",
-    SingleColorGradientTeal = "SingleColorGradientTeal",
-    SingleColorGradientPurple = "SingleColorGradientPurple",
-    SingleColorGradientDustyCoral = "SingleColorGradientDustyCoral",
-    SingleColorGradientDarkCopper = "SingleColorGradientDarkCopper",
-}
-
-export const OwidNoDataGray = "#6e7581"
-export const OwidErrorColor = "ff0002"
+export const OWID_NON_FOCUSED_GRAY = GRAY_30
+export const OWID_NO_DATA_GRAY = "#6e7581"
+export const OWID_ERROR_COLOR = "ff0002"

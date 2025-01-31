@@ -1,5 +1,5 @@
-import { HotTable } from "@handsontable/react"
-import { CoreMatrix } from "@ourworldindata/core-table"
+import { HotTable, HotTableClass } from "@handsontable/react"
+import { CoreMatrix } from "@ourworldindata/types"
 import { LoadingIndicator } from "@ourworldindata/grapher"
 import {
     exposeInstanceOnWindow,
@@ -11,7 +11,7 @@ import Handsontable from "handsontable"
 import { registerAllModules } from "handsontable/registry"
 import { action, computed, observable } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
+import { Component, createRef } from "react"
 import { Prompt } from "react-router-dom"
 import {
     DefaultNewExplorerSlug,
@@ -19,15 +19,13 @@ import {
     EXPLORERS_PREVIEW_ROUTE,
     UNSAVED_EXPLORER_DRAFT,
     UNSAVED_EXPLORER_PREVIEW_QUERYPARAMS,
-} from "../explorer/ExplorerConstants.js"
-import {
     ExplorerProgram,
     EXPLORER_FILE_SUFFIX,
     makeFullPath,
-} from "../explorer/ExplorerProgram.js"
+    isEmpty,
+} from "@ourworldindata/explorer"
 import { GitCmsClient } from "../gitCms/GitCmsClient.js"
 import { GitCmsFile, GIT_CMS_BASE_ROUTE } from "../gitCms/GitCmsConstants.js"
-import { isEmpty } from "../gridLang/GrammarUtils.js"
 import { AdminManager } from "./AdminManager.js"
 import {
     AutofillColDefCommand,
@@ -41,13 +39,15 @@ const RESERVED_NAMES = [DefaultNewExplorerSlug, "index", "new", "create"] // don
 registerAllModules()
 
 @observer
-export class ExplorerCreatePage extends React.Component<{
+export class ExplorerCreatePage extends Component<{
     slug: string
     gitCmsBranchName: string
     manager?: AdminManager
     doNotFetch?: boolean // for testing
 }> {
     disposers: Array<() => void> = []
+
+    @observable showPreview: boolean = true
 
     @computed private get manager() {
         return this.props.manager ?? {}
@@ -71,7 +71,7 @@ export class ExplorerCreatePage extends React.Component<{
 
         if (this.props.doNotFetch) return
 
-        this.fetchExplorerProgramOnLoad()
+        void this.fetchExplorerProgramOnLoad()
         this.startPollingLocalStorageForPreviewChanges()
     }
 
@@ -184,7 +184,7 @@ export class ExplorerCreatePage extends React.Component<{
 
     @action.bound private async save() {
         let commitMessage
-        if (ENV == "production") {
+        if (ENV !== "development") {
             commitMessage = prompt(
                 `Enter a message describing this change. Your change will be pushed to the '${this.props.gitCmsBranchName}' on GitHub.`,
                 `Updated ${this.program.slug}`
@@ -201,17 +201,25 @@ export class ExplorerCreatePage extends React.Component<{
         return this.programOnDisk.toString() !== this.program.toString()
     }
 
+    @computed get whyIsExplorerProgramInvalid() {
+        return this.program.whyIsExplorerProgramInvalid
+    }
+
     @observable gitCmsBranchName = this.props.gitCmsBranchName
 
     @action.bound private onSave() {
-        if (this.program.isNewFile) this.saveAs()
-        else if (this.isModified) this.save()
+        if (this.program.isNewFile) void this.saveAs()
+        else if (this.isModified) void this.save()
+    }
+
+    @action.bound private onShowPreviewChanged() {
+        this.showPreview = !this.showPreview
     }
 
     render() {
         if (!this.isReady) return <LoadingIndicator />
 
-        const { program, isModified } = this
+        const { program, isModified, whyIsExplorerProgramInvalid } = this
         const { isNewFile, slug } = program
         const previewLink = `/admin/${EXPLORERS_PREVIEW_ROUTE}/${slug}`
 
@@ -261,6 +269,21 @@ export class ExplorerCreatePage extends React.Component<{
             ? "Are you sure you want to leave? You have unsaved changes."
             : "" // todo: provide an explanation of how many cells are modified.
 
+        const showPreviewCheckbox = (
+            <div className="form-check">
+                <input
+                    type="checkbox"
+                    className="form-check-input"
+                    id="showPreview"
+                    checked={this.showPreview}
+                    onChange={() => this.onShowPreviewChanged()}
+                ></input>
+                <label className="form-check-label" htmlFor="showPreview">
+                    Show Preview
+                </label>
+            </div>
+        )
+
         return (
             <>
                 <Prompt when={isModified} message={modifiedMessage} />
@@ -277,6 +300,7 @@ export class ExplorerCreatePage extends React.Component<{
                                 isNewFile={isNewFile}
                             />
                         </div>
+                        {showPreviewCheckbox}
                         <div style={{ textAlign: "right" }}>{buttons}</div>
                     </div>
                     <HotEditor
@@ -284,22 +308,29 @@ export class ExplorerCreatePage extends React.Component<{
                         program={program}
                         programOnDisk={this.programOnDisk}
                     />
-                    <PictureInPicture previewLink={previewLink} />
+                    {this.showPreview && (
+                        <PictureInPicture previewLink={previewLink} />
+                    )}
                     <a className="PreviewLink" href={previewLink}>
                         Visit preview
                     </a>
+                    {whyIsExplorerProgramInvalid && (
+                        <div className="WhyIsExplorerProgramInvalid">
+                            {whyIsExplorerProgramInvalid}
+                        </div>
+                    )}
                 </main>
             </>
         )
     }
 }
 
-class HotEditor extends React.Component<{
+class HotEditor extends Component<{
     onChange: (code: string) => void
     program: ExplorerProgram
     programOnDisk: ExplorerProgram
 }> {
-    private hotTableComponent = React.createRef<HotTable>()
+    private hotTableComponent = createRef<HotTableClass>()
 
     @computed private get program() {
         return this.props.program
@@ -429,14 +460,14 @@ class HotEditor extends React.Component<{
         return (
             <HotTable
                 settings={this.hotSettings}
-                ref={this.hotTableComponent as any}
+                ref={this.hotTableComponent}
                 licenseKey={"non-commercial-and-evaluation"}
             />
         )
     }
 }
 
-class PictureInPicture extends React.Component<{
+class PictureInPicture extends Component<{
     previewLink: string
 }> {
     render() {
@@ -449,7 +480,7 @@ class PictureInPicture extends React.Component<{
     }
 }
 
-class TemplatesComponent extends React.Component<{
+class TemplatesComponent extends Component<{
     isNewFile: boolean
     onChange: (code: string) => void
 }> {
@@ -463,7 +494,7 @@ class TemplatesComponent extends React.Component<{
     @observable.ref templates: GitCmsFile[] = []
 
     componentDidMount() {
-        if (this.props.isNewFile) this.fetchTemplatesOnLoad()
+        if (this.props.isNewFile) void this.fetchTemplatesOnLoad()
     }
 
     private gitCmsClient = new GitCmsClient(GIT_CMS_BASE_ROUTE)

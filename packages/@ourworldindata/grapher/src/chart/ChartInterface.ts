@@ -1,9 +1,10 @@
-import { Color, OwidTable } from "@ourworldindata/core-table"
+import { OwidTable } from "@ourworldindata/core-table"
 import {
     FacetStrategy,
     SeriesName,
     SeriesStrategy,
-} from "../core/GrapherConstants"
+    Color,
+} from "@ourworldindata/types"
 import { ColorScale } from "../color/ColorScale"
 import { HorizontalAxis, VerticalAxis } from "../axis/Axis"
 import { HorizontalColorLegendManager } from "../horizontalColorLegend/HorizontalColorLegends"
@@ -25,12 +26,15 @@ export interface ChartInterface {
     transformedTable: OwidTable // Points to the OwidTable after the chart has transformed the input table. The chart may add a relative transform, for example. Standardized as part of the interface as a development aid.
 
     colorScale?: ColorScale
+    shouldUseValueBasedColorScheme?: boolean // Opt-out of assigned colors and use a value-based color scheme instead
 
     seriesStrategy?: SeriesStrategy
     series: readonly ChartSeries[] // This points to the marks that the chart will render. They don't have to be placed yet. Standardized as part of the interface as a development aid.
     // Todo: should all charts additionally have a placedSeries: ChartPlacedSeries[] getter?
 
     transformTable: ChartTableTransformer
+    transformTableForDisplay?: ChartTableTransformer
+    transformTableForSelection?: ChartTableTransformer
 
     yAxis?: HorizontalAxis | VerticalAxis
     xAxis?: HorizontalAxis | VerticalAxis

@@ -1,4 +1,4 @@
-import React from "react"
+import { Component } from "react"
 import { observer } from "mobx-react"
 import {
     observable,
@@ -8,7 +8,7 @@ import {
     reaction,
     IReactionDisposer,
 } from "mobx"
-import * as lodash from "lodash"
+import lodash from "lodash"
 
 import { AdminLayout } from "./AdminLayout.js"
 import { SearchField, FieldsRow } from "./Forms.js"
@@ -16,7 +16,7 @@ import { VariableList, VariableListItem } from "./VariableList.js"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
 
 @observer
-export class VariablesIndexPage extends React.Component {
+export class VariablesIndexPage extends Component {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
@@ -42,7 +42,7 @@ export class VariablesIndexPage extends React.Component {
                 const html = text.replace(
                     new RegExp(
                         this.highlightSearch.replace(
-                            /[-\/\\^$*+?.()|[\]{}]/g,
+                            /[-/\\^$*+?.()|[\]{}]/g,
                             "\\$&"
                         ),
                         "i"
@@ -62,7 +62,7 @@ export class VariablesIndexPage extends React.Component {
                             indicators
                         </span>
                         <SearchField
-                            placeholder="Search all indicators..."
+                            placeholder="e.g. ^population before:2023 -wdi"
                             value={searchInput}
                             onValue={action(
                                 (v: string) => (this.searchInput = v)
@@ -70,8 +70,28 @@ export class VariablesIndexPage extends React.Component {
                             autofocus
                         />
                     </FieldsRow>
+                    <p>
+                        <em>
+                            You can use regular expressions and the following
+                            fields:
+                        </em>{" "}
+                        <code>name:</code>, <code>path:</code>,{" "}
+                        <code>namespace:</code>, <code>version:</code>,{" "}
+                        <code>dataset:</code>, <code>table:</code>,{" "}
+                        <code>short:</code>, <code>before:</code>,{" "}
+                        <code>after:</code>, <code>is:public</code>,{" "}
+                        <code>is:private</code>
+                    </p>
                     <VariableList
                         variables={variablesToShow}
+                        fields={[
+                            "namespace",
+                            "version",
+                            "dataset",
+                            "table",
+                            "shortName",
+                            "uploadedAt",
+                        ]}
                         searchHighlight={highlight}
                     />
                     {!searchInput && (
@@ -98,6 +118,7 @@ export class VariablesIndexPage extends React.Component {
                 // Make sure this response is current
                 this.variables = json.variables
                 this.numTotalRows = json.numTotalRows
+                // NOTE: search highlighting is less relevant with fielded and regex search
                 this.highlightSearch = searchInput
             }
         })
@@ -109,7 +130,7 @@ export class VariablesIndexPage extends React.Component {
             () => this.searchInput || this.maxVisibleRows,
             lodash.debounce(() => this.getData(), 200)
         )
-        this.getData()
+        void this.getData()
     }
 
     componentWillUnmount() {

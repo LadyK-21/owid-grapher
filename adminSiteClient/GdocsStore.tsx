@@ -1,13 +1,17 @@
-import React, { useContext, createContext, useState } from "react"
 import { action, observable } from "mobx"
 import {
     getOwidGdocFromJSON,
-    OwidGdocInterface,
     OwidGdocJSON,
-    OwidGdocTag,
+    DbChartTagJoin,
+    OwidGdoc,
+    DbPlainTag,
+    OwidGdocIndexItem,
 } from "@ourworldindata/utils"
-import { AdminAppContext } from "./AdminAppContext.js"
 import { Admin } from "./Admin.js"
+import {
+    CreateTombstoneData,
+    extractGdocIndexItem,
+} from "@ourworldindata/types"
 
 /**
  * This was originally a MobX data domain store (see
@@ -17,8 +21,8 @@ import { Admin } from "./Admin.js"
  * Today, this store acts as CRUD proxy for requests to API endpoints.
  */
 export class GdocsStore {
-    @observable gdocs: OwidGdocInterface[] = []
-    @observable availableTags: OwidGdocTag[] = []
+    @observable gdocs: OwidGdocIndexItem[] = []
+    @observable availableTags: DbChartTagJoin[] = []
     admin: Admin
 
     constructor(admin: Admin) {
@@ -31,20 +35,24 @@ export class GdocsStore {
     }
 
     @action
-    async update(gdoc: OwidGdocInterface): Promise<OwidGdocInterface> {
-        return this.admin
+    async update(gdoc: OwidGdoc): Promise<OwidGdoc> {
+        const item: OwidGdoc = await this.admin
             .requestJSON<OwidGdocJSON>(`/api/gdocs/${gdoc.id}`, gdoc, "PUT")
             .then(getOwidGdocFromJSON)
+        const indexItem = extractGdocIndexItem(gdoc)
+        const gdocToUpdateIndex = this.gdocs.findIndex((g) => g.id === gdoc.id)
+        if (gdocToUpdateIndex >= 0) this.gdocs[gdocToUpdateIndex] = indexItem
+        return item
     }
 
     @action
-    async publish(gdoc: OwidGdocInterface): Promise<OwidGdocInterface> {
+    async publish(gdoc: OwidGdoc): Promise<OwidGdoc> {
         const publishedGdoc = await this.update({ ...gdoc, published: true })
         return publishedGdoc
     }
 
     @action
-    async unpublish(gdoc: OwidGdocInterface): Promise<OwidGdocInterface> {
+    async unpublish(gdoc: OwidGdoc): Promise<OwidGdoc> {
         const unpublishedGdoc = await this.update({
             ...gdoc,
             publishedAt: null,
@@ -55,15 +63,16 @@ export class GdocsStore {
     }
 
     @action
-    async delete(gdoc: OwidGdocInterface) {
-        await this.admin.requestJSON(`/api/gdocs/${gdoc.id}`, {}, "DELETE")
+    async delete(gdoc: OwidGdoc, tombstone?: CreateTombstoneData) {
+        const body = tombstone ? { tombstone } : {}
+        await this.admin.requestJSON(`/api/gdocs/${gdoc.id}`, body, "DELETE")
     }
 
     @action
     async fetchGdocs() {
         const gdocs = (await this.admin.getJSON(
             "/api/gdocs"
-        )) as OwidGdocInterface[]
+        )) as OwidGdocIndexItem[]
         this.gdocs = gdocs
     }
 
@@ -74,7 +83,7 @@ export class GdocsStore {
     }
 
     @action
-    async updateTags(gdoc: OwidGdocInterface, tags: OwidGdocTag[]) {
+    async updateTags(gdoc: OwidGdocIndexItem, tags: DbPlainTag[]) {
         const json = await this.admin.requestJSON(
             `/api/gdocs/${gdoc.id}/setTags`,
             { tagIds: tags.map((t) => t.id) },
@@ -85,33 +94,4 @@ export class GdocsStore {
             if (gdocToUpdate) gdocToUpdate.tags = tags
         }
     }
-}
-
-export const GdocsStoreContext = createContext<GdocsStore | undefined>(
-    undefined
-)
-
-export const GdocsStoreProvider = ({
-    children,
-}: {
-    children: React.ReactNode
-}) => {
-    const { admin } = useContext(AdminAppContext)
-    const [store] = useState(() => new GdocsStore(admin))
-
-    return (
-        <GdocsStoreContext.Provider value={store}>
-            {children}
-        </GdocsStoreContext.Provider>
-    )
-}
-
-export const useGdocsStore = () => {
-    const context = React.useContext(GdocsStoreContext)
-    if (context === undefined) {
-        throw new Error(
-            "useGdocsStore must be used within a GdocsStoreProvider"
-        )
-    }
-    return context
 }

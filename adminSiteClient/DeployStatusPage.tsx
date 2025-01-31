@@ -1,4 +1,4 @@
-import React from "react"
+import { Component } from "react"
 import { observer } from "mobx-react"
 import { action, observable, runInAction } from "mobx"
 
@@ -16,12 +16,28 @@ const statusLabel: Record<DeployStatus, string> = {
 }
 
 @observer
-export class DeployStatusPage extends React.Component {
+export class DeployStatusPage extends Component {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
     @observable deploys: Deploy[] = []
     @observable canManuallyDeploy = true
+    refreshIntervalId?: number
+
+    componentDidMount() {
+        void this.getData()
+        document.addEventListener(
+            "visibilitychange",
+            this.handleVisibilityChange
+        )
+    }
+
+    componentWillUnmount() {
+        document.removeEventListener(
+            "visibilitychange",
+            this.handleVisibilityChange
+        )
+    }
 
     render() {
         return (
@@ -103,6 +119,10 @@ export class DeployStatusPage extends React.Component {
         )
     }
 
+    @action.bound handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") void this.getData()
+    }
+
     @action.bound async triggerDeploy() {
         const { admin } = this.context
         await admin.rawRequest("/api/deploy", undefined, "PUT")
@@ -118,9 +138,5 @@ export class DeployStatusPage extends React.Component {
         runInAction(() => {
             this.deploys = json.deploys
         })
-    }
-
-    componentDidMount() {
-        this.getData()
     }
 }

@@ -18,7 +18,7 @@
         list-style: none;
         margin: 0 8px;
         padding: 16px;
-        @media (max-width: 768px) {
+        @include sm-only {
             padding: 12px;
         }
 
@@ -36,10 +36,7 @@
 
     li:first-child {
         margin-left: 0;
-        @media (max-width: 768px) {
-            // completely flush with text for mobile
-            padding-left: 0;
-        }
+        padding-left: 0;
     }
 }
 

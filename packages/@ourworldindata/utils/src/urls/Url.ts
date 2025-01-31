@@ -1,9 +1,9 @@
 import urlParseLib from "url-parse"
-import { gdocUrlRegex } from "../index.js"
+import { gdocUrlRegex, QueryParams } from "@ourworldindata/types"
 
 import { excludeUndefined, omitUndefinedValues } from "../Util.js"
 
-import { QueryParams, queryParamsToStr, strToQueryParams } from "./UrlUtils.js"
+import { queryParamsToStr, strToQueryParams } from "./UrlUtils.js"
 
 const parseUrl = (url: string): urlParseLib<string> => {
     const parsed = urlParseLib(url, {})
@@ -68,8 +68,8 @@ export class Url {
                 props.pathname !== undefined
                     ? props.pathname
                     : props.origin
-                    ? ""
-                    : undefined,
+                      ? ""
+                      : undefined,
         }
     }
 
@@ -111,6 +111,10 @@ export class Url {
             this.queryStr,
             this.hash,
         ]).join("")
+    }
+
+    get fullUrlNoTrailingSlash(): string {
+        return this.fullUrl.replace(/\/$/, "") || "/"
     }
 
     get queryParams(): QueryParams {

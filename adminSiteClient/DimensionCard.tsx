@@ -1,9 +1,17 @@
-import React from "react"
+import { Component, Fragment } from "react"
 import { observable, computed, action } from "mobx"
 import { observer } from "mobx-react"
 import { ChartDimension } from "@ourworldindata/grapher"
-import { ChartEditor } from "./ChartEditor.js"
-import { Toggle, BindAutoString, BindAutoFloat, ColorBox } from "./Forms.js"
+import { OwidColumnDef, OwidVariableRoundingMode } from "@ourworldindata/types"
+import { startCase } from "@ourworldindata/utils"
+import {
+    Toggle,
+    BindAutoString,
+    BindAutoFloat,
+    ColorBox,
+    SelectField,
+    CatalogPathField,
+} from "./Forms.js"
 import { Link } from "./Link.js"
 import {
     faChevronDown,
@@ -14,15 +22,19 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { OwidTable } from "@ourworldindata/core-table"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
 
 @observer
-export class DimensionCard extends React.Component<{
+export class DimensionCard<
+    Editor extends AbstractChartEditor,
+> extends Component<{
     dimension: ChartDimension
-    editor: ChartEditor
+    editor: Editor
     isDndEnabled?: boolean
     onChange: (dimension: ChartDimension) => void
     onEdit?: () => void
     onRemove?: () => void
+    errorMessage?: string
 }> {
     @observable.ref isExpanded: boolean = false
 
@@ -39,6 +51,11 @@ export class DimensionCard extends React.Component<{
         this.onChange()
     }
 
+    @action.bound onPlotMarkersOnly(value: boolean) {
+        this.props.dimension.display.plotMarkersOnlyInLineChart = value
+        this.onChange()
+    }
+
     @action.bound onColor(color: string | undefined) {
         this.props.dimension.display.color = color
         this.onChange()
@@ -48,17 +65,26 @@ export class DimensionCard extends React.Component<{
         return this.props.dimension.column.def.color
     }
 
-    private get tableDisplaySettings() {
-        const { tableDisplay } = this.props.dimension.display
-        if (!tableDisplay) return
+    @computed get roundingMode(): OwidVariableRoundingMode {
         return (
-            <React.Fragment>
+            this.props.dimension.display.roundingMode ??
+            OwidVariableRoundingMode.decimalPlaces
+        )
+    }
+
+    private get tableDisplaySettings() {
+        const { tableDisplay = {} } = this.props.dimension.display
+        return (
+            <Fragment>
                 <hr className="ui divider" />
                 Table:
                 <Toggle
                     label="Hide absolute change column"
                     value={!!tableDisplay.hideAbsoluteChange}
                     onValue={(value) => {
+                        if (!this.props.dimension.display.tableDisplay) {
+                            this.props.dimension.display.tableDisplay = {}
+                        }
                         tableDisplay.hideAbsoluteChange = value
                         this.onChange()
                     }}
@@ -67,12 +93,15 @@ export class DimensionCard extends React.Component<{
                     label="Hide relative change column"
                     value={!!tableDisplay.hideRelativeChange}
                     onValue={(value) => {
+                        if (!this.props.dimension.display.tableDisplay) {
+                            this.props.dimension.display.tableDisplay = {}
+                        }
                         tableDisplay.hideRelativeChange = value
                         this.onChange()
                     }}
                 />
                 <hr className="ui divider" />
-            </React.Fragment>
+            </Fragment>
         )
     }
 
@@ -84,6 +113,7 @@ export class DimensionCard extends React.Component<{
         const { dimension, editor, isDndEnabled } = this.props
         const { grapher } = editor
         const { column } = dimension
+        const columnDef = column.def as OwidColumnDef
 
         return (
             <div className="DimensionCard list-group-item">
@@ -138,12 +168,14 @@ export class DimensionCard extends React.Component<{
                 </header>
                 {this.isExpanded && (
                     <div>
+                        <CatalogPathField catalogPath={columnDef.catalogPath} />
                         <BindAutoString
                             label="Display name"
                             field="name"
                             store={dimension.display}
                             auto={column.displayName}
                             onBlur={this.onChange}
+                            errorMessage={this.props.errorMessage}
                         />
                         <BindAutoString
                             label="Unit of measurement"
@@ -159,13 +191,49 @@ export class DimensionCard extends React.Component<{
                             auto={column.shortUnit ?? ""}
                             onBlur={this.onChange}
                         />
+                        <SelectField
+                            label="Rounding mode"
+                            value={dimension.display.roundingMode}
+                            onValue={(value) => {
+                                const roundingMode =
+                                    value as OwidVariableRoundingMode
+                                this.props.dimension.display.roundingMode =
+                                    roundingMode !==
+                                    OwidVariableRoundingMode.decimalPlaces
+                                        ? roundingMode
+                                        : undefined
+
+                                this.onChange()
+                            }}
+                            options={Object.keys(OwidVariableRoundingMode).map(
+                                (key) => ({
+                                    value: key,
+                                    label: startCase(key),
+                                })
+                            )}
+                        />
+                        {this.roundingMode ===
+                            OwidVariableRoundingMode.significantFigures && (
+                            <BindAutoFloat
+                                label="Number of significant figures"
+                                field="numSignificantFigures"
+                                store={dimension.display}
+                                auto={column.numSignificantFigures}
+                                onBlur={this.onChange}
+                            />
+                        )}
                         <BindAutoFloat
                             label="Number of decimal places"
                             field="numDecimalPlaces"
                             store={dimension.display}
                             auto={column.numDecimalPlaces}
-                            helpText={`A negative number here will round integers`}
                             onBlur={this.onChange}
+                            helpText={
+                                this.roundingMode ===
+                                OwidVariableRoundingMode.significantFigures
+                                    ? "Used in Grapher's table where values are always rounded to a fixed number of decimal places"
+                                    : undefined
+                            }
                         />
                         <BindAutoFloat
                             label="Unit conversion factor"
@@ -187,6 +255,16 @@ export class DimensionCard extends React.Component<{
                                 label="Is projection"
                                 value={column.isProjection}
                                 onValue={this.onIsProjection}
+                            />
+                        )}
+                        {grapher.isLineChart && (
+                            <Toggle
+                                label="Plot markers only"
+                                value={
+                                    column.display
+                                        ?.plotMarkersOnlyInLineChart ?? false
+                                }
+                                onValue={this.onPlotMarkersOnly}
                             />
                         )}
                         <hr className="ui divider" />

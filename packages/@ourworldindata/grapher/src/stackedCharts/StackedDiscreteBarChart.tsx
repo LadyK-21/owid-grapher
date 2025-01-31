@@ -6,7 +6,6 @@ import {
     max,
     maxBy,
     last,
-    flatten,
     excludeUndefined,
     sortBy,
     numberMagnitude,
@@ -17,15 +16,27 @@ import {
     SortBy,
     SortConfig,
     HorizontalAlign,
-    TippyIfInteractive,
+    EntityName,
+    getRelativeMouse,
+    makeIdForHumanConsumption,
+    dyFromAlign,
 } from "@ourworldindata/utils"
 import { action, computed, observable } from "mobx"
 import { observer } from "mobx-react"
 import {
-    BASE_FONT_SIZE,
+    ColorSchemeName,
     FacetStrategy,
     MissingDataStrategy,
+    ScaleType,
     SeriesName,
+    VerticalAlign,
+} from "@ourworldindata/types"
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_AREA_OPACITY_DEFAULT,
+    GRAPHER_AXIS_LINE_WIDTH_DEFAULT,
+    GRAPHER_AXIS_LINE_WIDTH_THICK,
+    GRAPHER_FONT_SCALE_12,
 } from "../core/GrapherConstants"
 import {
     HorizontalAxisComponent,
@@ -35,13 +46,25 @@ import {
 import { NoDataModal } from "../noDataModal/NoDataModal"
 import { AxisConfig } from "../axis/AxisConfig"
 import { ChartInterface } from "../chart/ChartInterface"
-import { OwidTable, EntityName, CoreColumn } from "@ourworldindata/core-table"
-import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
+import { OwidTable, CoreColumn } from "@ourworldindata/core-table"
+import {
+    autoDetectYColumnSlugs,
+    getShortNameForEntity,
+    makeSelectionArray,
+} from "../chart/ChartUtils"
 import {
     stackSeries,
     withMissingValuesAsZeroes,
 } from "../stackedCharts/StackedUtils"
 import { ChartManager } from "../chart/ChartManager"
+import { TooltipFooterIcon } from "../tooltip/TooltipProps.js"
+import {
+    Tooltip,
+    TooltipState,
+    TooltipTable,
+    makeTooltipRoundingNotice,
+    makeTooltipToleranceNotice,
+} from "../tooltip/Tooltip"
 import { StackedPoint, StackedSeries } from "./StackedConstants"
 import { ColorSchemes } from "../color/ColorSchemes"
 import {
@@ -49,8 +72,6 @@ import {
     HorizontalColorLegendManager,
 } from "../horizontalColorLegend/HorizontalColorLegends"
 import { CategoricalBin, ColorScaleBin } from "../color/ColorScaleBin"
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { faInfoCircle } from "@fortawesome/free-solid-svg-icons"
 import { isDarkColor } from "../color/ColorUtils"
 import { HorizontalAxis } from "../axis/Axis"
 import { SelectionArray } from "../selection/SelectionArray"
@@ -58,6 +79,13 @@ import { ColorScheme } from "../color/ColorScheme"
 import { HashMap, NodeGroup } from "react-move"
 import { easeQuadOut } from "d3-ease"
 import { bind } from "decko"
+import { CategoricalColorAssigner } from "../color/CategoricalColorAssigner.js"
+import { TextWrap } from "@ourworldindata/components"
+
+// if an entity name exceeds this width, we use the short name instead (if available)
+const SOFT_MAX_LABEL_WIDTH = 90
+
+const BAR_SPACING_FACTOR = 0.35
 
 const labelToBarPadding = 5
 
@@ -67,7 +95,9 @@ export interface StackedDiscreteBarChartManager extends ChartManager {
 }
 
 interface Item {
-    label: string
+    entityName: string
+    shortEntityName?: string
+    label: TextWrap
     bars: Bar[]
     totalValue: number
 }
@@ -83,11 +113,6 @@ interface Bar {
     point: StackedPoint<EntityName>
 }
 
-interface TooltipProps extends StackedBarChartContext {
-    item: PlacedItem
-    highlightedSeriesName: string | undefined
-}
-
 interface StackedBarChartContext {
     yAxis: HorizontalAxis
     targetTime?: number
@@ -95,10 +120,11 @@ interface StackedBarChartContext {
     formatColumn: CoreColumn
     formatValueForLabel: (value: number) => string
     focusSeriesName?: string
+    hoverSeriesName?: string
+    hoverEntityName?: string
     barHeight: number
     x0: number
     baseFontSize: number
-    isInteractive: boolean
 }
 
 @observer
@@ -106,10 +132,22 @@ export class StackedDiscreteBarChart
     extends React.Component<{
         bounds?: Bounds
         manager: StackedDiscreteBarChartManager
+        containerElement?: HTMLDivElement
     }>
     implements ChartInterface, HorizontalColorLegendManager
 {
     base: React.RefObject<SVGGElement> = React.createRef()
+
+    private applyMissingDataStrategy(table: OwidTable): OwidTable {
+        if (this.missingDataStrategy === MissingDataStrategy.hide) {
+            // If MissingDataStrategy is explicitly set to hide, drop rows (= times) where one of
+            // the y columns has no data
+            return table.dropRowsWithErrorValuesForAnyColumn(this.yColumnSlugs)
+        }
+
+        // Otherwise, don't apply any special treatment
+        return table
+    }
 
     transformTable(table: OwidTable): OwidTable {
         if (!this.yColumnSlugs.length) return table
@@ -121,11 +159,16 @@ export class StackedDiscreteBarChart
         // TODO: remove this filter once we don't have mixed type columns in datasets
         table = table.replaceNonNumericCellsWithErrorValues(this.yColumnSlugs)
 
+        // stacked discrete bar charts don't support negative values
+        table = table.replaceNegativeCellsWithErrorValues(this.yColumnSlugs)
+
         table = table.dropRowsWithErrorValuesForAllColumns(this.yColumnSlugs)
 
         this.yColumnSlugs.forEach((slug) => {
             table = table.interpolateColumnWithTolerance(slug)
         })
+
+        table = this.applyMissingDataStrategy(table)
 
         if (this.manager.isRelativeMode) {
             table = table.toPercentageFromEachColumnForEachEntityAndTime(
@@ -133,16 +176,22 @@ export class StackedDiscreteBarChart
             )
         }
 
-        // drop all data when the author chose to hide entities with missing data and
-        // at least one of the variables has no data for the current entity
-        if (
-            this.missingDataStrategy === MissingDataStrategy.hide &&
-            table.hasAnyColumnNoValidValue(this.yColumnSlugs)
-        ) {
-            table = table.dropAllRows()
-        }
+        return table
+    }
+
+    transformTableForSelection(table: OwidTable): OwidTable {
+        table = table
+            .replaceNonNumericCellsWithErrorValues(this.yColumnSlugs)
+            .replaceNegativeCellsWithErrorValues(this.yColumnSlugs)
+            .dropRowsWithErrorValuesForAllColumns(this.yColumnSlugs)
+
+        table = this.applyMissingDataStrategy(table)
 
         return table
+    }
+
+    @computed private get missingDataStrategy(): MissingDataStrategy {
+        return this.manager.missingDataStrategy || MissingDataStrategy.auto
     }
 
     @computed get sortConfig(): SortConfig {
@@ -167,34 +216,34 @@ export class StackedDiscreteBarChart
     }
 
     @computed private get bounds(): Bounds {
-        return (this.props.bounds ?? DEFAULT_BOUNDS).padRight(10)
-    }
-
-    @computed private get missingDataStrategy(): MissingDataStrategy {
-        return this.manager.missingDataStrategy || MissingDataStrategy.auto
+        // bottom padding avoids axis labels to be cut off at some resolutions
+        return (this.props.bounds ?? DEFAULT_BOUNDS).padRight(10).padBottom(2)
     }
 
     @computed private get baseFontSize(): number {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+        return this.manager.fontSize ?? BASE_FONT_SIZE
+    }
+
+    @computed get isStatic(): boolean {
+        return this.manager.isStatic ?? false
     }
 
     @computed private get showLegend(): boolean {
-        return !this.manager.hideLegend
+        return !!this.manager.showLegend
     }
 
-    @computed private get boundsWithoutLegend(): Bounds {
-        return this.bounds.padTop(
-            this.showLegend && this.legend.height > 0
-                ? this.legend.height + this.legendPaddingTop
-                : 0
-        )
+    @computed private get barCount(): number {
+        return this.items.length
     }
 
     @computed private get labelFontSize(): number {
-        // can't use the computed property `barHeight` here as that would create a circular dependency
-        const barHeight =
-            (0.8 * this.boundsWithoutLegend.height) / this.items.length
-        return Math.min(0.75 * this.fontSize, 1.1 * barHeight)
+        // can't use `this.barHeight` due to a circular dependency
+        const barHeight = this.approximateBarHeight
+        return Math.min(
+            GRAPHER_FONT_SCALE_12 * this.fontSize,
+
+            1.1 * barHeight
+        )
     }
 
     @computed private get labelStyle(): {
@@ -219,9 +268,7 @@ export class StackedDiscreteBarChart
 
     // Account for the width of the legend
     @computed private get labelWidth(): number {
-        const labels = this.items.map((item) => item.label)
-        const longestLabel = maxBy(labels, (d) => d.length)
-        return Bounds.forText(longestLabel, this.labelStyle).width
+        return max(this.sizedItems.map((d) => d.label.width)) ?? 0
     }
 
     @computed get showTotalValueLabel(): boolean {
@@ -236,7 +283,7 @@ export class StackedDiscreteBarChart
     @computed private get totalValueLabelWidth(): number {
         if (!this.showTotalValueLabel) return 0
 
-        const labels = this.items.map((d) =>
+        const labels = this.sizedItems.map((d) =>
             this.formatValueForLabel(d.totalValue)
         )
         const longestLabel = maxBy(labels, (l) => l.length)
@@ -248,7 +295,7 @@ export class StackedDiscreteBarChart
     }
 
     @computed private get allPoints(): StackedPoint<EntityName>[] {
-        return flatten(this.series.map((series) => series.points))
+        return this.series.flatMap((series) => series.points)
     }
 
     // Now we can work out the main x axis scale
@@ -278,29 +325,33 @@ export class StackedDiscreteBarChart
         const axis = this.yAxisConfig.toHorizontalAxis()
         axis.updateDomainPreservingUserSettings(this.xDomainDefault)
 
+        axis.scaleType = ScaleType.linear
         axis.formatColumn = this.yColumns[0] // todo: does this work for columns as series?
         axis.range = this.xRange
         axis.label = ""
         return axis
     }
 
+    @computed private get boundsWithoutLegend(): Bounds {
+        return this.bounds.padTop(
+            this.showLegend && this.legend.height > 0
+                ? this.legend.height + this.legendPaddingTop
+                : 0
+        )
+    }
+
     @computed private get innerBounds(): Bounds {
-        return this.bounds
+        return this.boundsWithoutLegend
             .padLeft(this.labelWidth)
             .padBottom(this.showHorizontalAxis ? this.yAxis.height : 0)
-            .padTop(
-                this.showLegend && this.legend.height > 0
-                    ? this.legend.height + this.legendPaddingTop
-                    : 0
-            )
             .padRight(this.totalValueLabelWidth)
     }
 
     @computed private get selectionArray(): SelectionArray {
-        return makeSelectionArray(this.manager)
+        return makeSelectionArray(this.manager.selection)
     }
 
-    @computed private get items(): readonly Item[] {
+    @computed private get items(): readonly Omit<Item, "label">[] {
         const entityNames = this.selectionArray.selectedEntityNames
         const items = entityNames
             .map((entityName) => {
@@ -322,7 +373,8 @@ export class StackedDiscreteBarChart
                 )
 
                 return {
-                    label: entityName,
+                    entityName,
+                    shortEntityName: getShortNameForEntity(entityName),
                     bars,
                     totalValue,
                 }
@@ -332,6 +384,53 @@ export class StackedDiscreteBarChart
         return items
     }
 
+    @computed get sizedItems(): readonly Item[] {
+        // can't use `this.barHeight` due to a circular dependency
+        const barHeight = this.approximateBarHeight
+
+        return this.items.map((item) => {
+            // make sure we're dealing with a single-line text fragment
+            const entityName = item.entityName.replace(/\n/g, " ").trim()
+
+            const maxLegendWidth = 0.3 * this.boundsWithoutLegend.width
+
+            let label = new TextWrap({
+                text: entityName,
+                maxWidth: maxLegendWidth,
+                ...this.labelStyle,
+            })
+
+            // prevent labels from being taller than the bar
+            let step = 0
+            while (
+                label.height > barHeight &&
+                label.lines.length > 1 &&
+                step < 10 // safety net
+            ) {
+                label = new TextWrap({
+                    text: entityName,
+                    maxWidth: label.maxWidth + 20,
+                    ...this.labelStyle,
+                })
+                step += 1
+            }
+
+            // if the label is too long, use the short name instead
+            const tooLong =
+                label.width > SOFT_MAX_LABEL_WIDTH ||
+                label.width > maxLegendWidth
+            if (tooLong && item.shortEntityName) {
+                label = new TextWrap({
+                    text: item.shortEntityName,
+                    maxWidth: label.maxWidth,
+                    ...this.labelStyle,
+                })
+            }
+
+            return { ...item, label }
+        })
+    }
+
     @computed get sortedItems(): readonly Item[] {
         let sortByFunc: (item: Item) => number | string | undefined
         switch (this.sortConfig.sortBy) {
@@ -339,16 +438,17 @@ export class StackedDiscreteBarChart
                 sortByFunc = (): undefined => undefined
                 break
             case SortBy.entityName:
-                sortByFunc = (item: Item): string => item.label
+                sortByFunc = (item: Item): string => item.entityName
                 break
-            case SortBy.column:
+            case SortBy.column: {
                 const owidRowsByEntityName =
                     this.sortColumn?.owidRowsByEntityName
                 sortByFunc = (item: Item): number => {
-                    const rows = owidRowsByEntityName?.get(item.label)
+                    const rows = owidRowsByEntityName?.get(item.entityName)
                     return rows?.[0]?.value ?? 0
                 }
                 break
+            }
             default:
             case SortBy.total:
                 sortByFunc = (item: Item): number => {
@@ -357,7 +457,7 @@ export class StackedDiscreteBarChart
                     return lastPoint.valueOffset + lastPoint.value
                 }
         }
-        const sortedItems = sortBy(this.items, sortByFunc)
+        const sortedItems = sortBy(this.sizedItems, sortByFunc)
         const sortOrder = this.sortConfig.sortOrder ?? SortOrder.desc
         if (sortOrder === SortOrder.desc) sortedItems.reverse()
 
@@ -375,12 +475,29 @@ export class StackedDiscreteBarChart
         }))
     }
 
-    @computed private get barHeight(): number {
-        return (0.8 * this.innerBounds.height) / this.items.length
+    /** The total height of the series, i.e. the height of the bar + the white space around it */
+    @computed private get seriesHeight(): number {
+        return this.innerBounds.height / this.barCount
     }
 
     @computed private get barSpacing(): number {
-        return this.innerBounds.height / this.items.length - this.barHeight
+        return this.seriesHeight * BAR_SPACING_FACTOR
+    }
+
+    @computed private get barHeight(): number {
+        const totalWhiteSpace = this.barCount * this.barSpacing
+        return (this.innerBounds.height - totalWhiteSpace) / this.barCount
+    }
+
+    // useful if `barHeight` can't be used due to a cyclic dependency
+    // keep in mind though that this is not exactly the same as `barHeight`
+    @computed private get approximateBarHeight(): number {
+        const { height } = this.boundsWithoutLegend
+        const approximateMaxBarHeight = height / this.barCount
+        const approximateBarSpacing =
+            approximateMaxBarHeight * BAR_SPACING_FACTOR
+        const totalWhiteSpace = this.barCount * approximateBarSpacing
+        return (height - totalWhiteSpace) / this.barCount
     }
 
     // legend props
@@ -471,7 +588,30 @@ export class StackedDiscreteBarChart
         })
     }
 
-    render(): JSX.Element {
+    @observable tooltipState = new TooltipState<{
+        entityName: string
+        seriesName?: string
+    }>()
+
+    @action.bound private onEntityMouseEnter(
+        entityName: string,
+        seriesName?: string
+    ): void {
+        this.tooltipState.target = { entityName, seriesName }
+    }
+
+    @action.bound private onMouseMove(ev: React.MouseEvent): void {
+        const ref = this.manager.base?.current
+        if (ref) {
+            this.tooltipState.position = getRelativeMouse(ref, ev)
+        }
+    }
+
+    @action.bound private onEntityMouseLeave(): void {
+        this.tooltipState.target = null
+    }
+
+    render(): React.ReactElement {
         if (this.failMessage)
             return (
                 <NoDataModal
@@ -481,28 +621,163 @@ export class StackedDiscreteBarChart
                 />
             )
 
-        const { bounds, yAxis, innerBounds } = this
+        return this.manager.isStatic
+            ? this.renderStatic()
+            : this.renderInteractive()
+    }
 
-        const chartContext: StackedBarChartContext = {
-            yAxis,
+    @computed get chartContext(): StackedBarChartContext {
+        return {
+            yAxis: this.yAxis,
             targetTime: this.manager.endTime,
             timeColumn: this.inputTable.timeColumn,
             formatColumn: this.formatColumn,
             formatValueForLabel: this.formatValueForLabel,
             barHeight: this.barHeight,
             focusSeriesName: this.focusSeriesName,
+            hoverSeriesName: this.tooltipState.target?.seriesName,
+            hoverEntityName: this.tooltipState.target?.entityName,
             x0: this.x0,
             baseFontSize: this.baseFontSize,
-            isInteractive: !this.manager.isExportingtoSvgOrPng,
         }
+    }
+
+    renderRow({
+        data,
+        state,
+    }: {
+        data: PlacedItem
+        state: { translateY: number }
+    }): React.ReactElement {
+        const { yAxis } = this
+        const { entityName, label, bars, totalValue } = data
+
+        const totalLabel = this.formatValueForLabel(totalValue)
+        const showLabelInsideBar = bars.length > 1
+
+        return (
+            <g
+                key={entityName}
+                id={makeIdForHumanConsumption(entityName)}
+                className="bar"
+                transform={`translate(0, ${state.translateY ?? 0})`}
+            >
+                {bars.map((bar) => (
+                    <StackedDiscreteBarChart.Bar
+                        key={bar.seriesName}
+                        entity={entityName}
+                        bar={bar}
+                        chartContext={this.chartContext}
+                        showLabelInsideBar={showLabelInsideBar}
+                        onMouseEnter={this.onEntityMouseEnter}
+                        onMouseLeave={this.onEntityMouseLeave}
+                    />
+                ))}
+                {label.renderSVG(
+                    yAxis.place(this.x0) - labelToBarPadding,
+                    -label.height / 2,
+                    {
+                        textProps: {
+                            textAnchor: "end",
+                            fill: "#555",
+                            onMouseEnter: (): void =>
+                                this.onEntityMouseEnter(label.text),
+                            onMouseLeave: this.onEntityMouseLeave,
+                        },
+                    }
+                )}
+                {this.showTotalValueLabel && (
+                    <text
+                        transform={`translate(${
+                            yAxis.place(totalValue) + labelToBarPadding
+                        }, 0)`}
+                        dy={dyFromAlign(VerticalAlign.middle)}
+                        {...this.totalValueLabelStyle}
+                    >
+                        {totalLabel}
+                    </text>
+                )}
+            </g>
+        )
+    }
+
+    renderAxis(): React.ReactElement {
+        const { manager, bounds, yAxis, innerBounds } = this
+
+        const axisLineWidth = manager.isStaticAndSmall
+            ? GRAPHER_AXIS_LINE_WIDTH_THICK
+            : GRAPHER_AXIS_LINE_WIDTH_DEFAULT
+
+        return (
+            <>
+                {this.showHorizontalAxis && (
+                    <>
+                        <HorizontalAxisComponent
+                            bounds={bounds}
+                            axis={yAxis}
+                            preferredAxisPosition={innerBounds.bottom}
+                            labelColor={manager.secondaryColorInStaticCharts}
+                            tickMarkWidth={axisLineWidth}
+                        />
+                        <HorizontalAxisGridLines
+                            horizontalAxis={yAxis}
+                            bounds={innerBounds}
+                            strokeWidth={axisLineWidth}
+                        />
+                    </>
+                )}
+                <HorizontalAxisZeroLine
+                    horizontalAxis={yAxis}
+                    bounds={innerBounds}
+                    strokeWidth={0.5 * axisLineWidth}
+                    // moves the zero line a little to the left to avoid
+                    // overlap with the bars
+                    align={HorizontalAlign.right}
+                />
+            </>
+        )
+    }
+
+    renderLegend(): React.ReactElement | void {
+        if (!this.showLegend) return
+        return <HorizontalCategoricalColorLegend manager={this} />
+    }
+
+    renderStatic(): React.ReactElement {
+        return (
+            <>
+                {this.renderAxis()}
+                {this.renderLegend()}
+                <g id={makeIdForHumanConsumption("bars")}>
+                    {this.placedItems.map((item) =>
+                        this.renderRow({
+                            data: item,
+                            state: { translateY: item.yPosition },
+                        })
+                    )}
+                </g>
+            </>
+        )
+    }
+
+    renderInteractive(): React.ReactElement {
+        const { bounds } = this
 
         const handlePositionUpdate = (d: PlacedItem): HashMap => ({
             translateY: [d.yPosition],
             timing: { duration: 350, ease: easeQuadOut },
         })
 
+        // needs to be referenced here, otherwise it's not updated in the renderRow function
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        this.focusSeriesName
+
         return (
-            <g ref={this.base} className="StackedDiscreteBarChart">
+            <g
+                ref={this.base}
+                className="StackedDiscreteBarChart"
+                onMouseMove={this.onMouseMove}
+            >
                 <rect
                     x={bounds.left}
                     y={bounds.top}
@@ -511,143 +786,46 @@ export class StackedDiscreteBarChart
                     opacity={0}
                     fill="rgba(255,255,255,0)"
                 />
-                {this.showHorizontalAxis && (
-                    <HorizontalAxisComponent
-                        bounds={bounds}
-                        axis={yAxis}
-                        preferredAxisPosition={innerBounds.bottom}
-                    />
-                )}
-                <HorizontalAxisGridLines
-                    horizontalAxis={yAxis}
-                    bounds={innerBounds}
-                />
-                {this.showLegend && (
-                    <HorizontalCategoricalColorLegend manager={this} />
-                )}
+                {this.renderAxis()}
+                {this.renderLegend()}
                 <NodeGroup
                     data={this.placedItems}
-                    keyAccessor={(d: PlacedItem): string => d.label}
+                    keyAccessor={(d: PlacedItem): string => d.entityName}
                     start={handlePositionUpdate}
                     update={handlePositionUpdate}
                 >
-                    {(nodes): JSX.Element => (
-                        <g>
-                            {nodes.map(
-                                ({
-                                    data,
-                                    state,
-                                }: {
-                                    data: PlacedItem
-                                    state: { translateY: number }
-                                }) => {
-                                    const { label, bars, totalValue } = data
-                                    const tooltipProps = {
-                                        ...chartContext,
-                                        item: data,
-                                    }
-
-                                    const totalLabel =
-                                        this.formatValueForLabel(totalValue)
-                                    const showLabelInsideBar = bars.length > 1
-
-                                    return (
-                                        <g
-                                            key={label}
-                                            className="bar"
-                                            transform={`translate(0, ${state.translateY})`}
-                                        >
-                                            <TippyIfInteractive
-                                                lazy
-                                                isInteractive={
-                                                    !this.manager
-                                                        .isExportingtoSvgOrPng
-                                                }
-                                                hideOnClick={false}
-                                                content={
-                                                    <StackedDiscreteBarChart.Tooltip
-                                                        {...tooltipProps}
-                                                        highlightedSeriesName={
-                                                            undefined
-                                                        }
-                                                    />
-                                                }
-                                            >
-                                                <text
-                                                    transform={`translate(${
-                                                        yAxis.place(this.x0) -
-                                                        labelToBarPadding
-                                                    }, 0)`}
-                                                    fill="#555"
-                                                    dominantBaseline="middle"
-                                                    textAnchor="end"
-                                                    {...this.labelStyle}
-                                                >
-                                                    {label}
-                                                </text>
-                                            </TippyIfInteractive>
-                                            {bars.map((bar) => (
-                                                <StackedDiscreteBarChart.Bar
-                                                    key={bar.seriesName}
-                                                    bar={bar}
-                                                    chartContext={chartContext}
-                                                    tooltipProps={{
-                                                        ...tooltipProps,
-                                                        highlightedSeriesName:
-                                                            bar.seriesName,
-                                                    }}
-                                                    showLabelInsideBar={
-                                                        showLabelInsideBar
-                                                    }
-                                                />
-                                            ))}
-                                            {this.showTotalValueLabel && (
-                                                <text
-                                                    transform={`translate(${
-                                                        yAxis.place(
-                                                            totalValue
-                                                        ) + labelToBarPadding
-                                                    }, 0)`}
-                                                    dominantBaseline="middle"
-                                                    {...this
-                                                        .totalValueLabelStyle}
-                                                >
-                                                    {totalLabel}
-                                                </text>
-                                            )}
-                                        </g>
-                                    )
-                                }
-                            )}
-                        </g>
+                    {(nodes): React.ReactElement => (
+                        <g>{nodes.map((node) => this.renderRow(node))}</g>
                     )}
                 </NodeGroup>
-                <HorizontalAxisZeroLine
-                    horizontalAxis={yAxis}
-                    bounds={innerBounds}
-                />
+                {this.tooltip}
             </g>
         )
     }
 
     private static Bar(props: {
         bar: Bar
+        entity: string
         chartContext: StackedBarChartContext
-        tooltipProps: TooltipProps
         showLabelInsideBar: boolean
-    }): JSX.Element {
-        const { bar, chartContext, tooltipProps } = props
+        onMouseEnter: (entityName: string, seriesName?: string) => void
+        onMouseLeave: () => void
+    }): React.ReactElement {
+        const { entity, bar, chartContext } = props
         const { yAxis, formatValueForLabel, focusSeriesName, barHeight } =
             chartContext
 
         const isFaint =
             focusSeriesName !== undefined && focusSeriesName !== bar.seriesName
+        const isHover =
+            chartContext.hoverSeriesName === bar.seriesName &&
+            chartContext.hoverEntityName === entity
         const barX = yAxis.place(chartContext.x0 + bar.point.valueOffset)
         const barWidth =
             yAxis.place(bar.point.value) - yAxis.place(chartContext.x0)
 
         const barLabel = formatValueForLabel(bar.point.value)
-        const labelFontSize = 0.7 * chartContext.baseFontSize
+        const labelFontSize = GRAPHER_FONT_SCALE_12 * chartContext.baseFontSize
         const labelBounds = Bounds.forText(barLabel, {
             fontSize: labelFontSize,
         })
@@ -659,223 +837,127 @@ export class StackedDiscreteBarChart
         const labelColor = isDarkColor(bar.color) ? "#fff" : "#000"
 
         return (
-            <TippyIfInteractive
-                lazy
-                isInteractive={chartContext.isInteractive}
-                key={bar.seriesName}
-                hideOnClick={false}
-                content={<StackedDiscreteBarChart.Tooltip {...tooltipProps} />}
+            <g
+                id={makeIdForHumanConsumption(bar.seriesName)}
+                onMouseEnter={(): void =>
+                    props?.onMouseEnter(entity, bar.seriesName)
+                }
+                onMouseLeave={props?.onMouseLeave}
             >
-                <g>
-                    <rect
-                        x={0}
+                <rect
+                    id={makeIdForHumanConsumption("bar")}
+                    x={0}
+                    y={0}
+                    transform={`translate(${barX}, ${-barHeight / 2})`}
+                    width={barWidth}
+                    height={barHeight}
+                    fill={bar.color}
+                    opacity={
+                        isHover
+                            ? 1
+                            : isFaint
+                              ? 0.1
+                              : GRAPHER_AREA_OPACITY_DEFAULT
+                    }
+                    style={{
+                        transition: "height 200ms ease",
+                    }}
+                />
+                {showLabelInsideBar && (
+                    <text
+                        x={barX + barWidth / 2}
                         y={0}
-                        transform={`translate(${barX}, ${-barHeight / 2})`}
                         width={barWidth}
                         height={barHeight}
-                        fill={bar.color}
-                        opacity={isFaint ? 0.1 : 0.85}
-                        style={{
-                            transition: "height 200ms ease",
-                        }}
-                    />
-                    {showLabelInsideBar && (
-                        <text
-                            x={barX + barWidth / 2}
-                            y={0}
-                            width={barWidth}
-                            height={barHeight}
-                            fill={labelColor}
-                            opacity={isFaint ? 0 : 1}
-                            fontSize={labelFontSize}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                        >
-                            {barLabel}
-                        </text>
-                    )}
-                </g>
-            </TippyIfInteractive>
+                        fill={labelColor}
+                        opacity={isFaint ? 0 : 1}
+                        fontSize={labelFontSize}
+                        textAnchor="middle"
+                        dy={dyFromAlign(VerticalAlign.middle)}
+                    >
+                        {barLabel}
+                    </text>
+                )}
+            </g>
         )
     }
 
-    private static Tooltip(props: TooltipProps): JSX.Element {
-        let hasTimeNotice = false
-        const { highlightedSeriesName, item } = props
-        const showTotal = !item.bars.some((bar) => bar.point.fake) // If some data is missing, don't calculate a total
+    @computed private get tooltip(): React.ReactElement | undefined {
+        const {
+                tooltipState: { target, position, fading },
+                formatColumn: { unit, shortUnit },
+                manager: { endTime: targetTime },
+                inputTable: { timeColumn },
+            } = this,
+            item = this.placedItems.find(
+                ({ entityName }) => entityName === target?.entityName
+            ),
+            hasNotice = item?.bars.some(
+                ({ point }) => !point.fake && point.time !== targetTime
+            ),
+            targetNotice = hasNotice
+                ? timeColumn.formatValue(targetTime)
+                : undefined
 
-        const timeNoticeStyle = {
-            fontWeight: "normal",
-            color: "#707070",
-            fontSize: "0.8em",
-            whiteSpace: "nowrap",
-            paddingLeft: "8px",
-        } as React.CSSProperties
+        const toleranceNotice = targetNotice
+            ? {
+                  icon: TooltipFooterIcon.notice,
+                  text: makeTooltipToleranceNotice(targetNotice),
+              }
+            : undefined
+        const roundingNotice = this.formatColumn.roundsToSignificantFigures
+            ? {
+                  icon: TooltipFooterIcon.none,
+                  text: makeTooltipRoundingNotice([
+                      this.formatColumn.numSignificantFigures,
+                  ]),
+              }
+            : undefined
+        const footer = excludeUndefined([toleranceNotice, roundingNotice])
 
         return (
-            <table
-                style={{
-                    lineHeight: "1em",
-                    whiteSpace: "normal",
-                    borderSpacing: "0.5em",
-                }}
-            >
-                <tbody>
-                    <tr>
-                        <td colSpan={4} style={{ color: "#111" }}>
-                            <strong>{item.label}</strong>
-                        </td>
-                    </tr>
-                    {item.bars.map((bar) => {
-                        const squareColor = bar.color
-                        const isHighlighted =
-                            bar.seriesName === highlightedSeriesName
-                        const isFaint =
-                            highlightedSeriesName !== null && !isHighlighted
-                        const shouldShowTimeNotice =
-                            !bar.point.fake &&
-                            bar.point.time !== props.targetTime
-                        hasTimeNotice ||= shouldShowTimeNotice
+            target &&
+            item && (
+                <Tooltip
+                    id="stackedDiscreteBarTooltip"
+                    tooltipManager={this.manager}
+                    x={position.x}
+                    y={position.y}
+                    style={{ maxWidth: "400px" }}
+                    offsetX={20}
+                    offsetY={-16}
+                    title={target.entityName}
+                    subtitle={unit !== shortUnit ? unit : undefined}
+                    subtitleFormat="unit"
+                    footer={footer}
+                    dissolve={fading}
+                    dismiss={() => (this.tooltipState.target = null)}
+                >
+                    <TooltipTable
+                        columns={[this.formatColumn]}
+                        totals={[item.totalValue]}
+                        rows={item.bars.map((bar) => {
+                            const {
+                                seriesName: name,
+                                color,
+                                point: { value, time, fake: blurred },
+                            } = bar
 
-                        return (
-                            <tr
-                                key={`${bar.seriesName}`}
-                                style={{
-                                    color: isHighlighted
-                                        ? "#000"
-                                        : isFaint
-                                        ? "#707070"
-                                        : "#444",
-                                    fontWeight: isHighlighted
-                                        ? "bold"
+                            return {
+                                name,
+                                swatch: { color },
+                                blurred,
+                                focused: name === target.seriesName,
+                                values: [!blurred ? value : undefined],
+                                notice:
+                                    !blurred && time !== targetTime
+                                        ? timeColumn.formatValue(time)
                                         : undefined,
-                                }}
-                            >
-                                <td>
-                                    <div
-                                        style={{
-                                            width: "10px",
-                                            height: "10px",
-                                            backgroundColor: squareColor,
-                                            display: "inline-block",
-                                        }}
-                                    />
-                                </td>
-                                <td
-                                    style={{
-                                        paddingRight: "0.8em",
-                                        fontSize: "0.9em",
-                                    }}
-                                >
-                                    {bar.seriesName}
-                                </td>
-                                <td
-                                    style={{
-                                        textAlign: "right",
-                                        whiteSpace: "nowrap",
-                                    }}
-                                >
-                                    {bar.point.fake
-                                        ? "No data"
-                                        : props.formatColumn.formatValueShort(
-                                              bar.point.value,
-                                              {
-                                                  trailingZeroes: true,
-                                              }
-                                          )}
-                                </td>
-                                {shouldShowTimeNotice && (
-                                    <td style={timeNoticeStyle}>
-                                        <span className="icon">
-                                            <FontAwesomeIcon
-                                                icon={faInfoCircle}
-                                                style={{
-                                                    marginRight: "0.25em",
-                                                }}
-                                            />{" "}
-                                        </span>
-                                        {props.timeColumn.formatValue(
-                                            bar.point.time
-                                        )}
-                                    </td>
-                                )}
-                            </tr>
-                        )
-                    })}
-                    {/* Total */}
-                    {showTotal && (
-                        <tr
-                            style={{
-                                color: "#000",
-                                fontWeight: highlightedSeriesName
-                                    ? undefined
-                                    : "bold",
-                            }}
-                        >
-                            <td />
-                            <td
-                                style={{
-                                    paddingRight: "0.8em",
-                                    fontSize: "0.9em",
-                                }}
-                            >
-                                Total
-                            </td>
-                            <td
-                                style={{
-                                    textAlign: "right",
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                {props.formatColumn.formatValueShort(
-                                    item.totalValue,
-                                    {
-                                        trailingZeroes: true,
-                                    }
-                                )}
-                            </td>
-                            {/* If we're showing a time notice for some year already, then also show it for the total */}
-                            {hasTimeNotice && (
-                                <td style={timeNoticeStyle}>
-                                    <span className="icon">
-                                        <FontAwesomeIcon icon={faInfoCircle} />
-                                    </span>
-                                </td>
-                            )}
-                        </tr>
-                    )}
-                    {hasTimeNotice && (
-                        <tr>
-                            <td
-                                colSpan={4}
-                                style={{
-                                    ...timeNoticeStyle,
-                                    paddingLeft: undefined,
-                                    whiteSpace: undefined,
-                                    paddingTop: "10px",
-                                }}
-                            >
-                                <div style={{ display: "flex" }}>
-                                    <span
-                                        className="icon"
-                                        style={{ marginRight: "0.5em" }}
-                                    >
-                                        <FontAwesomeIcon icon={faInfoCircle} />{" "}
-                                    </span>
-                                    <span>
-                                        No data available for{" "}
-                                        {props.timeColumn.formatValue(
-                                            props.targetTime
-                                        )}
-                                        . Showing closest available data point
-                                        instead.
-                                    </span>
-                                </div>
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                            }
+                        })}
+                    ></TooltipTable>
+                </Tooltip>
+            )
         )
     }
 
@@ -913,23 +995,34 @@ export class StackedDiscreteBarChart
     @computed private get colorScheme(): ColorScheme {
         return (
             (this.manager.baseColorScheme
-                ? ColorSchemes[this.manager.baseColorScheme]
-                : undefined) ?? ColorSchemes["owid-distinct"]
+                ? ColorSchemes.get(this.manager.baseColorScheme)
+                : null) ?? ColorSchemes.get(ColorSchemeName["owid-distinct"])
         )
+    }
+
+    @computed private get categoricalColorAssigner(): CategoricalColorAssigner {
+        const seriesCount = this.yColumns.length
+        return new CategoricalColorAssigner({
+            colorScheme: this.colorScheme,
+            invertColorScheme: this.manager.invertColorScheme,
+            colorMap: this.inputTable.columnDisplayNameToColorMap,
+            autoColorMapCache: this.manager.seriesColorMap,
+            numColorsInUse: seriesCount,
+        })
     }
 
     @computed private get unstackedSeries(): StackedSeries<EntityName>[] {
         return (
             this.yColumns
-                .map((col, i) => {
+                .map((col) => {
                     return {
                         seriesName: col.displayName,
                         columnSlug: col.slug,
-                        color:
-                            col.def.color ??
-                            this.colorScheme.getColors(this.yColumns.length)[i],
+                        color: this.categoricalColorAssigner.assign(
+                            col.displayName
+                        ),
                         points: col.owidRows.map((row) => ({
-                            time: row.time,
+                            time: row.originalTime,
                             position: row.entityName,
                             value: row.value,
                             valueOffset: 0,

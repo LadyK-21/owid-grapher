@@ -1,24 +1,126 @@
-import { GrapherAnalytics } from "@ourworldindata/grapher"
+import { GrapherAnalytics, EventCategory } from "@ourworldindata/grapher"
+import { SearchCategoryFilter } from "./search/searchTypes.js"
+import { DataCatalogState } from "./DataCatalog/DataCatalogState.js"
+import { IDataCatalogHit } from "./DataCatalog/DataCatalogUtils.js"
+import { set } from "lodash"
 
 export class SiteAnalytics extends GrapherAnalytics {
-    logCovidCountryProfileSearch(country: string) {
-        this.logToGA("COVID_COUNTRY_PROFILE_SEARCH", country)
+    logCountryProfileSearch(country: string) {
+        this.logToGA({
+            event: EventCategory.CountryProfileSearch,
+            eventContext: country,
+        })
     }
 
     logPageNotFoundError(url: string) {
-        this.logToAmplitude("NOT_FOUND", { href: url })
-        this.logToGA("Errors", "NotFound", url)
+        this.logToGA({
+            event: EventCategory.SiteError,
+            eventAction: "not_found",
+            eventContext: url,
+        })
     }
 
-    logChartsPageSearchQuery(query: string) {
-        this.logToGA("ChartsPage", "Filter", query)
+    logCountryPageSearchQuery(query: string) {
+        this.logToGA({
+            event: EventCategory.Filter,
+            eventAction: "country_page_search",
+            eventContext: query,
+        })
     }
 
-    logPageLoad() {
-        this.logToAmplitude("OWID_PAGE_LOAD")
+    logSearchClick({
+        query,
+        position,
+        url,
+        positionInSection,
+        cardPosition,
+        positionWithinCard,
+        filter,
+    }: {
+        query: string
+        position: string
+        positionInSection: string
+        cardPosition?: string
+        positionWithinCard?: string
+        url: string
+        filter: SearchCategoryFilter
+    }) {
+        this.logToGA({
+            event: EventCategory.SiteSearchClick,
+            eventAction: "click",
+            eventContext: JSON.stringify({
+                query,
+                position,
+                positionInSection,
+                cardPosition,
+                positionWithinCard,
+                filter,
+            }),
+            eventTarget: url,
+        })
     }
 
-    logDataValueAnnotate(label: string) {
-        this.logToGA("Hover", "data-value-annotate", label)
+    logInstantSearchClick({
+        query,
+        url,
+        position,
+    }: {
+        query: string
+        url: string
+        position: string
+    }) {
+        this.logToGA({
+            event: EventCategory.SiteInstantSearchClick,
+            eventAction: "click",
+            eventContext: JSON.stringify({ query, position }),
+            eventTarget: url,
+        })
+    }
+
+    logSearchFilterClick({ key }: { key: string }) {
+        this.logToGA({
+            event: EventCategory.SiteSearchFilterClick,
+            eventAction: "click",
+            eventContext: key,
+        })
+    }
+
+    logDodShown(id: string) {
+        this.logToGA({
+            event: EventCategory.DetailOnDemand,
+            eventAction: "show",
+            eventTarget: id,
+        })
+    }
+
+    logDataCatalogSearch(state: DataCatalogState) {
+        this.logToGA({
+            event: EventCategory.DataCatalogSearch,
+            eventAction: "search",
+            eventContext: JSON.stringify({
+                ...state,
+                topics: Array.from(state.topics),
+                selectedCountryNames: Array.from(state.selectedCountryNames),
+            }),
+        })
+    }
+
+    logDataCatalogResultClick(
+        hit: IDataCatalogHit,
+        position: number,
+        source: "ribbon" | "search",
+        ribbonTag?: string
+    ) {
+        const eventContext = {
+            position,
+            source,
+        }
+        if (ribbonTag) set(eventContext, "ribbonTag", ribbonTag)
+        this.logToGA({
+            event: EventCategory.DataCatalogResultClick,
+            eventAction: "click",
+            eventContext: JSON.stringify(eventContext),
+            eventTarget: hit.slug,
+        })
     }
 }

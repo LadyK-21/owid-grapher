@@ -1,14 +1,14 @@
-import React from "react"
+import * as React from "react"
 import { observable, computed, action } from "mobx"
 import { observer } from "mobx-react"
-import { ChartEditor } from "./ChartEditor.js"
 import {
-    Grapher,
     ComparisonLineConfig,
     ColorSchemeName,
     FacetAxisDomain,
     FacetStrategy,
-} from "@ourworldindata/grapher"
+    GRAPHER_CHART_TYPES,
+} from "@ourworldindata/types"
+import { Grapher } from "@ourworldindata/grapher"
 import {
     NumberField,
     Toggle,
@@ -18,6 +18,7 @@ import {
     TextField,
     Button,
     RadioGroup,
+    BindAutoFloatExt,
 } from "./Forms.js"
 import {
     debounce,
@@ -28,6 +29,8 @@ import {
     SortOrder,
     SortBy,
     SortConfig,
+    minTimeBoundFromJSONOrNegativeInfinity,
+    maxTimeBoundFromJSONOrPositiveInfinity,
 } from "@ourworldindata/utils"
 import { faPlus, faMinus } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
@@ -37,9 +40,84 @@ import {
 } from "./ColorSchemeDropdown.js"
 import { EditorColorScaleSection } from "./EditorColorScaleSection.js"
 import Select from "react-select"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
+import { ErrorMessages } from "./ChartEditorTypes.js"
+
+const debounceOnLeadingEdge = (fn: (...args: any[]) => void) =>
+    debounce(fn, 0, { leading: true, trailing: false })
 
 @observer
-export class ColorSchemeSelector extends React.Component<{ grapher: Grapher }> {
+class TimeField<
+    T extends { [field: string]: any },
+    K extends Extract<keyof T, string>,
+> extends React.Component<{
+    field: K
+    store: T
+    label: string
+    defaultValue: number
+    parentValue: number
+    isInherited: boolean
+    allowLinking: boolean
+}> {
+    private setValue(value: number) {
+        this.props.store[this.props.field] = value as any
+    }
+
+    @computed get currentValue(): number | undefined {
+        return this.props.store[this.props.field]
+    }
+
+    @action.bound onChange(value: number | undefined) {
+        this.setValue(value ?? this.props.defaultValue)
+    }
+
+    @action.bound onBlur() {
+        if (this.currentValue === undefined) {
+            this.setValue(this.props.defaultValue)
+        }
+    }
+
+    render() {
+        const { label, field, defaultValue } = this.props
+
+        // the reset button resets the value to its default
+        const resetButton = {
+            onClick: action(() => this.setValue(defaultValue)),
+            disabled: this.currentValue === defaultValue,
+        }
+
+        return this.props.allowLinking ? (
+            <BindAutoFloatExt
+                label={label}
+                readFn={(store) => store[field]}
+                writeFn={(store, newVal) =>
+                    (store[this.props.field] = newVal as any)
+                }
+                auto={this.props.parentValue}
+                isAuto={this.props.isInherited}
+                store={this.props.store}
+                onBlur={this.onBlur}
+                resetButton={resetButton}
+            />
+        ) : (
+            <NumberField
+                label={label}
+                value={this.currentValue}
+                // invoke on the leading edge to avoid interference with onBlur
+                onValue={debounceOnLeadingEdge(this.onChange)}
+                onBlur={this.onBlur}
+                allowNegative
+                resetButton={resetButton}
+            />
+        )
+    }
+}
+
+@observer
+export class ColorSchemeSelector extends React.Component<{
+    grapher: Grapher
+    defaultValue?: ColorSchemeName
+}> {
     @action.bound onChange(selected: ColorSchemeOption) {
         // The onChange method can return an array of values (when multiple
         // items can be selected) or a single value. Since we are certain that
@@ -52,6 +130,15 @@ export class ColorSchemeSelector extends React.Component<{ grapher: Grapher }> {
 
         // clear out saved, pre-computed colors so the color scheme change is immediately visible
         this.props.grapher.seriesColorMap?.clear()
+    }
+
+    @action.bound onBlur() {
+        if (this.props.grapher.baseColorScheme === undefined) {
+            this.props.grapher.baseColorScheme = this.props.defaultValue
+
+            // clear out saved, pre-computed colors so the color scheme change is immediately visible
+            this.props.grapher.seriesColorMap?.clear()
+        }
     }
 
     @action.bound onInvertColorScheme(value: boolean) {
@@ -69,9 +156,13 @@ export class ColorSchemeSelector extends React.Component<{ grapher: Grapher }> {
                     <div className="form-group">
                         <label>Color scheme</label>
                         <ColorSchemeDropdown
-                            value={grapher.baseColorScheme || "default"}
+                            value={grapher.baseColorScheme}
                             onChange={this.onChange}
-                            chartType={this.props.grapher.type}
+                            onBlur={this.onBlur}
+                            chartType={
+                                this.props.grapher.chartType ??
+                                GRAPHER_CHART_TYPES.LineChart
+                            }
                             invertedColorScheme={!!grapher.invertColorScheme}
                             additionalOptions={[
                                 {
@@ -103,7 +194,9 @@ interface SortOrderDropdownOption {
 }
 
 @observer
-class SortOrderSection extends React.Component<{ editor: ChartEditor }> {
+class SortOrderSection<
+    Editor extends AbstractChartEditor,
+> extends React.Component<{ editor: Editor }> {
     @computed get sortConfig(): SortConfig {
         return this.grapher._sortConfig
     }
@@ -203,7 +296,9 @@ class SortOrderSection extends React.Component<{ editor: ChartEditor }> {
 }
 
 @observer
-class FacetSection extends React.Component<{ editor: ChartEditor }> {
+class FacetSection<Editor extends AbstractChartEditor> extends React.Component<{
+    editor: Editor
+}> {
     base: React.RefObject<HTMLDivElement> = React.createRef()
 
     @computed get grapher() {
@@ -280,41 +375,13 @@ class FacetSection extends React.Component<{ editor: ChartEditor }> {
 }
 
 @observer
-class TimelineSection extends React.Component<{ editor: ChartEditor }> {
+class TimelineSection<
+    Editor extends AbstractChartEditor,
+> extends React.Component<{ editor: Editor }> {
     base: React.RefObject<HTMLDivElement> = React.createRef()
 
     @computed get grapher() {
         return this.props.editor.grapher
-    }
-
-    @computed get minTime() {
-        return this.grapher.minTime
-    }
-    @computed get maxTime() {
-        return this.grapher.maxTime
-    }
-
-    @computed get timelineMinTime() {
-        return this.grapher.timelineMinTime
-    }
-    @computed get timelineMaxTime() {
-        return this.grapher.timelineMaxTime
-    }
-
-    @action.bound onMinTime(value: number | undefined) {
-        this.grapher.minTime = value ?? TimeBoundValue.negativeInfinity
-    }
-
-    @action.bound onMaxTime(value: number | undefined) {
-        this.grapher.maxTime = value ?? TimeBoundValue.positiveInfinity
-    }
-
-    @action.bound onTimelineMinTime(value: number | undefined) {
-        this.grapher.timelineMinTime = value
-    }
-
-    @action.bound onTimelineMaxTime(value: number | undefined) {
-        this.grapher.timelineMaxTime = value
     }
 
     @action.bound onToggleHideTimeline(value: boolean) {
@@ -326,44 +393,77 @@ class TimelineSection extends React.Component<{ editor: ChartEditor }> {
     }
 
     render() {
-        const { features } = this.props.editor
+        const { editor } = this.props
+        const { features } = editor
         const { grapher } = this
 
         return (
             <Section name="Timeline selection">
                 <FieldsRow>
                     {features.timeDomain && (
-                        <NumberField
+                        <TimeField
+                            store={this.grapher}
+                            field="minTime"
                             label="Selection start"
-                            value={this.minTime}
-                            onValue={debounce(this.onMinTime)}
-                            allowNegative
+                            defaultValue={TimeBoundValue.negativeInfinity}
+                            parentValue={minTimeBoundFromJSONOrNegativeInfinity(
+                                editor.activeParentConfig?.minTime
+                            )}
+                            isInherited={editor.isPropertyInherited("minTime")}
+                            allowLinking={editor.couldPropertyBeInherited(
+                                "minTime"
+                            )}
                         />
                     )}
-                    <NumberField
+                    <TimeField
+                        store={this.grapher}
+                        field="maxTime"
                         label={
                             features.timeDomain
                                 ? "Selection end"
                                 : "Selected year"
                         }
-                        value={this.maxTime}
-                        onValue={debounce(this.onMaxTime)}
-                        allowNegative
+                        defaultValue={TimeBoundValue.positiveInfinity}
+                        parentValue={maxTimeBoundFromJSONOrPositiveInfinity(
+                            editor.activeParentConfig?.maxTime
+                        )}
+                        isInherited={editor.isPropertyInherited("maxTime")}
+                        allowLinking={editor.couldPropertyBeInherited(
+                            "maxTime"
+                        )}
                     />
                 </FieldsRow>
                 {features.timelineRange && (
                     <FieldsRow>
-                        <NumberField
+                        <TimeField
+                            store={this.grapher}
+                            field="timelineMinTime"
                             label="Timeline min"
-                            value={this.timelineMinTime}
-                            onValue={debounce(this.onTimelineMinTime)}
-                            allowNegative
+                            defaultValue={TimeBoundValue.negativeInfinity}
+                            parentValue={minTimeBoundFromJSONOrNegativeInfinity(
+                                editor.activeParentConfig?.timelineMinTime
+                            )}
+                            isInherited={editor.isPropertyInherited(
+                                "timelineMinTime"
+                            )}
+                            allowLinking={editor.couldPropertyBeInherited(
+                                "timelineMinTime"
+                            )}
                         />
-                        <NumberField
+                        <TimeField
+                            store={this.grapher}
+                            field="timelineMaxTime"
                             label="Timeline max"
-                            value={this.timelineMaxTime}
-                            onValue={debounce(this.onTimelineMaxTime)}
-                            allowNegative
+                            defaultValue={TimeBoundValue.positiveInfinity}
+                            parentValue={maxTimeBoundFromJSONOrPositiveInfinity(
+                                editor.activeParentConfig?.timelineMaxTime
+                            )}
+                            isInherited={editor.isPropertyInherited(
+                                "timelineMaxTime"
+                            )}
+                            allowLinking={editor.couldPropertyBeInherited(
+                                "timelineMaxTime"
+                            )}
                         />
                     </FieldsRow>
                 )}
@@ -387,21 +487,25 @@ class TimelineSection extends React.Component<{ editor: ChartEditor }> {
 }
 
 @observer
-class ComparisonLineSection extends React.Component<{ editor: ChartEditor }> {
+class ComparisonLineSection<
+    Editor extends AbstractChartEditor,
+> extends React.Component<{ editor: Editor }> {
     @observable comparisonLines: ComparisonLineConfig[] = []
 
     @action.bound onAddComparisonLine() {
         const { grapher } = this.props.editor
+        if (!grapher.comparisonLines) grapher.comparisonLines = []
         grapher.comparisonLines.push({})
     }
 
     @action.bound onRemoveComparisonLine(index: number) {
         const { grapher } = this.props.editor
-        grapher.comparisonLines!.splice(index, 1)
+        if (!grapher.comparisonLines) grapher.comparisonLines = []
+        grapher.comparisonLines.splice(index, 1)
     }
 
     render() {
-        const { comparisonLines } = this.props.editor.grapher
+        const { comparisonLines = [] } = this.props.editor.grapher
 
         return (
             <Section name="Comparison line">
@@ -445,14 +549,21 @@ class ComparisonLineSection extends React.Component<{ editor: ChartEditor }> {
 }
 
 @observer
-export class EditorCustomizeTab extends React.Component<{
-    editor: ChartEditor
+export class EditorCustomizeTab<
+    Editor extends AbstractChartEditor,
+> extends React.Component<{
+    editor: Editor
+    errorMessages: ErrorMessages
 }> {
+    @computed get errorMessages() {
+        return this.props.errorMessages
+    }
+
     render() {
         const xAxisConfig = this.props.editor.grapher.xAxis
         const yAxisConfig = this.props.editor.grapher.yAxis
 
-        const { features } = this.props.editor
+        const { features, activeParentConfig } = this.props.editor
         const { grapher } = this.props.editor
 
         return (
@@ -468,6 +579,12 @@ export class EditorCustomizeTab extends React.Component<{
                                         onValue={(value) =>
                                             (yAxisConfig.min = value)
                                         }
+                                        resetButton={{
+                                            onClick: () =>
+                                                (yAxisConfig.min = Infinity),
+                                            disabled:
+                                                yAxisConfig.min === Infinity,
+                                        }}
                                         allowDecimal
                                         allowNegative
                                     />
@@ -477,6 +594,12 @@ export class EditorCustomizeTab extends React.Component<{
                                         onValue={(value) =>
                                             (yAxisConfig.max = value)
                                         }
+                                        resetButton={{
+                                            onClick: () =>
+                                                (yAxisConfig.max = -Infinity),
+                                            disabled:
+                                                yAxisConfig.max === -Infinity,
+                                        }}
                                         allowDecimal
                                         allowNegative
                                     />
@@ -496,19 +619,21 @@ export class EditorCustomizeTab extends React.Component<{
                                         />
                                     </FieldsRow>
                                 )}
-                                <FieldsRow>
-                                    <Toggle
-                                        label={`Enable log/linear selector`}
-                                        value={
-                                            yAxisConfig.canChangeScaleType ||
-                                            false
-                                        }
-                                        onValue={(value) =>
-                                            (yAxisConfig.canChangeScaleType =
-                                                value || undefined)
-                                        }
-                                    />
-                                </FieldsRow>
+                                {features.canEnableLogLinearToggle && (
+                                    <FieldsRow>
+                                        <Toggle
+                                            label={`Enable log/linear selector`}
+                                            value={
+                                                yAxisConfig.canChangeScaleType ||
+                                                false
+                                            }
+                                            onValue={(value) =>
+                                                (yAxisConfig.canChangeScaleType =
+                                                    value || undefined)
+                                            }
+                                        />
+                                    </FieldsRow>
+                                )}
                             </React.Fragment>
                         )}
                         {features.canCustomizeYAxisLabel && (
@@ -516,6 +641,16 @@ export class EditorCustomizeTab extends React.Component<{
                                 label="Label"
                                 field="label"
                                 store={yAxisConfig}
+                                errorMessage={this.errorMessages.axisLabelY}
+                                onBlur={() => {
+                                    if (
+                                        yAxisConfig.label === "" &&
+                                        activeParentConfig?.yAxis?.label
+                                    ) {
+                                        yAxisConfig.label =
+                                            activeParentConfig.yAxis.label
+                                    }
+                                }}
                             />
                         )}
                     </Section>
@@ -531,6 +666,12 @@ export class EditorCustomizeTab extends React.Component<{
                                         onValue={(value) =>
                                             (xAxisConfig.min = value)
                                         }
+                                        resetButton={{
+                                            onClick: () =>
+                                                (xAxisConfig.min = undefined),
+                                            disabled:
+                                                xAxisConfig.min === undefined,
+                                        }}
                                         allowDecimal
                                         allowNegative
                                     />
@@ -540,6 +681,12 @@ export class EditorCustomizeTab extends React.Component<{
                                         onValue={(value) =>
                                             (xAxisConfig.max = value)
                                         }
+                                        resetButton={{
+                                            onClick: () =>
+                                                (xAxisConfig.max = undefined),
+                                            disabled:
+                                                xAxisConfig.max === undefined,
+                                        }}
                                         allowDecimal
                                         allowNegative
                                     />
@@ -559,19 +706,21 @@ export class EditorCustomizeTab extends React.Component<{
                                         />
                                     </FieldsRow>
                                 )}
-                                <FieldsRow>
-                                    <Toggle
-                                        label={`Enable log/linear selector`}
-                                        value={
-                                            xAxisConfig.canChangeScaleType ||
-                                            false
-                                        }
-                                        onValue={(value) =>
-                                            (xAxisConfig.canChangeScaleType =
-                                                value || undefined)
-                                        }
-                                    />
-                                </FieldsRow>
+                                {features.canEnableLogLinearToggle && (
+                                    <FieldsRow>
+                                        <Toggle
+                                            label={`Enable log/linear selector`}
+                                            value={
+                                                xAxisConfig.canChangeScaleType ||
+                                                false
+                                            }
+                                            onValue={(value) =>
+                                                (xAxisConfig.canChangeScaleType =
+                                                    value || undefined)
+                                            }
+                                        />
+                                    </FieldsRow>
+                                )}
                             </React.Fragment>
                         )}
                         {features.canCustomizeXAxisLabel && (
@@ -579,6 +728,16 @@ export class EditorCustomizeTab extends React.Component<{
                                 label="Label"
                                 field="label"
                                 store={xAxisConfig}
+                                errorMessage={this.errorMessages.axisLabelX}
+                                onBlur={() => {
+                                    if (
+                                        xAxisConfig.label === "" &&
+                                        activeParentConfig?.xAxis?.label
+                                    ) {
+                                        xAxisConfig.label =
+                                            activeParentConfig.xAxis.label
+                                    }
+                                }}
                             />
                         )}
                     </Section>
@@ -586,7 +745,13 @@ export class EditorCustomizeTab extends React.Component<{
                 <TimelineSection editor={this.props.editor} />
                 <FacetSection editor={this.props.editor} />
                 <Section name="Color scheme">
-                    <ColorSchemeSelector grapher={grapher} />
+                    <ColorSchemeSelector
+                        grapher={grapher}
+                        defaultValue={
+                            this.props.editor.activeParentConfig
+                                ?.baseColorScheme
+                        }
+                    />
                 </Section>
                 {features.canSpecifySortOrder && (
                     <SortOrderSection editor={this.props.editor} />
@@ -594,7 +759,9 @@ export class EditorCustomizeTab extends React.Component<{
                 {grapher.chartInstanceExceptMap.colorScale && (
                     <EditorColorScaleSection
                         scale={grapher.chartInstanceExceptMap.colorScale}
-                        chartType={grapher.type}
+                        chartType={
+                            grapher.chartType ?? GRAPHER_CHART_TYPES.LineChart
+                        }
                         showLineChartColors={grapher.isLineChart}
                         features={{
                             visualScaling: true,

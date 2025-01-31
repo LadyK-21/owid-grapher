@@ -8,19 +8,19 @@ import {
     SynthesizeFruitTableWithStringValues,
     SynthesizeGDPTable,
     OwidTable,
-    ColumnTypeNames,
     ErrorValueTypes,
 } from "@ourworldindata/core-table"
 import { ChartManager } from "../chart/ChartManager"
 import {
+    ColumnTypeNames,
     FacetStrategy,
     ScaleType,
     SeriesStrategy,
-} from "../core/GrapherConstants"
+    BinningStrategy,
+} from "@ourworldindata/types"
 import { SelectionArray } from "../selection/SelectionArray"
 import { LineChartManager } from "./LineChartConstants"
-import { BinningStrategy } from "../color/BinningStrategy"
-import { OwidNoDataGray } from "../color/ColorConstants"
+import { OWID_NO_DATA_GRAY } from "../color/ColorConstants"
 
 it("can create a new chart", () => {
     const table = SynthesizeGDPTable({ timeRange: [2000, 2010] })
@@ -100,7 +100,7 @@ describe("series naming in multi-column mode", () => {
             selection: [table.availableEntityNames[0]],
         }
         const chart = new LineChart({ manager })
-        expect(chart.series[0].seriesName).not.toContain(" - ")
+        expect(chart.series[0].seriesName).not.toContain(" – ")
     })
 
     it("combines entity and column name if only one entity is selected and multi entity selection is enabled", () => {
@@ -110,7 +110,7 @@ describe("series naming in multi-column mode", () => {
             selection: [table.availableEntityNames[0]],
         }
         const chart = new LineChart({ manager })
-        expect(chart.series[0].seriesName).toContain(" - ")
+        expect(chart.series[0].seriesName).toContain(" – ")
     })
 
     it("combines entity and column name if multiple entities are selected and multi entity selection is disabled", () => {
@@ -120,7 +120,7 @@ describe("series naming in multi-column mode", () => {
             selection: table.availableEntityNames,
         }
         const chart = new LineChart({ manager })
-        expect(chart.series[0].seriesName).toContain(" - ")
+        expect(chart.series[0].seriesName).toContain(" – ")
     })
 })
 
@@ -291,14 +291,14 @@ describe("externalLegendBins", () => {
 
     it("doesn't expose externalLegendBins when legend is shown", () => {
         const chart = new LineChart({
-            manager: { ...baseManager },
+            manager: { ...baseManager, showLegend: true },
         })
         expect(chart["externalLegend"]).toBeUndefined()
     })
 
     it("exposes externalLegendBins when legend is hidden", () => {
         const chart = new LineChart({
-            manager: { ...baseManager, hideLegend: true },
+            manager: { ...baseManager, showLegend: false },
         })
         expect(chart["externalLegend"]?.categoricalLegendData?.length).toEqual(
             2
@@ -359,7 +359,7 @@ describe("color scale", () => {
             },
         }
         const chart = new LineChart({ manager })
-        const noDataColor = OwidNoDataGray
+        const noDataColor = OWID_NO_DATA_GRAY
 
         expect(chart.series).toHaveLength(1)
         expect(chart.series[0].color).toEqual(noDataColor)

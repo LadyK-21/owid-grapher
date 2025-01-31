@@ -1,12 +1,6 @@
-import Bugsnag from "@bugsnag/js"
+import * as Sentry from "@sentry/react"
 
-export const logErrorAndMaybeSendToBugsnag = async (err: any, req?: any) => {
+export async function logErrorAndMaybeCaptureInSentry(err: any) {
     console.error(err)
-    if (req) {
-        req.bugsnag.notify(err)
-    } else {
-        Bugsnag.notify(err)
-    }
+    Sentry.captureException(err)
 }
-
-export const warn = (err: any) => console.warn(err)

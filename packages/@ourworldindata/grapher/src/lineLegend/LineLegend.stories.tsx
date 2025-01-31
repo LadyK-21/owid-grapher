@@ -1,6 +1,6 @@
 import { DualAxis } from "../axis/Axis"
 import { AxisConfig } from "../axis/AxisConfig"
-import React from "react"
+import * as React from "react"
 import { LineLegend, LineLegendManager } from "./LineLegend"
 
 export default {
@@ -54,7 +54,7 @@ const manager: LineLegendManager = {
     yAxis: dualAxis.verticalAxis,
 }
 
-export const TestCollisionDetection = (): JSX.Element => {
+export const TestCollisionDetection = (): React.ReactElement => {
     return (
         <svg width={600} height={400}>
             <LineLegend manager={manager} />

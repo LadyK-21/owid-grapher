@@ -1,22 +1,44 @@
-import React, { useState, useRef } from "react"
-import ReactDOM from "react-dom"
-import { orderBy, RelatedChart } from "@ourworldindata/utils"
+import { useState, useRef } from "react"
+import * as React from "react"
+import {
+    orderBy,
+    RelatedChart,
+    HIDE_IF_JS_ENABLED_CLASSNAME,
+} from "@ourworldindata/utils"
+import { GRAPHER_PREVIEW_CLASS } from "@ourworldindata/types"
 import { useEmbedChart } from "../hooks.js"
-import { GalleryArrow, GalleryArrowDirection } from "./GalleryArrow.js"
+import { GalleryArrow } from "./GalleryArrow.js"
+import { GalleryArrowDirection } from "../SiteConstants.js"
 import { AllChartsListItem } from "./AllChartsListItem.js"
 import { BAKED_BASE_URL } from "../../settings/clientSettings.js"
+import GrapherImage from "../GrapherImage.js"
 
 export const RELATED_CHARTS_CLASS_NAME = "related-charts"
 
-export const RelatedCharts = ({ charts }: { charts: RelatedChart[] }) => {
+export const RelatedCharts = ({
+    charts,
+    showKeyChartsOnly = false,
+}: {
+    charts: RelatedChart[]
+    showKeyChartsOnly?: boolean
+}) => {
     const refChartContainer = useRef<HTMLDivElement>(null)
     const [activeChartIdx, setActiveChartIdx] = useState(0)
 
-    const isFirstSlideActive = activeChartIdx === 0
-    const isLastSlideActive = activeChartIdx === charts.length - 1
+    const chartsToShow = showKeyChartsOnly
+        ? charts.filter((chart) => !!chart.keyChartLevel)
+        : charts
 
-    const sortedCharts = orderBy(charts, (chart) => chart.isKeyChart, "desc")
-    const activeChartSlug = sortedCharts[activeChartIdx]?.slug
+    const sortedCharts = orderBy(
+        chartsToShow,
+        (chart) => chart.keyChartLevel,
+        "desc"
+    )
+
+    const isFirstSlideActive = activeChartIdx === 0
+    const isLastSlideActive = activeChartIdx === sortedCharts.length - 1
+    const activeChart = sortedCharts[activeChartIdx]
+    const activeChartSlug = activeChart?.slug
 
     const onClickItem = (event: React.MouseEvent, idx: number) => {
         // Allow opening charts in new tab/window with ⌘+CLICK
@@ -28,7 +50,40 @@ export const RelatedCharts = ({ charts }: { charts: RelatedChart[] }) => {
 
     useEmbedChart(activeChartIdx, refChartContainer)
 
-    return (
+    const grapherUrl = `${BAKED_BASE_URL}/grapher/${activeChartSlug}`
+
+    const figure = (
+        <figure
+            className={GRAPHER_PREVIEW_CLASS}
+            // Use unique `key` to force React to re-render tree
+            key={activeChartSlug}
+            data-grapher-src={grapherUrl}
+        >
+            <div className={HIDE_IF_JS_ENABLED_CLASSNAME}>
+                <a href={grapherUrl}>
+                    <GrapherImage
+                        slug={activeChartSlug}
+                        alt={activeChart?.title}
+                    />
+                </a>
+            </div>
+        </figure>
+    )
+
+    const singleChartView = (
+        <div className={RELATED_CHARTS_CLASS_NAME}>
+            <div className="grid grid-cols-12">
+                <div
+                    className="related-charts__chart span-cols-7 span-md-cols-12"
+                    ref={refChartContainer}
+                >
+                    {figure}
+                </div>
+            </div>
+        </div>
+    )
+
+    const multipleChartsView = (
         <div className={RELATED_CHARTS_CLASS_NAME}>
             <div className="grid grid-cols-12">
                 <div className="related-charts__thumbnails span-cols-5 span-md-cols-12">
@@ -47,11 +102,7 @@ export const RelatedCharts = ({ charts }: { charts: RelatedChart[] }) => {
                     className="related-charts__chart span-cols-7 span-md-cols-12"
                     ref={refChartContainer}
                 >
-                    <figure
-                        // Use unique `key` to force React to re-render tree
-                        key={activeChartSlug}
-                        data-grapher-src={`${BAKED_BASE_URL}/grapher/${activeChartSlug}`}
-                    />
+                    <div className="related-charts__figure">{figure}</div>
                     <div className="gallery-navigation">
                         <GalleryArrow
                             disabled={isFirstSlideActive}
@@ -61,7 +112,9 @@ export const RelatedCharts = ({ charts }: { charts: RelatedChart[] }) => {
                             direction={GalleryArrowDirection.prev}
                         ></GalleryArrow>
                         <div className="gallery-pagination">
-                            {`Chart ${activeChartIdx + 1} of ${charts.length}`}
+                            {`Chart ${activeChartIdx + 1} of ${
+                                sortedCharts.length
+                            }`}
                         </div>
                         <GalleryArrow
                             disabled={isLastSlideActive}
@@ -75,17 +128,6 @@ export const RelatedCharts = ({ charts }: { charts: RelatedChart[] }) => {
             </div>
         </div>
     )
-}
 
-export const runRelatedCharts = (charts: RelatedChart[]) => {
-    const relatedChartsEl = document.querySelector<HTMLElement>(
-        `.${RELATED_CHARTS_CLASS_NAME}`
-    )
-    if (relatedChartsEl) {
-        const relatedChartsWrapper = relatedChartsEl.parentElement
-        ReactDOM.hydrate(
-            <RelatedCharts charts={charts} />,
-            relatedChartsWrapper
-        )
-    }
+    return charts.length === 1 ? singleChartView : multipleChartsView
 }

@@ -1,43 +1,40 @@
-import React from "react"
 import { Head } from "./Head.js"
 import { SiteHeader } from "./SiteHeader.js"
 import { SiteFooter } from "./SiteFooter.js"
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { faSearch } from "@fortawesome/free-solid-svg-icons"
+import { Html } from "./Html.js"
+import NotFoundPageForm from "./NotFoundPageForm.js"
+import NotFoundPageIcon from "./NotFoundPageIcon.js"
 
-export const NotFoundPage = (props: { baseUrl: string }) => {
+export default function NotFoundPage({ baseUrl }: { baseUrl: string }) {
     return (
-        <html>
+        <Html>
             <Head
-                canonicalUrl={`${props.baseUrl}/search`}
+                canonicalUrl={`${baseUrl}/search`}
                 pageTitle="404 Not Found"
                 pageDesc="Search articles and charts on Our World in Data."
-                baseUrl={props.baseUrl}
+                baseUrl={baseUrl}
             />
             <body className="NotFoundPage">
-                <SiteHeader baseUrl={props.baseUrl} />
+                <SiteHeader baseUrl={baseUrl} />
                 <main>
-                    <h1>Sorry, that page doesn’t exist!</h1>
-                    <p>
-                        You can search below or{" "}
-                        <a href="/">return to the homepage</a>.
-                    </p>
-                    <form action="/search" method="GET">
-                        <div className="inputWrapper">
-                            <input
-                                id="search_q"
-                                type="search"
-                                name="q"
-                                autoFocus
-                            />
-                            <FontAwesomeIcon icon={faSearch} />
-                        </div>
-                        <button className="btn" type="submit">
-                            Search
-                        </button>
-                    </form>
+                    <NotFoundPageIcon />
+                    <div className="NotFoundPage__copy">
+                        <h1 className="NotFoundPage__heading subtitle-1">
+                            Sorry, that page doesn’t exist!
+                        </h1>
+                        <p className="body-2-semibold">
+                            You may have followed an outdated link or have
+                            mistyped the URL.
+                            <br />
+                            You can search for what you were hoping to find
+                            below or <a href="/">visit our homepage</a>.
+                        </p>
+                    </div>
+                    <div id="not-found-page-form">
+                        <NotFoundPageForm />
+                    </div>
                 </main>
-                <SiteFooter hideDonate={true} baseUrl={props.baseUrl} />
+                <SiteFooter hideDonate={true} baseUrl={baseUrl} />
                 <script
                     type="module"
                     dangerouslySetInnerHTML={{
@@ -47,6 +44,6 @@ export const NotFoundPage = (props: { baseUrl: string }) => {
                     }}
                 />
             </body>
-        </html>
+        </Html>
     )
 }

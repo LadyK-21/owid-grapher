@@ -1,17 +1,25 @@
 import { TooltipManager } from "../tooltip/TooltipProps"
-import { Bounds } from "@ourworldindata/utils"
-import { GrapherInterface } from "../core/GrapherInterface"
+import { DetailsMarker } from "@ourworldindata/types"
+import { ActionButtonsManager } from "../controls/ActionButtons"
 
-export interface FooterManager {
-    fontSize?: number
+export interface FooterManager extends TooltipManager, ActionButtonsManager {
     sourcesLine?: string
     note?: string
     hasOWIDLogo?: boolean
     originUrlWithProtocol?: string
-    currentTab?: string
-    tooltips?: TooltipManager["tooltips"]
-    tabBounds?: Bounds
-    details?: GrapherInterface["details"]
-    detailsOrderedByReference?: Set<string>
+    detailsOrderedByReference?: string[]
     shouldIncludeDetailsInStaticExport?: boolean
+    isSourcesModalOpen?: boolean
+    isSmall?: boolean
+    isMedium?: boolean
+    useBaseFontSize?: boolean
+    fontSize?: number
+    isInFullScreenMode?: boolean
+    isEmbeddedInAnOwidPage?: boolean
+    isEmbeddedInADataPage?: boolean
+    hideNote?: boolean
+    hideOriginUrl?: boolean
+    secondaryColorInStaticCharts?: string
+    isStaticAndSmall?: boolean
+    detailsMarkerInSvg?: DetailsMarker
 }

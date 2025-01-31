@@ -1,12 +1,14 @@
 import { ChartManager } from "../chart/ChartManager"
 
-import { Color, SortConfig, Time, Bounds } from "@ourworldindata/utils"
 import {
+    Color,
+    SortConfig,
+    Time,
+    Bounds,
     EntityId,
     EntityName,
-    OwidTable,
-    CoreColumn,
-} from "@ourworldindata/core-table"
+} from "@ourworldindata/utils"
+import { OwidTable } from "@ourworldindata/core-table"
 import { StackedPoint } from "./StackedConstants"
 import { DualAxis } from "../axis/Axis"
 export interface MarimekkoChartManager extends ChartManager {
@@ -67,30 +69,22 @@ export interface PlacedItem extends Item {
     xPosition: number // x value (in pixel space) when placed in final sorted order and including shifts due to one pixel entity minimum
 }
 
-export interface TooltipProps {
-    item: Item
-    highlightedSeriesName?: string
-    targetTime?: Time
-    timeColumn: CoreColumn
-    yAxisColumn: CoreColumn
-    xAxisColumn: CoreColumn | undefined
-    xOverrideTime?: Time
-}
-
 export interface EntityWithSize {
     entityName: string
+    shortEntityName?: string
     xValue: number
     ySortValue: number | undefined
 }
 export interface LabelCandidate {
     item: EntityWithSize
+    label: string
     bounds: Bounds
     isPicked: boolean
     isSelected: boolean
 }
 
 export interface LabelWithPlacement {
-    label: JSX.Element
+    label: React.ReactElement
     preferredPlacement: number
     correctedPlacement: number
     labelKey: string
@@ -98,17 +92,15 @@ export interface LabelWithPlacement {
 
 export interface LabelCandidateWithElement {
     candidate: LabelCandidate
-    labelElement: JSX.Element
+    labelElement: React.ReactElement
 }
 export interface MarimekkoBarProps {
     bar: BarOrPlaceholder
-    tooltipProps: TooltipProps | undefined
     barWidth: number
     isHovered: boolean
     isSelected: boolean
     isFaint: boolean
     entityColor: string | undefined
     y0: number
-    isInteractive: boolean
     dualAxis: DualAxis
 }

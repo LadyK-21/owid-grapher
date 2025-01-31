@@ -1,0 +1,87 @@
+.sources-descriptions {
+    margin-top: 24px;
+
+    .sources-description-key {
+        background-color: $gray-10;
+        margin: 24px 0;
+        padding: 24px;
+
+        &__title {
+            @include h2-semibold;
+            font-size: 20px;
+            color: $dark-text;
+            margin-top: 0;
+            margin-bottom: 16px;
+        }
+
+        &__content,
+        &__content ul {
+            @include body-2-regular;
+            font-size: 14px;
+            font-weight: 500;
+            color: $dark-text;
+            margin: 0;
+        }
+
+        &__content ul {
+            margin-left: 1em;
+            li {
+                margin-bottom: 1em;
+
+                &:last-child {
+                    margin-bottom: 0;
+                }
+            }
+        }
+
+        &__learn-more {
+            @include body-3-medium;
+            display: inline-block;
+            margin-top: 16px;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+            color: $dark-text;
+
+            &:hover {
+                text-decoration: none;
+            }
+
+            &:visited {
+                color: $dark-text;
+            }
+
+            svg {
+                font-size: 0.75em;
+                margin-left: 12px;
+                display: inline-block;
+                transform: rotate(-90deg);
+            }
+        }
+    }
+
+    .expandable-info-blocks {
+        p {
+            margin: 0;
+
+            + p {
+                margin-top: 8px;
+            }
+        }
+        ol,
+        ul {
+            padding: 0;
+            margin-left: 1em;
+
+            li {
+                margin-top: 0.5em;
+                margin-bottom: 0.5em;
+                margin-left: 1em;
+            }
+        }
+    }
+
+    a {
+        @include owid-link-60;
+        color: inherit;
+    }
+}

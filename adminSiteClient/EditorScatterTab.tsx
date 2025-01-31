@@ -1,19 +1,19 @@
 import { faMinus, faTrash } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { EntityName } from "@ourworldindata/core-table"
 import {
+    EntityName,
     ComparisonLineConfig,
-    Grapher,
     ScatterPointLabelStrategy,
-} from "@ourworldindata/grapher"
+} from "@ourworldindata/types"
+import { Grapher } from "@ourworldindata/grapher"
 import { debounce, excludeUndefined } from "@ourworldindata/utils"
 import { action, computed, observable } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
+import { Component } from "react"
 import { NumberField, Section, SelectField, Toggle } from "./Forms.js"
 
 @observer
-export class EditorScatterTab extends React.Component<{ grapher: Grapher }> {
+export class EditorScatterTab extends Component<{ grapher: Grapher }> {
     @observable comparisonLine: ComparisonLineConfig = { yEquals: undefined }
 
     constructor(props: { grapher: Grapher }) {
@@ -22,10 +22,6 @@ export class EditorScatterTab extends React.Component<{ grapher: Grapher }> {
 
     @action.bound onToggleHideTimeline(value: boolean) {
         this.props.grapher.hideTimeline = value || undefined
-    }
-
-    @action.bound onToggleHideLinesOutsideTolerance(value: boolean) {
-        this.props.grapher.hideLinesOutsideTolerance = value || undefined
     }
 
     @action.bound onToggleHideScatterLabels(value: boolean) {
@@ -145,11 +141,6 @@ export class EditorScatterTab extends React.Component<{ grapher: Grapher }> {
                         label="Hide timeline"
                         value={!!grapher.hideTimeline}
                         onValue={this.onToggleHideTimeline}
-                    />
-                    <Toggle
-                        label="Hide entities without data for full time span (within tolerance)"
-                        value={!!grapher.hideLinesOutsideTolerance}
-                        onValue={this.onToggleHideLinesOutsideTolerance}
                     />
                     <Toggle
                         label="Hide connected scatter lines"

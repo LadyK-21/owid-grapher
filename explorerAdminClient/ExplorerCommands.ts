@@ -1,6 +1,8 @@
-import { ExplorerGrammar } from "../explorer/ExplorerGrammar.js"
-import { ExplorerProgram } from "../explorer/ExplorerProgram.js"
-import { CellPosition } from "../gridLang/GridLangConstants.js"
+import {
+    ExplorerGrammar,
+    ExplorerProgram,
+    CellPosition,
+} from "@ourworldindata/explorer"
 import Handsontable from "handsontable"
 import HotContextMenu from "handsontable/plugins/contextMenu"
 
@@ -76,7 +78,7 @@ export class SelectAllHitsCommand extends HotCommand {
                         number,
                         number,
                         number,
-                        number
+                        number,
                     ]
             )
         )

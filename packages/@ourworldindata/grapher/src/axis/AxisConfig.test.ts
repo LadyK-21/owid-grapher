@@ -1,7 +1,21 @@
 #! /usr/bin/env jest
 
 import { AxisConfig } from "../axis/AxisConfig"
-import { ScaleType } from "../core/GrapherConstants"
+import { ScaleType } from "@ourworldindata/types"
+
+it("serializes max to 'auto' if -Infinity", () => {
+    const axis = new AxisConfig({ min: 1, max: -Infinity })
+    const obj = axis.toObject()
+    expect(obj.min).toBe(1)
+    expect(obj.max).toBe("auto")
+})
+
+it("serializes min to 'auto' if Infinity", () => {
+    const axis = new AxisConfig({ max: 0, min: Infinity })
+    const obj = axis.toObject()
+    expect(obj.max).toBe(0)
+    expect(obj.min).toBe("auto")
+})
 
 it("can create an axis, clone and modify the clone without affecting the original", () => {
     const axis = new AxisConfig({ scaleType: ScaleType.linear })

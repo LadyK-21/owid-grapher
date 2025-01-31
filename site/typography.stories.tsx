@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import * as React from "react"
 import webfontloader from "webfontloader"
 
 export default {
@@ -34,7 +35,7 @@ const makeTitleCaseAndStripDashes = (str: string) =>
         .map((str) => str[0].toUpperCase() + str.substring(1))
         .join(" ")
 
-export const Default = (): JSX.Element => {
+export const Default = (): React.ReactElement => {
     useEffect(() => {
         webfontloader.load({
             google: {

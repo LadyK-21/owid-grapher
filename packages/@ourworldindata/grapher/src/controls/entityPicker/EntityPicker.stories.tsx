@@ -4,17 +4,15 @@ import { observer } from "mobx-react"
 import {
     SampleColumnSlugs,
     SynthesizeGDPTable,
-    EntityName,
-    OwidTableSlugs,
-    SortOrder,
 } from "@ourworldindata/core-table"
+import { EntityName, OwidTableSlugs, SortOrder } from "@ourworldindata/types"
 import { EntityPickerManager } from "./EntityPickerConstants"
 import { computed, observable } from "mobx"
 import { SelectionArray } from "../../selection/SelectionArray"
 import { ColumnSlug } from "@ourworldindata/utils"
 
 class PickerHolder extends React.Component<{ children: React.ReactNode }> {
-    render(): JSX.Element {
+    render(): React.ReactElement {
         return (
             <div
                 style={{
@@ -61,7 +59,7 @@ class SomeThingWithAPicker
 
     requiredColumnSlugs = defaultSlugs
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         return (
             <PickerHolder>
                 <EntityPicker manager={this} />
@@ -75,7 +73,7 @@ export default {
     component: EntityPicker,
 }
 
-export const Empty = (): JSX.Element => (
+export const Empty = (): React.ReactElement => (
     <PickerHolder>
         <EntityPicker
             manager={{
@@ -85,13 +83,13 @@ export const Empty = (): JSX.Element => (
     </PickerHolder>
 )
 
-export const WithChoices = (): JSX.Element => <SomeThingWithAPicker />
+export const WithChoices = (): React.ReactElement => <SomeThingWithAPicker />
 
-export const WithPickerMetricsChoices = (): JSX.Element => (
+export const WithPickerMetricsChoices = (): React.ReactElement => (
     <SomeThingWithAPicker pickerSlugs={defaultSlugs} />
 )
 
-export const WithExistingSelectionChoices = (): JSX.Element => (
+export const WithExistingSelectionChoices = (): React.ReactElement => (
     <SomeThingWithAPicker
         pickerSlugs={defaultSlugs}
         selection={["Japan", "Samoa"]}

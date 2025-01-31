@@ -1,6 +1,7 @@
 import { select } from "d3-selection"
+import { ScaleLinear } from "d3-scale"
 import { NoDataModal } from "../noDataModal/NoDataModal"
-import { SortOrder } from "@ourworldindata/core-table"
+import { SortOrder } from "@ourworldindata/types"
 import {
     Bounds,
     PointVector,
@@ -9,17 +10,15 @@ import {
     getRelativeMouse,
     intersection,
     last,
-    flatten,
-    minBy,
-    min,
     first,
     isEmpty,
     guid,
+    makeIdForHumanConsumption,
 } from "@ourworldindata/utils"
-import { computed, action } from "mobx"
+import { computed, action, observable } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
-import { getElementWithHalo } from "./Halos"
+import * as React from "react"
+import { Halo } from "@ourworldindata/components"
 import { MultiColorPolyline } from "./MultiColorPolyline"
 import {
     ScatterPointsWithLabelsProps,
@@ -28,8 +27,9 @@ import {
     ScatterSeries,
     SCATTER_LINE_MIN_WIDTH,
     SCATTER_POINT_MIN_RADIUS,
+    SCATTER_POINT_HOVER_TARGET_RANGE,
     ScatterRenderPoint,
-    SCATTER_LABEL_MIN_FONT_SIZE,
+    SCATTER_LABEL_MIN_FONT_SIZE_FACTOR,
 } from "./ScatterPlotChartConstants"
 import { ScatterLine, ScatterPoint } from "./ScatterPoints"
 import {
@@ -40,12 +40,17 @@ import {
 } from "./ScatterUtils"
 import { Triangle } from "./Triangle"
 import { ColorScale } from "../color/ColorScale"
-import { ScaleLinear } from "d3-scale"
 
 // This is the component that actually renders the points. The higher level ScatterPlot class renders points, legends, comparison lines, etc.
 @observer
 export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLabelsProps> {
     base: React.RefObject<SVGGElement> = React.createRef()
+
+    // closest point by quadtree search
+    @observable private nearSeries?: ScatterSeries
+    // currently hovered-over point via mouseenter/leave
+    @observable private overSeries?: ScatterSeries
+
     @computed private get seriesArray(): ScatterSeries[] {
         return this.props.seriesArray
     }
@@ -61,12 +66,20 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         return this.props.hoveredSeriesNames
     }
 
+    @computed private get tooltipSeriesName(): string | undefined {
+        return this.props.tooltipSeriesName
+    }
+
     // Layered mode occurs when any entity on the chart is hovered or focused
     // Then, a special "foreground" set of entities is rendered over the background
     @computed private get isLayerMode(): boolean {
         return (
             this.focusedSeriesNames.length > 0 ||
-            this.hoveredSeriesNames.length > 0
+            this.hoveredSeriesNames.length > 0 ||
+            // if the user has selected entities that are not in the chart,
+            // we want to move all entities into the background
+            (this.props.focusedSeriesNames.length > 0 &&
+                this.focusedSeriesNames.length === 0)
         )
     }
 
@@ -118,7 +131,10 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
             value !== undefined
                 ? this.fontScale(value)
                 : this.fontScale.range()[0]
-        return Math.max(fontSize, SCATTER_LABEL_MIN_FONT_SIZE)
+        return Math.max(
+            fontSize,
+            SCATTER_LABEL_MIN_FONT_SIZE_FACTOR * this.props.baseFontSize
+        )
     }
 
     @computed private get hideConnectedScatterLines(): boolean {
@@ -179,6 +195,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         for (const series of renderData) {
             series.isHover = this.hoveredSeriesNames.includes(series.seriesName)
             series.isFocus = this.focusedSeriesNames.includes(series.seriesName)
+            series.isTooltip = this.tooltipSeriesName === series.seriesName
             series.isForeground = series.isHover || series.isFocus
             if (series.isHover) series.size += 1
         }
@@ -187,17 +204,20 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
             series.startLabel = makeStartLabel(
                 series,
                 this.isSubtleForeground,
-                this.hideConnectedScatterLines
+                this.hideConnectedScatterLines,
+                this.props.baseFontSize
             )
             series.midLabels = makeMidLabels(
                 series,
                 this.isSubtleForeground,
-                this.hideConnectedScatterLines
+                this.hideConnectedScatterLines,
+                this.props.baseFontSize
             )
             series.endLabel = makeEndLabel(
                 series,
                 this.isSubtleForeground,
-                this.hideConnectedScatterLines
+                this.hideConnectedScatterLines,
+                this.props.baseFontSize
             )
             series.allLabels = [series.startLabel]
                 .concat(series.midLabels)
@@ -205,7 +225,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                 .filter((x) => x) as ScatterLabel[]
         }
 
-        const labels = flatten(renderData.map((series) => series.allLabels))
+        const labels = renderData.flatMap((series) => series.allLabels)
 
         // Ensure labels fit inside bounds
         // Must do before collision detection since it'll change the positions
@@ -308,50 +328,58 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         }
     }
 
-    mouseFrame?: number
-    @action.bound onMouseLeave(): void {
-        if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
+    // Use a hybrid approach to mouseover:
+    // If the mouse is near the centroid of an element, that is prioritized
+    // Otherwise we fall back to the dot that the cursor is currently hovering over (if any)
 
-        if (this.props.onMouseLeave) this.props.onMouseLeave()
+    @action.bound onPointMouseEnter(seriesName: string): void {
+        this.overSeries = this.seriesArray.find(
+            (series) => series.seriesName === seriesName
+        )
+        // only select if we're not already close to another point's center
+        if (this.overSeries && !this.nearSeries)
+            this.props.onMouseEnter(this.overSeries)
+    }
+
+    @action.bound onPointMouseLeave(): void {
+        this.overSeries = undefined
+        if (!this.nearSeries) this.props.onMouseLeave()
     }
 
     @action.bound onMouseMove(ev: React.MouseEvent<SVGGElement>): void {
-        if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
+        if (this.base.current) {
+            const { x, y } = getRelativeMouse(this.base.current, ev)
 
-        const nativeEvent = ev.nativeEvent
+            // be more fine grained about finding nearby points when the cursor is
+            // already hovering over a larger dot in the background
+            const range = this.overSeries
+                ? SCATTER_POINT_HOVER_TARGET_RANGE / 4
+                : SCATTER_POINT_HOVER_TARGET_RANGE
 
-        this.mouseFrame = requestAnimationFrame(() => {
-            if (this.base.current) {
-                const mouse = getRelativeMouse(this.base.current, nativeEvent)
-
-                const closestSeries = minBy(this.renderSeries, (series) => {
-                    if (series.points.length > 1)
-                        return min(
-                            series.points.slice(0, -1).map((d, i) => {
-                                return PointVector.distanceFromPointToLineSq(
-                                    mouse,
-                                    d.position,
-                                    series.points[i + 1].position
-                                )
-                            })
-                        )
-
-                    return min(
-                        series.points.map((v) =>
-                            PointVector.distanceSq(v.position, mouse)
-                        )
-                    )
-                })
-
-                if (closestSeries && this.props.onMouseOver) {
-                    const series = this.seriesArray.find(
-                        (series) =>
-                            series.seriesName === closestSeries.seriesName
-                    )
-                    if (series) this.props.onMouseOver(series)
+            // search for closest point to cursor position within range
+            const nearby = this.props.quadtree.find(x, y, range)?.series
+            if (nearby) {
+                // only trigger listener if the selection has changed
+                if (nearby.seriesName !== this.nearSeries?.seriesName) {
+                    this.props.onMouseEnter(nearby)
+                }
+            } else if (this.nearSeries) {
+                // if we've just moved out of range of a nearby point, fall back to
+                // the currently hovered-over dot (if there is one)
+                this.props.onMouseLeave()
+                if (this.overSeries) {
+                    this.props.onMouseEnter(this.overSeries)
                 }
             }
-        })
+            this.nearSeries = nearby
+        }
+    }
+
+    @action.bound onMouseLeave(): void {
+        // hide tooltip and clear hover state when leaving the chart's bounds
+        this.nearSeries = undefined
+        this.overSeries = undefined
+        if (this.props.onMouseLeave) this.props.onMouseLeave()
     }
 
     @action.bound onClick(): void {
@@ -366,7 +394,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         return this.renderSeries.filter((series) => !!series.isForeground)
     }
 
-    private renderBackgroundSeries(): JSX.Element[] {
+    private renderBackgroundSeries(): React.ReactElement[] {
         const { backgroundSeries, isLayerMode, hideConnectedScatterLines } =
             this
 
@@ -377,11 +405,13 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                       key={series.seriesName}
                       series={series}
                       isLayerMode={isLayerMode}
+                      onMouseEnter={this.onPointMouseEnter}
+                      onMouseLeave={this.onPointMouseLeave}
                   />
               ))
     }
 
-    private renderBackgroundLabels(): JSX.Element {
+    private renderBackgroundLabels(): React.ReactElement {
         const { isLayerMode } = this
         return (
             <g
@@ -391,10 +421,17 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                 {this.backgroundSeries.map((series) => {
                     return series.allLabels
                         .filter((label) => !label.isHidden)
-                        .map((label) =>
-                            getElementWithHalo(
-                                series.displayKey + "-endLabel",
+                        .map((label) => (
+                            <Halo
+                                key={series.displayKey + "-endLabel"}
+                                id={series.displayKey + "-endLabel"}
+                                outlineColor={this.props.backgroundColor}
+                            >
                                 <text
+                                    id={makeIdForHumanConsumption(
+                                        "scatter-label",
+                                        label.text
+                                    )}
                                     x={label.bounds.x.toFixed(2)}
                                     y={(
                                         label.bounds.y + label.bounds.height
@@ -402,11 +439,12 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                                     fontSize={label.fontSize.toFixed(2)}
                                     fontWeight={label.fontWeight}
                                     fill={isLayerMode ? "#aaa" : label.color}
+                                    style={{ pointerEvents: "none" }}
                                 >
                                     {label.text}
                                 </text>
-                            )
-                        )
+                            </Halo>
+                        ))
                 })}
             </g>
         )
@@ -416,7 +454,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         return guid()
     }
 
-    private renderForegroundSeries(): JSX.Element[] {
+    private renderForegroundSeries(): React.ReactElement[] {
         const { isSubtleForeground, hideConnectedScatterLines } = this
         return this.foregroundSeries.map((series) => {
             const lastPoint = last(series.points)!
@@ -424,14 +462,21 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                 (hideConnectedScatterLines
                     ? 3
                     : series.isHover
-                    ? 3
-                    : isSubtleForeground
-                    ? 1.5
-                    : 2) +
+                      ? 3
+                      : isSubtleForeground
+                        ? 1.5
+                        : 2) +
                 lastPoint.size / 2
 
             if (series.points.length === 1)
-                return <ScatterPoint key={series.displayKey} series={series} />
+                return (
+                    <ScatterPoint
+                        key={series.displayKey}
+                        series={series}
+                        onMouseEnter={this.onPointMouseEnter}
+                        onMouseLeave={this.onPointMouseLeave}
+                    />
+                )
 
             const firstValue = first(series.points)
             const opacity = isSubtleForeground ? 0.9 : 1
@@ -444,7 +489,14 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
             )
             if (series.offsetVector.x < 0) rotation = -rotation
             return (
-                <g key={series.displayKey} className={series.displayKey}>
+                <g
+                    id={makeIdForHumanConsumption(
+                        "time-scatter",
+                        series.displayKey
+                    )}
+                    key={series.displayKey}
+                    className={series.displayKey}
+                >
                     {!hideConnectedScatterLines && (
                         <MultiColorPolyline
                             points={series.points.map((point) => ({
@@ -501,14 +553,21 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         })
     }
 
-    private renderForegroundLabels(): JSX.Element[][] {
+    private renderForegroundLabels(): React.ReactElement[][] {
         return this.foregroundSeries.map((series) => {
             return series.allLabels
                 .filter((label) => !label.isHidden)
-                .map((label, index) =>
-                    getElementWithHalo(
-                        `${series.displayKey}-label-${index}`,
+                .map((label, index) => (
+                    <Halo
+                        key={`${series.displayKey}-label-${index}`}
+                        id={`${series.displayKey}-label-${index}`}
+                        outlineColor={this.props.backgroundColor}
+                    >
                         <text
+                            id={makeIdForHumanConsumption(
+                                "scatter-label",
+                                series.displayKey
+                            )}
                             x={label.bounds.x.toFixed(2)}
                             y={(label.bounds.y + label.bounds.height).toFixed(
                                 2
@@ -519,8 +578,8 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                         >
                             {label.text}
                         </text>
-                    )
-                )
+                    </Halo>
+                ))
         })
     }
 
@@ -557,7 +616,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         if (this.animSelection) this.animSelection.interrupt()
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const { bounds, renderSeries, renderUid } = this
         const clipBounds = bounds.pad(-10)
 
@@ -572,6 +631,7 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
         return (
             <g
                 ref={this.base}
+                id={makeIdForHumanConsumption("scatter-points")}
                 className="PointsWithLabels clickable"
                 clipPath={`url(#scatterBounds-${renderUid})`}
                 onMouseMove={this.onMouseMove}

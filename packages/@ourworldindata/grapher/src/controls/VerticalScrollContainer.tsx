@@ -1,5 +1,7 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+
+import * as React from "react"
 import classnames from "classnames"
 
 type VerticalScrollContainerProps = React.DetailedHTMLProps<
@@ -48,7 +50,7 @@ export const VerticalScrollContainer = React.forwardRef(
             ...rest
         } = props
 
-        scrollingShadows = scrollingShadows ?? true
+        scrollingShadows ??= true
 
         const scrollContainerRef = useCombinedRefs<HTMLDivElement>(ref)
         const [scrollTop, scrollBottom] = useScrollBounds(
@@ -118,7 +120,7 @@ const ScrollingShadow = (props: {
     direction: "up" | "down"
     size: number
     opacity: number
-}): JSX.Element => {
+}): React.ReactElement => {
     // "Eased" gradient
     // https://larsenwork.com/easing-gradients/
     const background = `linear-gradient(

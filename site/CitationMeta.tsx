@@ -1,4 +1,4 @@
-import React from "react"
+import { Fragment } from "react"
 import { dayjs } from "@ourworldindata/utils"
 
 export const CitationMeta = (props: {
@@ -8,14 +8,9 @@ export const CitationMeta = (props: {
     date: Date
     canonicalUrl: string
 }) => {
-    const { title, date, canonicalUrl } = props
-    let { authors } = props
-
-    if (authors.indexOf("Max Roser") === -1)
-        authors = authors.concat(["Max Roser"])
-
+    const { authors, title, date, canonicalUrl } = props
     return (
-        <React.Fragment>
+        <Fragment>
             <meta name="citation_title" content={title} />
             <meta name="citation_fulltext_html_url" content={canonicalUrl} />
             <meta name="citation_fulltext_world_readable" content="" />
@@ -32,6 +27,6 @@ export const CitationMeta = (props: {
             {authors.map((author) => (
                 <meta key={author} name="citation_author" content={author} />
             ))}
-        </React.Fragment>
+        </Fragment>
     )
 }

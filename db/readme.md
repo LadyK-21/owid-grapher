@@ -18,8 +18,8 @@ yarn runDbMigrations
 
 This **runs automatically in the server deploy script**, so you only need to run it manually when:
 
--   You are creating a new migration locally, or
--   Someone else has created a migration
+- You are creating a new migration locally, or
+- Someone else has created a migration
 
 The database dumps we provide has all migrations already applied.
 
@@ -31,7 +31,7 @@ Run:
 yarn typeorm migration:create db/migration/MigrationName
 ```
 
-And then populate the file with the SQL statements to alter the tables, using [past migration files](./migration) for reference if needed. Don't forget to rebuild the JavaScript artifacts now from TypeScript view `yarn buildTsc`, then run migrations with `yarn runDbMigrations`.
+And then populate the file with the SQL statements to alter the tables, using [past migration files](./migration) for reference if needed. Then run migrations with `yarn runDbMigrations`.
 
 Make sure you write a **down** migration in case there is any chance things can go wrong we'd need to revert it.
 

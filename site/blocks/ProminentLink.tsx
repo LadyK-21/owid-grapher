@@ -1,6 +1,6 @@
 import { faArrowRight } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { EntityName } from "@ourworldindata/core-table"
+import { EntityName } from "@ourworldindata/types"
 import {
     getSelectedEntityNamesParam,
     migrateSelectedEntityNamesParam,
@@ -10,7 +10,7 @@ import {
 import { union, Url } from "@ourworldindata/utils"
 import { computed } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
+import { Component } from "react"
 import ReactDOM from "react-dom"
 
 export const PROMINENT_LINK_CLASSNAME = "wp-block-owid-prominent-link"
@@ -23,7 +23,7 @@ export enum ProminentLinkStyles {
 export const WITH_IMAGE = "with-image"
 
 @observer
-export class ProminentLink extends React.Component<{
+export class ProminentLink extends Component<{
     href: string
     style: string | null
     title: string | null

@@ -4,8 +4,10 @@ module.exports = {
         {
             displayName: { name: "db", color: "blue" },
             testEnvironment: "node",
-            testMatch: ["<rootDir>/itsJustJavascript/db/tests/**/*.test.js"],
-            modulePathIgnorePatterns: ["<rootDir>/wordpress/"],
+            testMatch: [
+                "<rootDir>/itsJustJavascript/db/tests/**/*.test.js",
+                "<rootDir>/itsJustJavascript/adminSiteServer/*.test.(jsx|js)",
+            ],
         },
     ],
 }

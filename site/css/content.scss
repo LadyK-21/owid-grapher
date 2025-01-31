@@ -30,17 +30,11 @@
     @include figure-margin;
 }
 
-.article-content figure[data-grapher-src],
-.SearchResults figure[data-grapher-src] {
+.article-content figure[data-grapher-src] {
     @include figure-grapher-reset;
 
     > a {
         border-bottom: none !important;
-    }
-
-    > a > div {
-        display: inline-block;
-        position: relative;
     }
 
     > a > div:hover {
@@ -55,47 +49,13 @@
         width: 100%;
         max-width: $content-max-width;
     }
-
-    .interactionNotice {
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.2;
-        color: rgba(black, 0.4);
-        display: none;
-        background-color: rgba(black, 0.03);
-        padding: 12px 30px;
-        position: relative;
-        text-decoration: none;
-        color: $controls-color;
-
-        // Anything >680px will get the interactive graphics in-place.
-        // 680px is a breakpoint also used in the JavaScript code – keep it in sync.
-        @media screen and (max-device-width: 680px) {
-            display: block;
-        }
-
-        .icon {
-            font-size: 21px;
-            line-height: 28px;
-            margin-top: -15px;
-            position: absolute;
-            left: 10px;
-            top: 50%;
-        }
-
-        .label {
-            display: block;
-        }
-    }
 }
 
-.article-content figure[data-grapher-src].grapherPreview,
-.SearchResults figure[data-grapher-src].grapherPreview {
+.article-content figure[data-grapher-src].grapherPreview {
     padding: 1em 0;
 }
 
-.article-content figure[data-grapher-src]:not(.grapherPreview),
-.SearchResults figure[data-grapher-src]:not(.grapherPreview) {
+.article-content figure[data-grapher-src]:not(.grapherPreview) {
     height: $grapher-height;
 }
 
@@ -138,27 +98,6 @@ figure[data-explorer-src] {
         font-weight: 700;
         padding: 0.5rem 0.4rem;
     }
-}
-
-.tablepress {
-    margin: 1em 0;
-    color: #000;
-}
-
-.tablepress th {
-    border-bottom: 1px solid #333;
-    background: $blue-20;
-}
-
-.tablepress th,
-.tablepress td {
-    padding: 0.4rem;
-    border: 1px solid #ddd;
-    text-align: center;
-}
-
-.tablepress tr {
-    background-color: $white;
 }
 
 /* Fix for title on really small screens */
@@ -259,39 +198,21 @@ figure[data-explorer-src] {
 .article-content {
     span.add-country {
         font-size: 0.9rem;
-        font-weight: bold;
-        color: $controls-color;
+        font: 400 13px/16px $sans-serif-font-stack;
+        letter-spacing: 0.01em;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid $gray-20;
+        border-radius: 4px;
+        padding: 5px 7px;
+        color: $gray-80;
+        white-space: nowrap;
+        margin: -5px 0px -5px -2px;
 
         .icon {
-            position: relative;
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            margin-right: 3px;
-            vertical-align: text-bottom;
-
-            svg {
-                position: absolute;
-                top: 0;
-                left: 0;
-            }
-
-            path {
-                stroke: #fff;
-                stroke-width: 2px;
-            }
-
-            &::before {
-                display: block;
-                content: "";
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 16px;
-                height: 16px;
-                background-color: $controls-color;
-                border-radius: 50%;
-            }
+            width: 0.75rem;
+            height: 0.75rem;
+            margin-right: 5px;
         }
     }
 }
@@ -302,4 +223,25 @@ figure[data-explorer-src] {
 
 code {
     white-space: pre-wrap; // make sure long code lines do not overflow
+}
+
+/*******************************************************************************
+ * Grid margin collapse quickfixes
+ * We should probably consider solving this another way but for now we
+ * fix the most common cases with these quickfixes.
+ */
+
+.grid .article-block__text + .h2-bold,
+.grid .article-block__list + .h2-bold,
+.grid .article-block__text + .h3-bold,
+.grid .article-block__list + .h3-bold {
+    // take the default margin-top of h2/3 and subtract the default margin of the p element above
+    margin-top: calc(48px - 16px);
+}
+
+// Images directly under headings have enough space with just the
+// margin-bottom of the heading.
+.grid .h2-bold + .article-block__image,
+.grid .h3-bold + .article-block__image {
+    margin-top: 0px;
 }

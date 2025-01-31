@@ -1,9 +1,9 @@
-import React from "react"
 import { Head } from "./Head.js"
 import { SiteHeader } from "./SiteHeader.js"
 import { SiteFooter } from "./SiteFooter.js"
 import { range, IndexPost } from "@ourworldindata/utils"
 import PostCard from "./PostCard/PostCard.js"
+import { Html } from "./Html.js"
 
 export const BlogIndexPage = (props: {
     posts: IndexPost[]
@@ -13,13 +13,14 @@ export const BlogIndexPage = (props: {
 }) => {
     const { posts, pageNum, numPages, baseUrl } = props
     const pageNums = range(1, numPages + 1)
-    const pageTitle = "Our latest work"
+    const pageTitle = "Latest"
 
     return (
-        <html>
+        <Html>
             <Head
                 canonicalUrl={
-                    `${baseUrl}/blog` + (pageNum > 1 ? `/page/${pageNum}` : "")
+                    `${baseUrl}/latest` +
+                    (pageNum > 1 ? `/page/${pageNum}` : "")
                 }
                 pageTitle={pageTitle}
                 baseUrl={baseUrl}
@@ -29,7 +30,14 @@ export const BlogIndexPage = (props: {
 
                 <main className="wrapper">
                     <div className="site-content">
-                        <h2>{pageTitle}</h2>
+                        <h2 className="heading-latest">
+                            {pageTitle}
+                            <span className="sr-only">:</span>
+                            <span className="heading-latest__subtitle">
+                                Our latest articles, updates and announcements
+                            </span>
+                        </h2>
+
                         <ul className="posts">
                             {posts.map((post) => (
                                 <li key={post.slug} className="post">
@@ -39,11 +47,8 @@ export const BlogIndexPage = (props: {
                         </ul>
                         <nav
                             className="navigation pagination"
-                            role="navigation"
+                            aria-label="Posts"
                         >
-                            <h2 className="screen-reader-text">
-                                Posts navigation
-                            </h2>
                             <div className="nav-link">
                                 {pageNums.map((num) => (
                                     <a
@@ -54,8 +59,8 @@ export const BlogIndexPage = (props: {
                                         }
                                         href={
                                             num === 1
-                                                ? "/blog/"
-                                                : `/blog/page/${num}`
+                                                ? "/latest/"
+                                                : `/latest/page/${num}`
                                         }
                                     >
                                         {num}
@@ -67,6 +72,6 @@ export const BlogIndexPage = (props: {
                 </main>
                 <SiteFooter baseUrl={baseUrl} />
             </body>
-        </html>
+        </Html>
     )
 }

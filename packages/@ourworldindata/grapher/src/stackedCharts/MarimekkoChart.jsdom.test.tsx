@@ -1,10 +1,10 @@
 #! /usr/bin/env jest
 
-import { Bounds } from "@ourworldindata/utils"
-import { ColumnTypeNames, OwidTable } from "@ourworldindata/core-table"
+import { Bounds, ColumnTypeNames, omit } from "@ourworldindata/utils"
+import { OwidTable } from "@ourworldindata/core-table"
 import { DefaultColorScheme } from "../color/CustomSchemes"
 import { Grapher } from "../core/Grapher"
-import { ChartTypeName } from "../core/GrapherConstants"
+import { GRAPHER_CHART_TYPES } from "@ourworldindata/types"
 import { MarimekkoChart } from "./MarimekkoChart"
 import { BarShape, PlacedItem } from "./MarimekkoChartConstants"
 it("can filter years correctly", () => {
@@ -23,7 +23,7 @@ it("can filter years correctly", () => {
 
     // TODO: why is it ySlugs and xSlug here instead of yColumnSlugs and xColumnSlug? Unify when we have config migrations?
     const manager = {
-        type: ChartTypeName.Marimekko,
+        chartTypes: [GRAPHER_CHART_TYPES.Marimekko],
         table,
         selection: table.availableEntityNames,
         ySlugs: "percentBelow2USD",
@@ -133,7 +133,7 @@ it("shows no data points at the end", () => {
 
     // TODO: why is it ySlugs and xSlug here instead of yColumnSlugs and xColumnSlug? Unify when we have config migrations?
     const manager = {
-        type: ChartTypeName.Marimekko,
+        chartTypes: [GRAPHER_CHART_TYPES.Marimekko],
         table,
         selection: table.availableEntityNames,
         ySlugs: "percentBelow2USD",
@@ -233,7 +233,7 @@ test("interpolation works as expected", () => {
 
     // TODO: why is it ySlugs and xSlug here instead of yColumnSlugs and xColumnSlug? Unify when we have config migrations?
     const manager = {
-        type: ChartTypeName.Marimekko,
+        chartTypes: [GRAPHER_CHART_TYPES.Marimekko],
         table,
         selection: table.availableEntityNames,
         ySlugs: "percentBelow2USD",
@@ -344,7 +344,7 @@ it("can deal with y columns with missing values", () => {
 
     // TODO: why is it ySlugs and xSlug here instead of yColumnSlugs and xColumnSlug? Unify when we have config migrations?
     const manager = {
-        type: ChartTypeName.Marimekko,
+        chartTypes: [GRAPHER_CHART_TYPES.Marimekko],
         table,
         selection: table.availableEntityNames,
         ySlugs: "percentBelow2USD percentBelow10USD",
@@ -408,8 +408,15 @@ it("can deal with y columns with missing values", () => {
     expect(chart.series[0].points).toEqual(expectedYPoints1)
     expect(chart.series[1].points).toEqual(expectedYPoints2)
     expect(chart.xSeries!.points).toEqual(expectedXPoints)
+
+    const placedItemsWithoutXPosition = chart.placedItems.map((placedItem) =>
+        omit(placedItem, "xPosition")
+    )
+    const xPositions = chart.placedItems.map(
+        (placedItem) => placedItem.xPosition
+    )
     // placedItems should be in default sort order
-    expect(chart.placedItems.map(roundXPosition)).toEqual([
+    expect(placedItemsWithoutXPosition).toEqual([
         {
             entityName: "medium",
             entityColor: undefined,
@@ -428,7 +435,6 @@ it("can deal with y columns with missing values", () => {
                 },
             ],
             xPoint: expectedXPoints[0],
-            xPosition: 0,
         },
         {
             entityName: "small",
@@ -448,7 +454,6 @@ it("can deal with y columns with missing values", () => {
                 },
             ],
             xPoint: expectedXPoints[2],
-            xPosition: Math.round(xAxisRange * 0.4),
         },
         {
             entityName: "big",
@@ -462,9 +467,12 @@ it("can deal with y columns with missing values", () => {
                 },
             ],
             xPoint: expectedXPoints[1],
-            xPosition: Math.round(xAxisRange * 0.5),
         },
     ])
+
+    expect(xPositions[0]).toEqual(0)
+    expect(xPositions[1]).toBeCloseTo(xAxisRange * 0.4, 0)
+    expect(xPositions[2]).toBeCloseTo(xAxisRange * 0.5, 0)
 })
 
 function roundXPosition(item: PlacedItem): PlacedItem {

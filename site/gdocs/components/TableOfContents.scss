@@ -1,0 +1,83 @@
+.toc {
+    padding: 40px 0;
+    margin: 32px 0;
+    background-color: $beige;
+    cursor: pointer;
+
+    &.open::before {
+        grid-column: span 1;
+        grid-row: span 2;
+        content: "";
+        border-right: 1px solid #ffd3d3;
+        margin-right: var(--grid-gap);
+    }
+
+    .toc-toggle {
+        @include h2-bold;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: space-between;
+        cursor: pointer;
+        border: none;
+        color: $blue-90;
+        background-color: transparent;
+    }
+
+    // Have to hard-code this because the span-cols-x overrides col-start-x
+    .toc-toggle,
+    .toc-content {
+        grid-column-start: 2;
+    }
+
+    ul {
+        margin-top: 24px;
+        list-style-type: none;
+    }
+
+    li {
+        .supertitle {
+            color: $blue-60;
+        }
+        a {
+            color: $blue-90;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+        svg {
+            font-size: 0.75em;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        &.section {
+            .supertitle {
+                @include body-2-semibold;
+                font-size: 1rem;
+                display: block;
+                margin-bottom: 8px;
+            }
+            margin-bottom: 24px;
+        }
+
+        &.subsection {
+            @include body-3-medium;
+            margin-left: 24px;
+            .supertitle {
+                &::after {
+                    content: " ";
+                }
+            }
+        }
+        &.section + .subsection {
+            margin-top: 8px;
+        }
+
+        &.subsection + .section {
+            margin-top: 24px;
+            border-top: 1px solid $blue-20;
+            padding-top: 24px;
+        }
+    }
+}

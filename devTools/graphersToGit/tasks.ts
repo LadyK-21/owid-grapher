@@ -2,7 +2,7 @@
 
 import { CoreTable } from "@ourworldindata/core-table"
 import {
-    ChartTypeName,
+    GRAPHER_CHART_TYPES,
     ColorScaleConfig,
     Grapher,
     GrapherProgrammaticInterface,
@@ -71,7 +71,7 @@ const dumpGraphers = async () => {
         JSON.stringify(mapToObjectLiteral(graphersById), null, 2),
         "utf8"
     )
-    closeTypeOrmAndKnexConnections()
+    void closeTypeOrmAndKnexConnections()
 }
 
 // If an author changes the map variable then removes that variable, we don't remove it from map config.
@@ -173,7 +173,7 @@ const dumpComplexSelections = async () => {
                 : 0
         return {
             grapherId: config.id,
-            type: config.type ?? ChartTypeName.LineChart,
+            type: config.type ?? GRAPHER_CHART_TYPES.LineChart,
             url: `https://ourworldindata.org/grapher/${config.slug}`,
             dimensionVariableCount,
             selectionVariableCount,
@@ -205,7 +205,7 @@ const dumpComplexSelections = async () => {
             }),
         "utf8"
     )
-    closeTypeOrmAndKnexConnections()
+    void closeTypeOrmAndKnexConnections()
 }
 
 const getArgsOrErrorMessage = () => {
@@ -240,4 +240,4 @@ const tasks = [
     dumpColorScales,
 ]
 
-main()
+void main()

@@ -1,6 +1,4 @@
-import React from "react"
 import { PostReference } from "@ourworldindata/utils"
-import { BAKED_BASE_URL } from "../../settings/serverSettings.js"
 
 export const RelatedArticles = ({
     articles,
@@ -11,9 +9,7 @@ export const RelatedArticles = ({
         <ul className="research">
             {articles.map((article) => (
                 <li key={article.slug}>
-                    <a href={`${BAKED_BASE_URL}/${article.slug}`}>
-                        {article.title}
-                    </a>
+                    <a href={article.url}>{article.title}</a>
                 </li>
             ))}
         </ul>

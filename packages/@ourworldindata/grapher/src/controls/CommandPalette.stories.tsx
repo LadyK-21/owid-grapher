@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { CommandPalette, Command } from "../controls/CommandPalette"
 
 export default {
@@ -6,7 +6,7 @@ export default {
     component: CommandPalette,
 }
 
-export const WithCommands = (): JSX.Element => {
+export const WithCommands = (): React.ReactElement => {
     const demoCommands: Command[] = [
         {
             combo: "ctrl+o",

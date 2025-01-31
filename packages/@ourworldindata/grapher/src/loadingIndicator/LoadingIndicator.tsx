@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { Bounds } from "@ourworldindata/utils"
 
 const DEFAULT_COLOR = "#333"
@@ -8,7 +8,7 @@ export const LoadingIndicator = (props: {
     bounds?: Bounds
     color?: string
     title?: string
-}): JSX.Element => {
+}): React.ReactElement => {
     return (
         <div
             className="loading-indicator"

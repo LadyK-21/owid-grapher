@@ -1,8 +1,4 @@
-import {
-    BASE_FONT_SIZE,
-    FacetAxisDomain,
-    ScaleType,
-} from "../core/GrapherConstants"
+import { BASE_FONT_SIZE } from "../core/GrapherConstants"
 import {
     extend,
     trimObject,
@@ -11,14 +7,22 @@ import {
     AxisAlign,
     Position,
     TickFormattingOptions,
+    Bounds,
 } from "@ourworldindata/utils"
 import { observable, computed } from "mobx"
 import { HorizontalAxis, VerticalAxis } from "./Axis"
-import { AxisConfigInterface, Tickmark } from "./AxisConfigInterface"
-import { ScaleSelectorManager } from "../controls/ScaleSelector"
+import {
+    AxisMinMaxValueStr,
+    AxisConfigInterface,
+    FacetAxisDomain,
+    ScaleType,
+    Tickmark,
+} from "@ourworldindata/types"
 
-export interface FontSizeManager {
+export interface AxisManager {
     fontSize: number
+    axisBounds?: Bounds
+    detailsOrderedByReference?: string[]
 }
 
 class AxisConfigDefaults implements AxisConfigInterface {
@@ -30,7 +34,10 @@ class AxisConfigDefaults implements AxisConfigInterface {
     @observable.ref minSize?: number = undefined
     @observable.ref hideAxis?: boolean = undefined
     @observable.ref hideGridlines?: boolean = undefined
+    @observable.ref hideTickLabels?: boolean = undefined
+    @observable.ref labelPosition?: AxisAlign = AxisAlign.middle
     @observable.ref labelPadding?: number = undefined
+    @observable.ref tickPadding?: number = undefined
     @observable.ref nice?: boolean = undefined
     @observable.ref maxTicks?: number = undefined
     @observable.ref tickFormattingOptions?: TickFormattingOptions = undefined
@@ -38,27 +45,41 @@ class AxisConfigDefaults implements AxisConfigInterface {
     @observable.ref facetDomain?: FacetAxisDomain = undefined
     @observable.ref ticks?: Tickmark[] = undefined
     @observable.ref singleValueAxisPointAlign?: AxisAlign = undefined
-    @observable.ref label: string = ""
+    @observable.ref label?: string = undefined
+    @observable.ref domainValues?: number[] = undefined
+}
+
+function parseMinFromJSON(
+    value: AxisMinMaxValueStr.auto | number | undefined
+): number | undefined {
+    if (value === AxisMinMaxValueStr.auto) return Infinity
+    return value
+}
+
+function parseMaxFromJSON(
+    value: AxisMinMaxValueStr.auto | number | undefined
+): number | undefined {
+    if (value === AxisMinMaxValueStr.auto) return -Infinity
+    return value
 }
 
 export class AxisConfig
     extends AxisConfigDefaults
-    implements AxisConfigInterface, Persistable, ScaleSelectorManager
+    implements AxisConfigInterface, Persistable
 {
-    constructor(
-        props?: AxisConfigInterface,
-        fontSizeManager?: FontSizeManager
-    ) {
+    constructor(props?: AxisConfigInterface, axisManager?: AxisManager) {
         super()
         this.updateFromObject(props)
-        this.fontSizeManager = fontSizeManager
+        this.axisManager = axisManager
     }
 
-    fontSizeManager?: FontSizeManager
+    axisManager?: AxisManager
 
     // todo: test/refactor
     updateFromObject(props?: AxisConfigInterface): void {
         if (props) extend(this, props)
+        if (props?.min) this.min = parseMinFromJSON(props?.min)
+        if (props?.max) this.max = parseMaxFromJSON(props?.max)
     }
 
     toObject(): AxisConfigInterface {
@@ -71,6 +92,7 @@ export class AxisConfig
             minSize: this.minSize,
             hideAxis: this.hideAxis,
             hideGridlines: this.hideGridlines,
+            hideTickLabels: this.hideTickLabels,
             labelPadding: this.labelPadding,
             nice: this.nice,
             maxTicks: this.maxTicks,
@@ -80,15 +102,19 @@ export class AxisConfig
             facetDomain: this.facetDomain,
             ticks: this.ticks,
             singleValueAxisPointAlign: this.singleValueAxisPointAlign,
-        })
+            domainValues: this.domainValues,
+        }) as AxisConfigInterface
 
         deleteRuntimeAndUnchangedProps(obj, new AxisConfigDefaults())
+
+        if (obj.min === Infinity) obj.min = AxisMinMaxValueStr.auto
+        if (obj.max === -Infinity) obj.max = AxisMinMaxValueStr.auto
 
         return obj
     }
 
     @computed get fontSize(): number {
-        return this.fontSizeManager?.fontSize || BASE_FONT_SIZE
+        return this.axisManager?.fontSize || BASE_FONT_SIZE
     }
 
     // A log scale domain cannot have values <= 0, so we double check here
@@ -119,10 +145,10 @@ export class AxisConfig
     // Convert axis configuration to a finalized axis spec by supplying
     // any needed information calculated from the data
     toHorizontalAxis(): HorizontalAxis {
-        return new HorizontalAxis(this)
+        return new HorizontalAxis(this, this.axisManager)
     }
 
     toVerticalAxis(): VerticalAxis {
-        return new VerticalAxis(this)
+        return new VerticalAxis(this, this.axisManager)
     }
 }

@@ -6,6 +6,7 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "files.insertFinalNewline": false,
     "search.exclude": {
+        ".yarn": true,
         "**/itsJustJavascript": true,
         "bakedSite": true,
         "yarn.lock": true
@@ -14,11 +15,14 @@
     "typescript.preferences.useAliasesForRenames": false,
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-        "source.fixAll.eslint": true
+        "source.fixAll.eslint": "explicit"
     },
     "typescript.preferences.importModuleSpecifierEnding": "js",
     "javascript.preferences.importModuleSpecifierEnding": "js",
     "[sql]": {
         "editor.defaultFormatter": "inferrinizzard.prettier-sql-vscode"
-    }
+    },
+    "Prettier-SQL.keywordCase": "upper",
+    "Prettier-SQL.SQLFlavourOverride": "mysql",
+    "Prettier-SQL.expressionWidth": 80
 }

@@ -7,29 +7,27 @@ import {
     SynthesizeFruitTableWithNonPositives,
     SynthesizeGDPTable,
     ErrorValueTypes,
-    ColumnTypeNames,
-    OwidTableSlugs,
-    Color,
     makeOriginalTimeSlugFromColumnSlug,
     OwidTable,
 } from "@ourworldindata/core-table"
 import {
     ScatterPlotManager,
-    SCATTER_LABEL_DEFAULT_FONT_SIZE,
-    SCATTER_LABEL_MAX_FONT_SIZE,
-    SCATTER_LABEL_MIN_FONT_SIZE,
     SCATTER_POINT_DEFAULT_RADIUS,
     SCATTER_POINT_MAX_RADIUS,
     SCATTER_POINT_MIN_RADIUS,
 } from "./ScatterPlotChartConstants"
 import {
-    EntitySelectionMode,
     ScaleType,
     ScatterPointLabelStrategy,
-} from "../core/GrapherConstants"
+    ColumnTypeNames,
+    OwidTableSlugs,
+    Color,
+    GRAPHER_CHART_TYPES,
+} from "@ourworldindata/types"
 import { ContinentColors } from "../color/CustomSchemes"
 import { sortBy, uniq, uniqBy } from "@ourworldindata/utils"
 import { ScatterPointsWithLabels } from "./ScatterPointsWithLabels"
+import { Grapher } from "../core/Grapher"
 
 it("can create a new chart", () => {
     const manager: ScatterPlotManager = {
@@ -38,7 +36,7 @@ it("can create a new chart", () => {
 
     const chart = new ScatterPlotChart({ manager })
     expect(chart.failMessage).toBeFalsy()
-    expect(chart.getSeriesNamesToShow().size).toEqual(2)
+    expect(chart.seriesNamesToHighlight.size).toEqual(0)
     expect(chart.series.length).toEqual(2)
     expect(chart.allPoints.length).toBeGreaterThan(0)
 })
@@ -143,14 +141,16 @@ describe("interpolation defaults", () => {
             },
         ]
     )
-    const manager: ScatterPlotManager = {
-        xColumnSlug: "x",
-        yColumnSlug: "y",
-        colorColumnSlug: "color",
-        sizeColumnSlug: "size",
+
+    const grapher = new Grapher({
         table,
-    }
-    const chart = new ScatterPlotChart({ manager })
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        xSlug: "x",
+        ySlugs: "y",
+        colorSlug: "color",
+        sizeSlug: "size",
+    })
+    const chart = grapher.chartInstance as ScatterPlotChart
 
     it("color defaults to infinity tolerance if none specified", () => {
         expect(
@@ -199,15 +199,15 @@ describe("basic scatterplot", () => {
         ]
     )
 
-    const manager: ScatterPlotManager = {
-        xColumnSlug: "x",
-        yColumnSlug: "y",
-        colorColumnSlug: "color",
-        sizeColumnSlug: "size",
+    const grapher = new Grapher({
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        xSlug: "x",
+        ySlugs: "y",
+        colorSlug: "color",
+        sizeSlug: "size",
         table,
-    }
-
-    const chart = new ScatterPlotChart({ manager })
+    })
+    const chart = grapher.chartInstance as ScatterPlotChart
 
     it("removes error values from X and Y", () => {
         expect(chart.transformedTable.numRows).toEqual(2)
@@ -429,16 +429,16 @@ describe("entity exclusion", () => {
         ]
     )
 
-    const manager: ScatterPlotManager = {
-        xColumnSlug: "x",
-        yColumnSlug: "y",
-        colorColumnSlug: "color",
-        sizeColumnSlug: "size",
+    const grapher = new Grapher({
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        xSlug: "x",
+        ySlugs: "y",
+        colorSlug: "color",
+        sizeSlug: "size",
         matchingEntitiesOnly: true,
         table,
-    }
-
-    const chart = new ScatterPlotChart({ manager })
+    })
+    const chart = grapher.chartInstance as ScatterPlotChart
 
     it("excludes entities without color when matchingEntitiesOnly is enabled", () => {
         expect(chart.allPoints.length).toEqual(1)
@@ -467,7 +467,6 @@ describe("colors & legend", () => {
             [2, "Canada", "", 2000, 1, 1, "North America", null],
             [3, "China", "", 2000, 1, null, "Asia", null],
             [4, "Australia", "", 2000, 1, 1, "Oceania", null],
-            [5, "Antarctica", "", 2000, null, null, "Antarctica", null],
             [6, "Chile", "", 2000, 1, 1, "South America", null],
             [7, "Nigeria", "", 2000, 1, 1, "Africa", null],
         ],
@@ -511,7 +510,6 @@ describe("colors & legend", () => {
                 Canada: "North America",
                 China: "Asia",
                 Australia: "Oceania",
-                Antarctica: "Antarctica",
                 Chile: "South America",
                 Nigeria: "Africa",
             }
@@ -535,7 +533,6 @@ describe("colors & legend", () => {
     it("legend contains every continent for which there is data (before timeline filter)", () => {
         expect(chart.legendItems.map((item) => item.label).sort()).toEqual([
             "Africa",
-            "Antarctica",
             "Europe",
             "North America",
             "Oceania",
@@ -619,20 +616,6 @@ describe("series transformations", () => {
         })
         const ukSeries = chart.series.find((s) => s.seriesName === "UK")!
         expect(ukSeries.points.map((p) => p.timeValue)).toEqual([2001, 2004])
-    })
-
-    it("hides entities without full time span", () => {
-        const chart = new ScatterPlotChart({
-            manager: {
-                ...manager,
-                hideLinesOutsideTolerance: true,
-                startTime: 2000,
-                endTime: 2003,
-            },
-        })
-        // Because of the assumption that the timeline filter is applied,
-        // only Germany can be visible in this case.
-        expect(chart.series.map((s) => s.seriesName)).toEqual(["Germany"])
     })
 
     it("calculates average annual change", () => {
@@ -836,15 +819,15 @@ describe("x/y tolerance", () => {
         ]
     )
 
-    const manager: ScatterPlotManager = {
-        xColumnSlug: "x",
-        yColumnSlug: "y",
-        colorColumnSlug: "color",
-        sizeColumnSlug: "size",
+    const grapher = new Grapher({
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        xSlug: "x",
+        ySlugs: "y",
+        colorSlug: "color",
+        sizeSlug: "size",
         table,
-    }
-
-    const chart = new ScatterPlotChart({ manager })
+    })
+    const chart = grapher.chartInstance as ScatterPlotChart
 
     const transformedTable = chart.transformedTable
 
@@ -909,65 +892,6 @@ describe("x/y tolerance", () => {
     })
 })
 
-describe("addCountryMode", () => {
-    const table = new OwidTable(
-        [
-            ["entityId", "entityName", "entityCode", "year", "x", "y"],
-            [1, "UK", "", 2000, 1, 1],
-            [2, "USA", "", 2000, 2, 2],
-        ],
-        [
-            {
-                slug: "x",
-                type: ColumnTypeNames.Numeric,
-            },
-            {
-                slug: "y",
-                type: ColumnTypeNames.Numeric,
-            },
-        ]
-    )
-
-    const manager: ScatterPlotManager = {
-        xColumnSlug: "x",
-        yColumnSlug: "y",
-        colorColumnSlug: "color",
-        sizeColumnSlug: "size",
-        table,
-        selection: ["UK"],
-    }
-
-    it("doesn't filter any data for MultipleEntities mode", () => {
-        const chart = new ScatterPlotChart({
-            manager: {
-                ...manager,
-                addCountryMode: EntitySelectionMode.MultipleEntities,
-            },
-        })
-        expect(chart.transformedTable.numRows).toEqual(2)
-    })
-
-    it("filters unselected data for SingleEntity mode", () => {
-        const chart = new ScatterPlotChart({
-            manager: {
-                ...manager,
-                addCountryMode: EntitySelectionMode.SingleEntity,
-            },
-        })
-        expect(chart.transformedTable.numRows).toEqual(1)
-    })
-
-    it("filters unselected data for Disabled mode", () => {
-        const chart = new ScatterPlotChart({
-            manager: {
-                ...manager,
-                addCountryMode: EntitySelectionMode.Disabled,
-            },
-        })
-        expect(chart.transformedTable.numRows).toEqual(1)
-    })
-})
-
 describe("correct bubble sizes", () => {
     it("with column", () => {
         const table = new OwidTable(
@@ -1022,11 +946,13 @@ describe("correct bubble sizes", () => {
             dualAxis: chart["dualAxis"],
             sizeScale: chart["sizeScale"],
             fontScale: chart["fontScale"],
+            baseFontSize: chart["fontSize"],
             focusedSeriesNames: chart["focusedEntityNames"],
             hoveredSeriesNames: chart["hoveredSeriesNames"],
-            onMouseOver: chart["onScatterMouseOver"],
+            onMouseEnter: chart["onScatterMouseEnter"],
             onMouseLeave: chart["onScatterMouseLeave"],
             onClick: chart["onScatterClick"],
+            quadtree: chart["quadtree"],
         })
 
         const sortedRenderSeries = sortBy(
@@ -1036,24 +962,16 @@ describe("correct bubble sizes", () => {
 
         expect(sortedRenderSeries[0].seriesName).toEqual("SWE")
         expect(sortedRenderSeries[0].size).toEqual(SCATTER_POINT_MIN_RADIUS)
-        expect(sortedRenderSeries[0].fontSize).toEqual(
-            SCATTER_LABEL_MIN_FONT_SIZE
-        )
+        expect(sortedRenderSeries[0].fontSize).toEqual(10)
         expect(sortedRenderSeries[1].seriesName).toEqual("UK")
         expect(sortedRenderSeries[1].size).toEqual(SCATTER_POINT_MIN_RADIUS)
-        expect(sortedRenderSeries[1].fontSize).toEqual(
-            SCATTER_LABEL_MIN_FONT_SIZE
-        )
+        expect(sortedRenderSeries[1].fontSize).toEqual(10)
         expect(sortedRenderSeries[2].seriesName).toEqual("USA")
         expect(sortedRenderSeries[2].size).toEqual(SCATTER_POINT_MAX_RADIUS)
-        expect(sortedRenderSeries[2].fontSize).toEqual(
-            SCATTER_LABEL_MAX_FONT_SIZE
-        )
+        expect(sortedRenderSeries[2].fontSize).toEqual(13)
         expect(sortedRenderSeries[3].seriesName).toEqual("ZZZ")
         expect(sortedRenderSeries[3].size).toEqual(SCATTER_POINT_MIN_RADIUS)
-        expect(sortedRenderSeries[3].fontSize).toEqual(
-            SCATTER_LABEL_MIN_FONT_SIZE
-        )
+        expect(sortedRenderSeries[3].fontSize).toEqual(10)
     })
 
     it("without column", () => {
@@ -1094,11 +1012,13 @@ describe("correct bubble sizes", () => {
             dualAxis: chart["dualAxis"],
             sizeScale: chart["sizeScale"],
             fontScale: chart["fontScale"],
+            baseFontSize: chart["fontSize"],
             focusedSeriesNames: chart["focusedEntityNames"],
             hoveredSeriesNames: chart["hoveredSeriesNames"],
-            onMouseOver: chart["onScatterMouseOver"],
+            onMouseEnter: chart["onScatterMouseEnter"],
             onMouseLeave: chart["onScatterMouseLeave"],
             onClick: chart["onScatterClick"],
+            quadtree: chart["quadtree"],
         })
 
         const sortedRenderSeries = sortBy(
@@ -1108,13 +1028,54 @@ describe("correct bubble sizes", () => {
 
         expect(sortedRenderSeries[0].seriesName).toEqual("SWE")
         expect(sortedRenderSeries[0].size).toEqual(SCATTER_POINT_DEFAULT_RADIUS)
-        expect(sortedRenderSeries[0].fontSize).toEqual(
-            SCATTER_LABEL_DEFAULT_FONT_SIZE
-        )
+        expect(sortedRenderSeries[0].fontSize).toEqual(10.5)
         expect(sortedRenderSeries[1].seriesName).toEqual("UK")
         expect(sortedRenderSeries[1].size).toEqual(SCATTER_POINT_DEFAULT_RADIUS)
-        expect(sortedRenderSeries[1].fontSize).toEqual(
-            SCATTER_LABEL_DEFAULT_FONT_SIZE
-        )
+        expect(sortedRenderSeries[1].fontSize).toEqual(10.5)
     })
+})
+
+it("applies color tolerance before applying the author timeline filter", () => {
+    const table = new OwidTable(
+        [
+            [
+                "entityId",
+                "entityName",
+                "entityCode",
+                "year",
+                "x",
+                "y",
+                "color",
+                "size",
+            ],
+            [1, "UK", "", -1000, 1, 1, null, null],
+            [1, "UK", "", 1000, 1, 1, null, 100],
+            [1, "UK", "", 2020, 1, 1, null, null],
+            [1, "UK", "", 2023, null, null, "Europe", null],
+        ],
+        [
+            { slug: "x", type: ColumnTypeNames.Numeric },
+            { slug: "y", type: ColumnTypeNames.Numeric },
+            { slug: "color", type: ColumnTypeNames.String },
+            {
+                slug: "size",
+                type: ColumnTypeNames.Numeric,
+            },
+        ]
+    )
+
+    const grapher = new Grapher({
+        table,
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
+        xSlug: "x",
+        ySlugs: "y",
+        colorSlug: "color",
+        sizeSlug: "size",
+        timelineMaxTime: 2020,
+    })
+    const chart = grapher.chartInstance as ScatterPlotChart
+
+    expect(
+        uniq(chart.transformedTable.get("color").valuesIncludingErrorValues)
+    ).toEqual(["Europe"])
 })

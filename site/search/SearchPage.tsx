@@ -1,40 +1,40 @@
-import React from "react"
 import { Head } from "../Head.js"
 import { SiteHeader } from "../SiteHeader.js"
 import { SiteFooter } from "../SiteFooter.js"
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { faSearch } from "@fortawesome/free-solid-svg-icons"
+import { Html } from "../Html.js"
 
 export const SearchPage = (props: { baseUrl: string }) => {
     const { baseUrl } = props
     return (
-        <html>
+        <Html>
             <Head
                 canonicalUrl={`${baseUrl}/search`}
                 pageTitle="Search"
                 pageDesc="Search articles and charts on Our World in Data."
                 baseUrl={baseUrl}
             />
-            <body className="SearchPage">
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    // Structured data for google
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "WebSite",
+                        url: baseUrl,
+                        potentialAction: {
+                            "@type": "SearchAction",
+                            target: `${baseUrl}/search?q={search_term_string}`,
+                            "query-input": "required name=search_term_string",
+                        },
+                    }),
+                }}
+            />
+            <body>
                 <SiteHeader baseUrl={baseUrl} />
-                <main>
-                    <form action="/search" method="GET">
-                        <div className="inputWrapper">
-                            <input
-                                type="search"
-                                name="q"
-                                placeholder={`Try "Poverty", "Population growth" or "Plastic pollution"`}
-                                autoFocus
-                            />
-                            <FontAwesomeIcon icon={faSearch} />
-                        </div>
-                        <button type="submit">Search</button>
-                    </form>
-                    <div className="searchResults wrapper"></div>
-                </main>
+                <main className="search-page-container" />
                 <SiteFooter hideDonate={true} baseUrl={baseUrl} />
                 <script type="module">{`window.runSearchPage()`}</script>
             </body>
-        </html>
+        </Html>
     )
 }

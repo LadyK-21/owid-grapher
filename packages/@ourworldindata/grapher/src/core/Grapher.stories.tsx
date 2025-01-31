@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { Grapher, GrapherProgrammaticInterface } from "./Grapher"
 import {
     SampleColumnSlugs,
@@ -6,10 +6,10 @@ import {
     BlankOwidTable,
 } from "@ourworldindata/core-table"
 import {
-    ChartTypeName,
+    GRAPHER_CHART_TYPES,
     FacetStrategy,
-    GrapherTabOption,
-} from "./GrapherConstants"
+    GRAPHER_TAB_OPTIONS,
+} from "@ourworldindata/types"
 import { action, observable } from "mobx"
 import { observer } from "mobx-react"
 import { ChartTypeSwitcher } from "../chart/ChartTypeSwitcher"
@@ -45,67 +45,66 @@ const basics: GrapherProgrammaticInterface = {
     ],
 }
 
-export const Line = (): JSX.Element => <Grapher {...basics} />
+export const Line = (): React.ReactElement => <Grapher {...basics} />
 
-export const SlopeChart = (): JSX.Element => {
+export const SlopeChart = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.SlopeChart,
+        chartTypes: [GRAPHER_CHART_TYPES.SlopeChart],
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const ScatterPlot = (): JSX.Element => {
+export const ScatterPlot = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.ScatterPlot,
+        chartTypes: [GRAPHER_CHART_TYPES.ScatterPlot],
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const DiscreteBar = (): JSX.Element => {
+export const DiscreteBar = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.DiscreteBar,
+        chartTypes: [GRAPHER_CHART_TYPES.DiscreteBar],
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const StackedBar = (): JSX.Element => {
+export const StackedBar = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.StackedBar,
+        chartTypes: [GRAPHER_CHART_TYPES.StackedBar],
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const StackedArea = (): JSX.Element => {
+export const StackedArea = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.StackedArea,
+        chartTypes: [GRAPHER_CHART_TYPES.StackedArea],
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const MapFirst = (): JSX.Element => {
+export const MapFirst = (): React.ReactElement => {
     const model = {
         ...basics,
-        tab: GrapherTabOption.map,
+        tab: GRAPHER_TAB_OPTIONS.map,
     }
     return <Grapher {...model} />
 }
 
-export const BlankGrapher = (): JSX.Element => {
+export const BlankGrapher = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.WorldMap,
-        tab: GrapherTabOption.map,
+        tab: GRAPHER_TAB_OPTIONS.map,
         table: BlankOwidTable(),
         hasMapTab: true,
     }
     return <Grapher {...model} />
 }
 
-export const NoMap = (): JSX.Element => {
+export const NoMap = (): React.ReactElement => {
     const model = {
         ...basics,
         hasMapTab: false,
@@ -113,16 +112,16 @@ export const NoMap = (): JSX.Element => {
     return <Grapher {...model} />
 }
 
-export const Faceting = (): JSX.Element => {
+export const Faceting = (): React.ReactElement => {
     const model = {
-        type: ChartTypeName.StackedArea,
+        chartTypes: [GRAPHER_CHART_TYPES.StackedArea],
         facet: FacetStrategy.entity,
         ...basics,
     }
     return <Grapher {...model} />
 }
 
-export const WithAuthorTimeFilter = (): JSX.Element => {
+export const WithAuthorTimeFilter = (): React.ReactElement => {
     const model: GrapherProgrammaticInterface = {
         ...basics,
         timelineMinTime: 1993,
@@ -142,13 +141,13 @@ class PerfGrapher extends React.Component {
 
     @observable.ref table = basics.table!
 
-    @action.bound private changeChartType(type: ChartTypeName): void {
+    @action.bound private changeChartType(type: GRAPHER_CHART_TYPES): void {
         this.chartTypeName = type
     }
 
-    @observable chartTypeName = ChartTypeName.LineChart
+    @observable chartTypeName = GRAPHER_CHART_TYPES.LineChart
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const key = Math.random() // I do this hack to force a rerender until can re-add the grapher model/grapher view that we used to have. @breck 10/29/2020
         return (
             <div>
@@ -161,7 +160,7 @@ class PerfGrapher extends React.Component {
                 <Grapher
                     {...basics}
                     table={this.table}
-                    type={this.chartTypeName}
+                    chartTypes={[this.chartTypeName]}
                     key={key}
                 />
             </div>
@@ -169,4 +168,4 @@ class PerfGrapher extends React.Component {
     }
 }
 
-export const Perf = (): JSX.Element => <PerfGrapher />
+export const Perf = (): React.ReactElement => <PerfGrapher />

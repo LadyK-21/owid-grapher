@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { action, computed, observable, runInAction, reaction } from "mobx"
 import { observer } from "mobx-react"
 import { Flipper, Flipped } from "react-flip-toolkit"
@@ -18,16 +18,21 @@ import {
     sortByUndefinedLast,
     getStylesForTargetHeight,
     ColumnSlug,
+    getUserCountryInformation,
+    regions,
+    sortBy,
+    upperFirst,
+    SortOrder,
+    EntityName,
+    compact,
+    CoreColumnDef,
+    OwidTableSlugs,
 } from "@ourworldindata/utils"
 import { VerticalScrollContainer } from "../../controls/VerticalScrollContainer"
 import { SortIcon } from "../../controls/SortIcon"
 import {
-    SortOrder,
     ColumnTypeMap,
     CoreColumn,
-    EntityName,
-    OwidTableSlugs,
-    CoreColumnDef,
     OwidTable,
 } from "@ourworldindata/core-table"
 import { EntityPickerManager } from "./EntityPickerConstants"
@@ -47,6 +52,7 @@ interface EntityOptionWithMetricValue {
     entityName: EntityName
     plotValue: number | string | undefined
     formattedValue: any
+    localEntitiesIndex: number | undefined
 }
 
 /** Modulo that wraps negative numbers too */
@@ -57,10 +63,6 @@ export class EntityPicker extends React.Component<{
     manager: EntityPickerManager
     isDropdownMenu?: boolean
 }> {
-    @computed private get analyticsNamespace(): string {
-        return this.manager.analyticsNamespace ?? ""
-    }
-
     @observable private searchInput?: string
     @observable
     private searchInputRef: React.RefObject<HTMLInputElement> =
@@ -73,11 +75,15 @@ export class EntityPicker extends React.Component<{
 
     @observable private blockOptionHover = false
 
+    @observable private mostRecentlySelectedEntityName: string | null = null
+
     @observable
     private scrollContainerRef: React.RefObject<HTMLDivElement> =
         React.createRef()
 
     @observable private isOpen = false
+
+    @observable private localEntityNames?: string[]
 
     @computed private get isDropdownMenu(): boolean {
         return !!this.props.isDropdownMenu
@@ -88,13 +94,20 @@ export class EntityPicker extends React.Component<{
         checked?: boolean
     ): void {
         this.manager.selection.toggleSelection(name)
+
+        // Remove focus from an entity that has been removed from the selection
+        if (!this.manager.selection.selectedSet.has(name)) {
+            this.manager.focusArray?.remove(name)
+        }
+
         // Clear search input
         this.searchInput = ""
         this.manager.analytics?.logEntityPickerEvent(
-            this.analyticsNamespace,
             checked ? "select" : "deselect",
             name
         )
+
+        this.mostRecentlySelectedEntityName = name
     }
 
     @computed private get manager(): EntityPickerManager {
@@ -115,29 +128,52 @@ export class EntityPicker extends React.Component<{
         return this.manager.entityPickerColumnDefs ?? []
     }
 
-    @computed private get metricOptions(): { label: string; value: string }[] {
-        return this.pickerColumnDefs.map(
-            (
-                col
-            ): {
-                label: string
-                value: string
-            } => {
-                return {
-                    label: col.name || col.slug,
-                    value: col.slug,
-                }
-            }
+    @computed private get metricOptions(): {
+        label: string
+        value: string | undefined
+    }[] {
+        const entityNameColumn = this.grapherTable?.entityNameColumn
+        const entityNameColumnInPickerColumnDefs = !!this.pickerColumnDefs.find(
+            (col) => col.slug === entityNameColumn?.slug
         )
+        return compact([
+            { label: "Relevance", value: undefined },
+            !entityNameColumnInPickerColumnDefs &&
+                entityNameColumn && {
+                    label: upperFirst(this.manager.entityType) || "Name",
+                    value: entityNameColumn?.slug,
+                },
+            ...this.pickerColumnDefs.map(
+                (
+                    col
+                ): {
+                    label: string
+                    value: string
+                } => {
+                    return {
+                        label: col.name || col.slug,
+                        value: col.slug,
+                    }
+                }
+            ),
+        ])
     }
 
-    private getColumn(slug: ColumnSlug | undefined): CoreColumn | undefined {
-        if (slug === undefined) return undefined
-        return this.manager.entityPickerTable?.get(slug)
+    @computed private get metricTable(): OwidTable | undefined {
+        if (this.metric === undefined) return undefined
+
+        // If the slug is "entityName", then try to get it from grapherTable first, because it might
+        // not be present in pickerTable (for indicator-powered explorers, for example).
+        if (
+            this.metric === OwidTableSlugs.entityName &&
+            this.grapherTable?.has(this.metric)
+        )
+            return this.grapherTable
+        return this.pickerTable
     }
 
     @computed private get activePickerMetricColumn(): CoreColumn | undefined {
-        return this.getColumn(this.metric)
+        return this.metricTable?.get(this.metric)
     }
 
     @computed private get availableEntitiesForCurrentView(): Set<string> {
@@ -147,15 +183,39 @@ export class EntityPicker extends React.Component<{
         return this.grapherTable.entitiesWith(this.manager.requiredColumnSlugs)
     }
 
+    @action.bound async populateLocalEntity(): Promise<void> {
+        try {
+            const localCountryInfo = await getUserCountryInformation()
+            if (!localCountryInfo) return
+
+            const userEntityCodes = [
+                localCountryInfo.code,
+                ...(localCountryInfo.regions ?? []),
+                "OWID_WRL",
+            ]
+
+            const userRegionNames = sortBy(
+                regions.filter((region) =>
+                    userEntityCodes.includes(region.code)
+                ),
+                (region) => userEntityCodes.indexOf(region.code)
+            ).map((region) => region.name)
+
+            if (userRegionNames) this.localEntityNames = userRegionNames
+        } catch {
+            // ignore
+        }
+    }
+
     @computed
     private get entitiesWithMetricValue(): EntityOptionWithMetricValue[] {
-        const { pickerTable, selection } = this
+        const { metricTable, selection, localEntityNames } = this
         const col = this.activePickerMetricColumn
         const entityNames = selection.availableEntityNames.slice().sort()
         return entityNames.map((entityName) => {
             const plotValue =
-                col && pickerTable
-                    ? (pickerTable.getLatestValueForEntity(
+                col && metricTable?.has(col.slug)
+                    ? (metricTable.getLatestValueForEntity(
                           entityName,
                           col.slug
                       ) as string | number)
@@ -165,10 +225,16 @@ export class EntityPicker extends React.Component<{
                 plotValue !== undefined
                     ? col?.formatValueShortWithAbbreviations(plotValue)
                     : undefined
+
+            const localEntitiesIndex = localEntityNames?.indexOf(entityName)
             return {
                 entityName,
                 plotValue,
                 formattedValue,
+                localEntitiesIndex:
+                    localEntitiesIndex !== undefined && localEntitiesIndex >= 0
+                        ? localEntitiesIndex
+                        : undefined,
             }
         })
     }
@@ -198,17 +264,25 @@ export class EntityPicker extends React.Component<{
 
     @computed private get searchResults(): EntityOptionWithMetricValue[] {
         if (this.searchInput) return this.fuzzy.search(this.searchInput)
-        const { selectionSet } = this
+        const { entitiesWithMetricValue, sortOrder, selectionSet } = this
+
         // Show the selected up top and in order.
-        const [selected, unselected] = partition(
-            sortByUndefinedLast(
-                this.entitiesWithMetricValue,
-                (option) => option.plotValue,
-                this.sortOrder
-            ),
-            (option: EntityOptionWithMetricValue): boolean =>
-                selectionSet.has(option.entityName)
+        const sorted = sortByUndefinedLast(
+            entitiesWithMetricValue,
+            (option) => option.plotValue,
+            sortOrder
         )
+
+        let [selected, unselected] = partition(sorted, (option) =>
+            selectionSet.has(option.entityName)
+        )
+        if (this.metric === undefined) {
+            // only sort local entity names first if we're not sorting by some other metric already
+            unselected = sortByUndefinedLast(
+                unselected,
+                (option) => option.localEntitiesIndex
+            )
+        }
         return [...selected, ...unselected]
     }
 
@@ -257,7 +331,7 @@ export class EntityPicker extends React.Component<{
         // The hover will be unblocked iff the user moves the mouse (relative to the menu).
         this.blockHover()
         switch (event.key) {
-            case "Enter":
+            case "Enter": {
                 if (event.keyCode === 229) {
                     // ignore the keydown event from an Input Method Editor(IME)
                     // ref. https://www.w3.org/TR/uievents/#determine-keydown-keyup-keyCode
@@ -267,12 +341,9 @@ export class EntityPicker extends React.Component<{
                 const name = this.focusedOption
                 this.selectEntity(name)
                 this.clearSearchInput()
-                this.manager.analytics?.logEntityPickerEvent(
-                    this.analyticsNamespace,
-                    "enter",
-                    name
-                )
+                this.manager.analytics?.logEntityPickerEvent("enter", name)
                 break
+            }
             case "ArrowUp":
                 this.focusOptionDirection(FocusDirection.up)
                 break
@@ -328,7 +399,7 @@ export class EntityPicker extends React.Component<{
         this.focusSearch()
     }
 
-    @bind private highlightLabel(label: string): string | JSX.Element {
+    @bind private highlightLabel(label: string): string | React.ReactElement {
         if (!this.searchInput) return label
 
         const result = this.fuzzy.single(this.searchInput, label)
@@ -376,6 +447,8 @@ export class EntityPicker extends React.Component<{
             () => this.searchInput,
             () => this.focusOptionDirection(FocusDirection.first)
         )
+
+        void this.populateLocalEntity()
     }
 
     componentDidUpdate(): void {
@@ -394,37 +467,34 @@ export class EntityPicker extends React.Component<{
     }
 
     @action private updateMetric(columnSlug: ColumnSlug): void {
-        const col = this.getColumn(columnSlug)
+        const col = this.pickerTable?.get(columnSlug)
 
         this.manager.setEntityPicker?.({
             metric: columnSlug,
-            sort: this.isColumnTypeNumeric(col)
+            sort: this.isColumnTypeNumeric(columnSlug, col)
                 ? SortOrder.desc
                 : SortOrder.asc,
         })
-        this.manager.analytics?.logEntityPickerEvent(
-            this.analyticsNamespace,
-            "sortBy",
-            columnSlug
-        )
+        this.manager.analytics?.logEntityPickerEvent("sortBy", columnSlug)
     }
 
-    private isColumnTypeNumeric(col: CoreColumn | undefined): boolean {
-        // If the column is currently missing (not loaded yet), assume it is numeric.
+    private isColumnTypeNumeric(
+        columnSlug: ColumnSlug | undefined,
+        col: CoreColumn | undefined
+    ): boolean {
         return (
-            col === undefined ||
-            col.isMissing ||
-            col instanceof ColumnTypeMap.Numeric
+            // If columnSlug is undefined, we're sorting by relevance, which is (mostly) by country name.
+            columnSlug !== undefined &&
+            columnSlug !== OwidTableSlugs.entityName &&
+            // If the column is currently missing (not loaded yet), assume it is numeric.
+            (col === undefined ||
+                col.isMissing ||
+                col instanceof ColumnTypeMap.Numeric)
         )
     }
 
-    private get pickerMenu(): JSX.Element | null {
-        if (
-            this.isDropdownMenu ||
-            !this.manager.entityPickerColumnDefs ||
-            this.manager.entityPickerColumnDefs.length === 0
-        )
-            return null
+    private get pickerMenu(): React.ReactElement | null {
+        if (this.isDropdownMenu) return null
         return (
             <div className="MetricSettings">
                 <span className="mainLabel">Sort by</span>
@@ -452,9 +522,11 @@ export class EntityPicker extends React.Component<{
                     className="sort"
                     onClick={(): void => {
                         const sortOrder = toggleSort(this.sortOrder)
-                        this.manager.setEntityPicker?.({ sort: sortOrder })
+                        this.manager.setEntityPicker?.({
+                            metric: this.metric,
+                            sort: sortOrder,
+                        })
                         this.manager.analytics?.logEntityPickerEvent(
-                            this.analyticsNamespace,
                             "sortOrder",
                             sortOrder
                         )
@@ -463,6 +535,7 @@ export class EntityPicker extends React.Component<{
                     <SortIcon
                         type={
                             this.isColumnTypeNumeric(
+                                this.metric,
                                 this.activePickerMetricColumn
                             )
                                 ? "numeric"
@@ -475,15 +548,15 @@ export class EntityPicker extends React.Component<{
         )
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const { selection } = this
+        const { entityType } = this.manager
         const entities = this.searchResults
         const selectedEntityNames = selection.selectedEntityNames
         const availableEntities = this.availableEntitiesForCurrentView
 
         const selectedDebugMessage = `${selectedEntityNames.length} selected. ${availableEntities.size} available. ${this.entitiesWithMetricValue.length} options total.`
 
-        const entityType = selection.entityType
         return (
             <div className="EntityPicker" onKeyDown={this.onKeyDown}>
                 <div className="EntityPickerSearchInput">
@@ -500,7 +573,7 @@ export class EntityPicker extends React.Component<{
                         onFocus={this.onSearchFocus}
                         onBlur={this.onSearchBlur}
                         ref={this.searchInputRef}
-                        data-track-note={`${this.analyticsNamespace}-picker-search-input`}
+                        data-track-note="entity_picker_search_input"
                     />
                     <div className="search-icon">
                         <FontAwesomeIcon icon={faSearch} />
@@ -563,6 +636,13 @@ export class EntityPicker extends React.Component<{
                                                     ? this.focusRef
                                                     : undefined
                                             }
+                                            className={
+                                                this
+                                                    .mostRecentlySelectedEntityName ===
+                                                option.entityName
+                                                    ? "most-recently-selected"
+                                                    : undefined
+                                            }
                                         />
                                     ))}
                                 </Flipper>
@@ -571,10 +651,11 @@ export class EntityPicker extends React.Component<{
                                 <div
                                     title={selectedDebugMessage}
                                     className="ClearSelectionButton"
-                                    data-track-note={`${this.analyticsNamespace}-clear-selection`}
-                                    onClick={(): void =>
+                                    data-track-note="entity_picker_clear_selection"
+                                    onClick={(): void => {
                                         selection.clearSelection()
-                                    }
+                                        this.manager.focusArray?.clear()
+                                    }}
                                 >
                                     <FontAwesomeIcon icon={faTimes} /> Clear
                                     selection
@@ -590,7 +671,7 @@ export class EntityPicker extends React.Component<{
 
 interface PickerOptionProps {
     optionWithMetricValue: EntityOptionWithMetricValue
-    highlight: (label: string) => JSX.Element | string
+    highlight: (label: string) => React.ReactElement | string
     onChange: (name: string, checked: boolean) => void
     onHover?: () => void
     innerRef?: React.RefObject<HTMLLabelElement>
@@ -598,6 +679,7 @@ interface PickerOptionProps {
     isSelected?: boolean
     barScale?: ScaleLinear<number, number>
     hasDataForActiveMetric: boolean
+    className?: string
 }
 
 class PickerOption extends React.Component<PickerOptionProps> {
@@ -610,7 +692,7 @@ class PickerOption extends React.Component<PickerOptionProps> {
         )
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const {
             barScale,
             optionWithMetricValue,
@@ -619,6 +701,7 @@ class PickerOption extends React.Component<PickerOptionProps> {
             isFocused,
             hasDataForActiveMetric,
             highlight,
+            className,
         } = this.props
         const { entityName, plotValue, formattedValue } = optionWithMetricValue
         const metricValue = formattedValue === entityName ? "" : formattedValue // If the user has this entity selected, don't show the name twice.
@@ -628,9 +711,13 @@ class PickerOption extends React.Component<PickerOptionProps> {
                 <label
                     className={classnames(
                         "EntityPickerOption",
+                        className,
                         {
                             selected: isSelected,
                             focused: isFocused,
+                            "local-country":
+                                optionWithMetricValue.localEntitiesIndex !==
+                                undefined,
                         },
                         hasDataForActiveMetric ? undefined : "MissingData"
                     )}

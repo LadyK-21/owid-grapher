@@ -1,8 +1,7 @@
 #! /usr/bin/env jest
 
 import { CoreTable } from "./CoreTable.js"
-import { TransformType } from "./CoreTableConstants.js"
-import { ColumnTypeNames } from "./CoreColumnDef.js"
+import { TransformType, ColumnTypeNames } from "@ourworldindata/types"
 import { ErrorValueTypes, isNotErrorValue } from "./ErrorValues.js"
 
 const sampleCsv = `country,population
@@ -80,6 +79,42 @@ popChange,Pop change,percentChange time country population 2`
                         ])
                         .get("popChange").valuesIncludingErrorValues
                 ).toEqual(expected.slice(1))
+            })
+        })
+
+        describe("copies data & metadata for duplicate transform", () => {
+            const table = new CoreTable(
+                `country,population
+iceland,1
+iceland,2
+france,50
+france,60`,
+                [
+                    {
+                        slug: "country",
+                        name: "Region",
+                    },
+                    {
+                        slug: "population",
+                        name: "Population in 2020",
+                        type: ColumnTypeNames.Integer,
+                    },
+                    {
+                        slug: "pop2",
+                        transform: "duplicate population",
+                    },
+                ]
+            )
+            const expected = [1, 2, 50, 60]
+            it("runs transforms correctly", () => {
+                expect(table.get("pop2").valuesIncludingErrorValues).toEqual(
+                    expected
+                )
+
+                expect(table.get("pop2").def.name).toEqual("Population in 2020")
+                expect(table.get("pop2").def.type).toEqual(
+                    ColumnTypeNames.Integer
+                )
             })
         })
     })
@@ -293,7 +328,37 @@ uk,2001`
     const table = new CoreTable(csv)
     expect(table.numRows).toEqual(3)
     const completed = table.complete(["country", "year"])
+
     expect(completed.numRows).toEqual(6)
+    expect(completed.rows).toEqual(
+        expect.arrayContaining([
+            // compare in any order
+            { country: "usa", year: 2000 },
+            { country: "usa", year: 2001 },
+            { country: "usa", year: 2002 },
+            { country: "uk", year: 2000 },
+            { country: "uk", year: 2001 },
+            { country: "uk", year: 2002 },
+        ])
+    )
+})
+
+it("can sort a table", () => {
+    const table = new CoreTable(`country,year,population
+uk,1800,100
+iceland,1700,200
+iceland,1800,300
+uk,1700,400
+germany,1400,500`)
+
+    const sorted = table.sortBy(["country", "year"])
+    expect(sorted.rows).toEqual([
+        { country: "germany", year: 1400, population: 500 },
+        { country: "iceland", year: 1700, population: 200 },
+        { country: "iceland", year: 1800, population: 300 },
+        { country: "uk", year: 1700, population: 400 },
+        { country: "uk", year: 1800, population: 100 },
+    ])
 })
 
 describe("adding rows", () => {

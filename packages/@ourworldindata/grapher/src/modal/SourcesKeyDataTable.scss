@@ -1,0 +1,49 @@
+.sources-key-data-table {
+    margin-top: 16px;
+
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+
+    .key-data {
+        @include label-2-medium;
+        font-size: 13px;
+
+        &__title {
+            margin-bottom: 4px;
+            color: $light-text;
+        }
+
+        &__content {
+            color: $dark-text;
+        }
+
+        &--span {
+            grid-column: 1 / -1;
+        }
+
+        a {
+            text-underline-offset: 2px;
+        }
+    }
+
+    a {
+        color: inherit;
+        text-decoration: underline;
+
+        &:hover {
+            text-decoration: none;
+        }
+    }
+}
+
+&.GrapherComponentSemiNarrow .sources-key-data-table {
+    .key-data {
+        grid-column: 1 / -1;
+    }
+
+    .key-data__title {
+        margin-right: 0;
+        margin-bottom: 4px;
+    }
+}

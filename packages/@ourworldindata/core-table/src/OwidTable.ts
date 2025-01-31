@@ -4,10 +4,8 @@ import {
     intersectionOfSets,
     findClosestTimeIndex,
     sumBy,
-    flatten,
     uniq,
     sortNumeric,
-    last,
     groupBy,
     isNumber,
     isEmpty,
@@ -23,6 +21,7 @@ import {
     ColumnSlug,
     imemo,
     ToleranceStrategy,
+    differenceOfSets,
 } from "@ourworldindata/utils"
 import {
     Integer,
@@ -31,18 +30,18 @@ import {
     CoreColumnStore,
     Color,
     CoreValueType,
-} from "./CoreTableConstants.js"
-import { ColumnTypeNames } from "./CoreColumnDef.js"
-import { CoreTable } from "./CoreTable.js"
-import {
+    ColumnTypeNames,
     EntityName,
     OwidColumnDef,
     OwidRow,
     OwidTableSlugs,
-} from "./OwidTableConstants.js"
-import { ErrorValue, ErrorValueTypes, isNotErrorValue } from "./ErrorValues.js"
+    ErrorValue,
+} from "@ourworldindata/types"
+import { CoreTable } from "./CoreTable.js"
+import { ErrorValueTypes, isNotErrorValue } from "./ErrorValues.js"
 import {
     getOriginalTimeColumnSlug,
+    makeOriginalValueSlugFromColumnSlug,
     makeOriginalTimeSlugFromColumnSlug,
     timeColumnSlugFromColumnDef,
     toPercentageColumnDef,
@@ -65,7 +64,7 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
     }
 
     @imemo get availableEntityNameSet(): Set<string> {
-        return new Set<string>(this.entityNameColumn.uniqValues)
+        return this.entityNameColumn.uniqValuesAsSet
     }
 
     // todo: can we remove at some point?
@@ -100,10 +99,6 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
         ) as Map<string, string>
     }
 
-    @imemo get maxTime(): number | undefined {
-        return last(this.allTimes)
-    }
-
     @imemo get entityIdColumn(): CoreColumn {
         return (
             this.getFirstColumnWithType(ColumnTypeNames.EntityId) ??
@@ -118,12 +113,23 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
         )
     }
 
+    @imemo get entityNameColumn(): CoreColumn {
+        return (
+            this.getFirstColumnWithType(ColumnTypeNames.EntityName) ??
+            this.get(OwidTableSlugs.entityName)
+        )
+    }
+
     @imemo get minTime(): Time {
-        return this.allTimes[0]
+        return min(this.allTimes) as Time
+    }
+
+    @imemo get maxTime(): number | undefined {
+        return max(this.allTimes)
     }
 
     @imemo private get allTimes(): Time[] {
-        return this.sortedByTime.get(this.timeColumn.slug).values
+        return this.get(this.timeColumn.slug).values
     }
 
     @imemo get rowIndicesByEntityName(): Map<string, number[]> {
@@ -147,11 +153,9 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
         // todo: should be easy to speed up if necessary.
         return sortNumeric(
             uniq(
-                flatten(
-                    this.getColumns(columnSlugs)
-                        .filter((col) => col)
-                        .map((col) => col.uniqTimesAsc)
-                )
+                this.getColumns(columnSlugs)
+                    .filter((col) => col)
+                    .flatMap((col) => col.uniqTimesAsc)
             )
         )
     }
@@ -272,6 +276,144 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
         )
     }
 
+    // Drop _all rows_ for an entity if there is any column that has no valid values for that entity.
+    dropEntitiesThatHaveNoDataInSomeColumn(columnSlugs: ColumnSlug[]): this {
+        const indexesByEntityName = this.rowIndicesByEntityName
+
+        // Iterate over all entities, and remove them as we go if they have no data in some column
+        const entityNamesToKeep = new Set(indexesByEntityName.keys())
+
+        for (let i = 0; i <= columnSlugs.length; i++) {
+            const slug = columnSlugs[i]
+            const col = this.get(slug)
+
+            // Optimization, if there are no error values in this column, we can skip this column
+            if (col.numErrorValues === 0) continue
+
+            for (const entityName of entityNamesToKeep) {
+                const indicesForEntityName = indexesByEntityName.get(entityName)
+                if (!indicesForEntityName)
+                    throw new Error("Unexpected: entity not found in index map")
+
+                // Optimization: We don't care about the number of valid/error values, we just need
+                // to know if there is at least one valid value
+                const hasSomeValidValueForEntityInCol =
+                    indicesForEntityName.some((index) =>
+                        isNotErrorValue(col.valuesIncludingErrorValues[index])
+                    )
+
+                // Optimization: If we find a column that this entity has no data in we can remove
+                // it immediately, no need to iterate over other columns also
+                if (!hasSomeValidValueForEntityInCol)
+                    entityNamesToKeep.delete(entityName)
+            }
+        }
+
+        const entityNamesToDrop = differenceOfSets([
+            this.availableEntityNameSet,
+            entityNamesToKeep,
+        ])
+        const droppedEntitiesStr =
+            entityNamesToDrop.size > 0
+                ? [...entityNamesToDrop].join(", ")
+                : "(None)"
+
+        return this.columnFilter(
+            this.entityNameSlug,
+            (rowEntityName) => entityNamesToKeep.has(rowEntityName as string),
+            `Drop entities that have no data in some column: ${columnSlugs.join(", ")}.\nDropped entities: ${droppedEntitiesStr}`
+        )
+    }
+
+    // Drop _all rows_ for an entity if all columns have at least one invalid or missing value for that entity.
+    dropEntitiesThatHaveSomeMissingOrErrorValueInAllColumns(
+        columnSlugs: ColumnSlug[]
+    ): this {
+        const indexesByEntityName = this.rowIndicesByEntityName
+        const uniqTimes = new Set(this.allTimes)
+
+        // entity names to iterate over
+        const entityNamesToIterateOver = new Set(indexesByEntityName.keys())
+
+        // set of entities we want to keep
+        const entityNamesToKeep = new Set<string>()
+
+        // total number of entities
+        const entityCount = entityNamesToIterateOver.size
+
+        // helper function to generate operation name
+        const makeOpName = (entityNamesToKeep: Set<EntityName>): string => {
+            const entityNamesToDrop = differenceOfSets([
+                this.availableEntityNameSet,
+                entityNamesToKeep,
+            ])
+            const droppedEntitiesStr =
+                entityNamesToDrop.size > 0
+                    ? [...entityNamesToDrop].join(", ")
+                    : "(None)"
+            return `Drop entities that have some missing or error value in all column: ${columnSlugs.join(", ")}.\nDropped entities: ${droppedEntitiesStr}`
+        }
+
+        // Optimization: if there is a column that has a valid data entry for
+        // every entity and every time, we are done
+        for (let i = 0; i <= columnSlugs.length; i++) {
+            const slug = columnSlugs[i]
+            const col = this.get(slug)
+
+            if (
+                col.numValues === entityCount * uniqTimes.size &&
+                col.numErrorValues === 0
+            ) {
+                const entityNamesToKeep = new Set(indexesByEntityName.keys())
+
+                return this.columnFilter(
+                    this.entityNameSlug,
+                    (rowEntityName) =>
+                        entityNamesToKeep.has(rowEntityName as string),
+                    makeOpName(entityNamesToKeep)
+                )
+            }
+        }
+
+        for (let i = 0; i <= columnSlugs.length; i++) {
+            const slug = columnSlugs[i]
+            const col = this.get(slug)
+
+            for (const entityName of entityNamesToIterateOver) {
+                const indicesForEntityName = indexesByEntityName.get(entityName)
+                if (!indicesForEntityName)
+                    throw new Error("Unexpected: entity not found in index map")
+
+                // Optimization: If the column is missing values for the entity,
+                // we know we can't make a decision yet, so we skip this entity
+                if (indicesForEntityName.length < uniqTimes.size) continue
+
+                // Optimization: We don't care about the number of valid/error
+                // values, we just need to know if there is at least one invalid value
+                const hasSomeInvalidValueForEntityInCol =
+                    indicesForEntityName.some(
+                        (index) =>
+                            !isNotErrorValue(
+                                col.valuesIncludingErrorValues[index]
+                            )
+                    )
+
+                // Optimization: If all values are valid, we know we want to keep this entity,
+                // so we remove it from the entities to iterate over
+                if (!hasSomeInvalidValueForEntityInCol) {
+                    entityNamesToKeep.add(entityName)
+                    entityNamesToIterateOver.delete(entityName)
+                }
+            }
+        }
+
+        return this.columnFilter(
+            this.entityNameSlug,
+            (rowEntityName) => entityNamesToKeep.has(rowEntityName as string),
+            makeOpName(entityNamesToKeep)
+        )
+    }
+
     private sumsByTime(columnSlug: ColumnSlug): Map<number, number> {
         const timeValues = this.timeColumn.values
         const values = this.get(columnSlug).values as number[]
@@ -384,50 +526,45 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
                 )
             return def
         })
-        const newRows = flatten(
-            Object.values(
-                groupBy(
-                    this.sortedByTime.rows,
-                    (row) => row[this.entityNameSlug]
-                )
-            ).map((rowsForSingleEntity) => {
-                columnSlugs.forEach((valueSlug) => {
-                    let comparisonValue: number
-                    rowsForSingleEntity = rowsForSingleEntity.map(
-                        (row: Readonly<OwidRow>) => {
-                            const newRow = {
-                                ...row,
-                            }
-
-                            const value = row[valueSlug]
-
-                            if (row[timeColumnSlug] < startTimeBound) {
-                                newRow[valueSlug] =
-                                    ErrorValueTypes.MissingValuePlaceholder
-                            } else if (!isNumber(value)) {
-                                newRow[valueSlug] =
-                                    ErrorValueTypes.NaNButShouldBeNumber
-                            } else if (comparisonValue !== undefined) {
-                                // Note: comparisonValue can be negative!
-                                // +value / -comparisonValue = negative growth, which is incorrect.
-                                newRow[valueSlug] =
-                                    (100 * (value - comparisonValue)) /
-                                    Math.abs(comparisonValue)
-                            } else if (value === 0) {
-                                newRow[valueSlug] =
-                                    ErrorValueTypes.MissingValuePlaceholder
-                            } else {
-                                comparisonValue = value
-                                newRow[valueSlug] = 0
-                            }
-
-                            return newRow
+        const newRows = Object.values(
+            groupBy(this.sortedByTime.rows, (row) => row[this.entityNameSlug])
+        ).flatMap((rowsForSingleEntity) => {
+            columnSlugs.forEach((valueSlug) => {
+                let comparisonValue: number
+                rowsForSingleEntity = rowsForSingleEntity.map(
+                    (row: Readonly<OwidRow>) => {
+                        const newRow = {
+                            ...row,
                         }
-                    )
-                })
-                return rowsForSingleEntity
+
+                        const value = row[valueSlug]
+
+                        if (row[timeColumnSlug] < startTimeBound) {
+                            newRow[valueSlug] =
+                                ErrorValueTypes.MissingValuePlaceholder
+                        } else if (!isNumber(value)) {
+                            newRow[valueSlug] =
+                                ErrorValueTypes.NaNButShouldBeNumber
+                        } else if (comparisonValue !== undefined) {
+                            // Note: comparisonValue can be negative!
+                            // +value / -comparisonValue = negative growth, which is incorrect.
+                            newRow[valueSlug] =
+                                (100 * (value - comparisonValue)) /
+                                Math.abs(comparisonValue)
+                        } else if (value === 0) {
+                            newRow[valueSlug] =
+                                ErrorValueTypes.MissingValuePlaceholder
+                        } else {
+                            comparisonValue = value
+                            newRow[valueSlug] = 0
+                        }
+
+                        return newRow
+                    }
+                )
             })
-        )
+            return rowsForSingleEntity
+        })
 
         return this.transform(
             newRows,
@@ -558,14 +695,38 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
     }
 
     // Give our users a clean CSV of each Grapher. Assumes an Owid Table with entityName.
-    toPrettyCsv(): string {
-        return this.dropColumns([
-            OwidTableSlugs.entityId,
-            OwidTableSlugs.time,
-            OwidTableSlugs.entityColor,
-        ])
+    toPrettyCsv(
+        useShortNames: boolean = false,
+        activeColumnSlugs: string[] | undefined = undefined
+    ): string {
+        let table
+        if (activeColumnSlugs?.length) {
+            const timeColumnToInclude = [
+                OwidTableSlugs.year,
+                OwidTableSlugs.day,
+                this.timeColumn.slug, // needed for explorers, where the time column may be called anything
+            ].find((colSlug) => this.has(colSlug))
+
+            if (!timeColumnToInclude)
+                throw new Error(
+                    "Expected to find a time column to include in the CSV"
+                )
+
+            table = this.select([
+                timeColumnToInclude,
+                this.entityNameSlug,
+                ...activeColumnSlugs,
+            ])
+        } else {
+            table = this.dropColumns([
+                OwidTableSlugs.entityId,
+                OwidTableSlugs.time,
+                OwidTableSlugs.entityColor,
+            ])
+        }
+        return table
             .sortBy([this.entityNameSlug])
-            .toCsvWithColumnNames()
+            .toCsvWithColumnNames(useShortNames)
     }
 
     @imemo get entityNameColorIndex(): Map<EntityName, Color> {
@@ -757,6 +918,14 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
             this.get(maybeTimeColumnSlug) ??
             (this.get(OwidTableSlugs.time) as CoreColumn) // CovidTable does not have a day or year column so we need to use time.
 
+        const originalColumnSlug =
+            makeOriginalValueSlugFromColumnSlug(columnSlug)
+        const originalColumnDef = {
+            ...columnDef,
+            slug: originalColumnSlug,
+            display: { includeInTable: false },
+        }
+
         // todo: we can probably do this once early in the pipeline so we dont have to do it again since complete and sort can be expensive.
         const withAllRows = this.complete([
             this.entityNameSlug,
@@ -773,6 +942,7 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
 
         const columnStore = {
             ...withAllRows.columnStore,
+            [originalColumnSlug]: withAllRows.columnStore[columnSlug],
             [columnSlug]: interpolationResult.values,
         }
 
@@ -780,11 +950,12 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
             columnStore,
             [
                 ...this.defs,
+                originalColumnDef,
                 {
                     ...timeColumn.def,
                 },
             ],
-            `Interpolated values in column ${columnSlug} linearly`,
+            `Interpolated values in column ${columnSlug} linearly and appended column ${originalColumnSlug} with the original values`,
             TransformType.UpdateColumnDefs
         )
     }
@@ -984,10 +1155,7 @@ export class OwidTable extends CoreTable<OwidRow, OwidColumnDef> {
     }
 
     get isBlank(): boolean {
-        return (
-            this.tableDescription.startsWith(BLANK_TABLE_MESSAGE) &&
-            !this.numRows
-        )
+        return !this.numRows
     }
 }
 

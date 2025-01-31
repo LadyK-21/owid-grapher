@@ -1,8 +1,9 @@
-import React from "react"
+import * as React from "react"
 import { computed } from "mobx"
 import { Triangle } from "./Triangle"
-import { TextWrap } from "@ourworldindata/utils"
+import { TextWrap } from "@ourworldindata/components"
 import { BASE_FONT_SIZE } from "../core/GrapherConstants"
+import { makeIdForHumanConsumption } from "@ourworldindata/utils"
 
 export interface ConnectedScatterLegendManager {
     sidebarWidth: number
@@ -60,7 +61,7 @@ export class ConnectedScatterLegend {
         targetX: number,
         targetY: number,
         renderOptions: React.SVGAttributes<SVGGElement> = {}
-    ): JSX.Element {
+    ): React.ReactElement {
         const { manager, startLabel, endLabel, fontColor } = this
 
         const lineLeft = targetX + startLabel.width + 5
@@ -68,7 +69,11 @@ export class ConnectedScatterLegend {
         const lineY = targetY + this.height / 2 - 0.5
 
         return (
-            <g className="ConnectedScatterLegend" {...renderOptions}>
+            <g
+                id={makeIdForHumanConsumption("arrow-legend")}
+                className="ConnectedScatterLegend"
+                {...renderOptions}
+            >
                 <rect
                     x={targetX}
                     y={targetY}
@@ -77,11 +82,13 @@ export class ConnectedScatterLegend {
                     fill="#fff"
                     opacity={0}
                 />
-                {startLabel.render(targetX, targetY, { fill: fontColor })}
-                {endLabel.render(
+                {startLabel.renderSVG(targetX, targetY, {
+                    textProps: { fill: fontColor },
+                })}
+                {endLabel.renderSVG(
                     targetX + manager.sidebarWidth - endLabel.width,
                     targetY,
-                    { fill: fontColor }
+                    { textProps: { fill: fontColor } }
                 )}
                 <line
                     x1={lineLeft}

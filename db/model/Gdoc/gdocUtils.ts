@@ -3,6 +3,9 @@ import {
     Span,
     excludeNullish,
     EnrichedBlockResearchAndWritingLink,
+    DATA_INSIGHTS_INDEX_PAGE_SIZE,
+    OwidEnrichedGdocBlock,
+    noop,
 } from "@ourworldindata/utils"
 import { match, P } from "ts-pattern"
 import cheerio from "cheerio"
@@ -55,7 +58,7 @@ export function spanToHtmlString(s: Span): string {
                     span.children
                 )}</a></span>`
         )
-        .with({ spanType: "span-newline" }, () => "</br>")
+        .with({ spanType: "span-newline" }, () => "<br/>")
         .with(
             { spanType: "span-italic" },
             (span) => `<i>${spansToHtmlString(span.children)}</i>`
@@ -139,17 +142,123 @@ export const getAllLinksFromResearchAndWritingBlock = (
 ): EnrichedBlockResearchAndWritingLink[] => {
     const { primary, secondary, more, rows } = block
     const rowArticles = rows.flatMap((row) => row.articles)
-    const allLinks = excludeNullish([
-        primary,
-        secondary,
-        ...more,
-        ...rowArticles,
-    ])
+    const allLinks = excludeNullish([...primary, ...secondary, ...rowArticles])
+    if (more) {
+        allLinks.push(...more.articles)
+    }
     return allLinks
 }
 
 export function parseAuthors(authors?: string): string[] {
-    return (authors || "Our World In Data")
+    return (authors || "Our World in Data team")
         .split(",")
         .map((author: string) => author.trim())
+}
+
+/**
+ * Calculate the number of pages needed to display all data insights
+ * e.g. if there are 61 data insights and we want to display 20 per page, we need 4 pages
+ */
+export function calculateDataInsightIndexPageCount(
+    publishedDataInsightCount: number
+): number {
+    return Math.ceil(publishedDataInsightCount / DATA_INSIGHTS_INDEX_PAGE_SIZE)
+}
+
+export function extractFilenamesFromBlock(
+    item: OwidEnrichedGdocBlock
+): string[] {
+    const filenames = new Set<string>()
+    match(item)
+        .with({ type: "image" }, (item) => {
+            if (item.filename) filenames.add(item.filename)
+            if (item.smallFilename) filenames.add(item.smallFilename)
+        })
+        .with({ type: "person" }, (item) => {
+            if (item.image) filenames.add(item.image)
+        })
+        .with({ type: "prominent-link" }, (item) => {
+            if (item.thumbnail) filenames.add(item.thumbnail)
+        })
+        .with({ type: "video" }, (item) => {
+            if (item.filename) filenames.add(item.filename)
+        })
+        .with({ type: "research-and-writing" }, (item) => {
+            getAllLinksFromResearchAndWritingBlock(item).forEach(
+                (link: EnrichedBlockResearchAndWritingLink) => {
+                    if (link.value.filename) {
+                        filenames.add(link.value.filename)
+                    }
+                }
+            )
+        })
+        .with({ type: "key-insights" }, (item) => {
+            item.insights.forEach((insight) => {
+                if (insight.filename) {
+                    filenames.add(insight.filename)
+                }
+            })
+        })
+        .with(
+            {
+                type: "homepage-intro",
+            },
+            (item) => {
+                item.featuredWork.forEach((featuredWork) => {
+                    if (featuredWork.filename) {
+                        filenames.add(featuredWork.filename)
+                    }
+                })
+            }
+        )
+        .with(
+            {
+                type: P.union(
+                    "additional-charts",
+                    "align",
+                    "all-charts",
+                    "aside",
+                    "blockquote",
+                    "callout",
+                    "chart-story",
+                    "chart",
+                    "code",
+                    "donors",
+                    "entry-summary",
+                    "expandable-paragraph",
+                    "explorer-tiles",
+                    "gray-section",
+                    "heading",
+                    "homepage-search",
+                    "horizontal-rule",
+                    "html",
+                    "key-indicator-collection",
+                    "key-indicator",
+                    "latest-data-insights",
+                    "list",
+                    "missing-data",
+                    "narrative-chart",
+                    "numbered-list",
+                    "people",
+                    "people-rows",
+                    "pill-row",
+                    "pull-quote",
+                    "recirc",
+                    "scroller",
+                    "sdg-grid",
+                    "sdg-toc",
+                    "side-by-side",
+                    "simple-text",
+                    "socials",
+                    "sticky-left",
+                    "sticky-right",
+                    "table",
+                    "text",
+                    "topic-page-intro"
+                ),
+            },
+            noop
+        )
+        .exhaustive()
+    return [...filenames]
 }

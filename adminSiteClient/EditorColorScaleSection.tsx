@@ -1,21 +1,23 @@
-import React from "react"
+import { Component, Fragment } from "react"
 import { action, computed, runInAction } from "mobx"
 import { observer } from "mobx-react"
 import Select from "react-select"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faPlus, faMinus } from "@fortawesome/free-solid-svg-icons"
 import {
+    ColorSchemeName,
+    BinningStrategy,
+    GrapherChartOrMapType,
+    Color,
+} from "@ourworldindata/types"
+import {
     ColorScale,
     ColorScaleBin,
     NumericBin,
     CategoricalBin,
     binningStrategyLabels,
-    ColorSchemeName,
-    BinningStrategy,
-    ChartTypeName,
 } from "@ourworldindata/grapher"
 import { clone, noop, last } from "@ourworldindata/utils"
-import { Color } from "@ourworldindata/core-table"
 import {
     Section,
     Toggle,
@@ -39,16 +41,16 @@ interface EditorColorScaleSectionFeatures {
 }
 
 @observer
-export class EditorColorScaleSection extends React.Component<{
+export class EditorColorScaleSection extends Component<{
     scale: ColorScale
-    chartType: ChartTypeName
+    chartType: GrapherChartOrMapType
     features: EditorColorScaleSectionFeatures
     showLineChartColors: boolean
     onChange?: () => void
 }> {
     render() {
         return (
-            <React.Fragment>
+            <Fragment>
                 <ColorsSection
                     scale={this.props.scale}
                     onChange={this.props.onChange}
@@ -60,13 +62,13 @@ export class EditorColorScaleSection extends React.Component<{
                     features={this.props.features}
                     onChange={this.props.onChange}
                 />
-            </React.Fragment>
+            </Fragment>
         )
     }
 }
 
 @observer
-class ColorLegendSection extends React.Component<{
+class ColorLegendSection extends Component<{
     scale: ColorScale
     features: EditorColorScaleSectionFeatures
     onChange?: () => void
@@ -128,9 +130,9 @@ class ColorLegendSection extends React.Component<{
 }
 
 @observer
-class ColorsSection extends React.Component<{
+class ColorsSection extends Component<{
     scale: ColorScale
-    chartType: ChartTypeName
+    chartType: GrapherChartOrMapType
     showLineChartColors: boolean
     onChange?: () => void
 }> {
@@ -273,7 +275,7 @@ class ColorsSection extends React.Component<{
 }
 
 @observer
-class ColorSchemeEditor extends React.Component<{
+class ColorSchemeEditor extends Component<{
     scale: ColorScale
     showLineChartColors: boolean
     onChange?: () => void
@@ -317,7 +319,7 @@ class ColorSchemeEditor extends React.Component<{
 }
 
 @observer
-class BinLabelView extends React.Component<{
+class BinLabelView extends Component<{
     scale: ColorScale
     bin: ColorScaleBin
     index: number
@@ -383,7 +385,7 @@ function populateManualBinValuesIfAutomatic(scale: ColorScale) {
 }
 
 @observer
-class NumericBinView extends React.Component<{
+class NumericBinView extends Component<{
     scale: ColorScale
     bin: NumericBin
     index: number
@@ -467,8 +469,8 @@ class NumericBinView extends React.Component<{
                         {bin.props.isOpenLeft
                             ? "≤"
                             : bin.props.isFirst
-                            ? "≥"
-                            : ">"}
+                              ? "≥"
+                              : ">"}
                         {bin.min} ⁠–⁠ {"≤"}
                     </span>
                     <NumberField
@@ -490,7 +492,7 @@ class NumericBinView extends React.Component<{
 }
 
 @observer
-class CategoricalBinView extends React.Component<{
+class CategoricalBinView extends Component<{
     scale: ColorScale
     bin: CategoricalBin
     showLineChartColors: boolean

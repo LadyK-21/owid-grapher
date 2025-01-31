@@ -2,14 +2,11 @@ import fs from "fs-extra"
 import {
     EXPLORER_FILE_SUFFIX,
     ExplorerProgram,
-} from "../explorer/ExplorerProgram.js"
-import {
     EXPLORERS_GIT_CMS_FOLDER,
     ExplorersRouteResponse,
-} from "../explorer/ExplorerConstants.js"
+} from "@ourworldindata/explorer"
 import { simpleGit, SimpleGit } from "simple-git"
-import { GitCommit, keyBy } from "@ourworldindata/utils"
-import { Dictionary } from "lodash"
+import { GitCommit, keyBy, sortBy } from "@ourworldindata/utils"
 
 export class ExplorerAdminServer {
     constructor(gitDir: string) {
@@ -19,7 +16,7 @@ export class ExplorerAdminServer {
     }
 
     private gitDir: string
-    private _cachedExplorers: null | Dictionary<ExplorerProgram>
+    private _cachedExplorers: null | Record<string, ExplorerProgram>
     private _cacheTime: Date
 
     private _simpleGit?: SimpleGit
@@ -79,7 +76,8 @@ export class ExplorerAdminServer {
 
     async getAllPublishedExplorers() {
         const explorers = await this.getAllExplorers()
-        return explorers.filter((exp) => exp.isPublished)
+        const publishedExplorers = explorers.filter((exp) => exp.isPublished)
+        return sortBy(publishedExplorers, (exp) => exp.explorerTitle)
     }
 
     async getAllPublishedExplorersBySlug() {

@@ -1,17 +1,51 @@
-import React from "react"
+import { Component, Fragment } from "react"
 import { observer } from "mobx-react"
 import {
     ChartEditor,
-    ChartRedirect,
-    References,
     getFullReferencesCount,
+    isChartEditorInstance,
 } from "./ChartEditor.js"
 import { computed, action, observable, runInAction } from "mobx"
 import { BAKED_GRAPHER_URL } from "../settings/clientSettings.js"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
-import { stringifyUnknownError, formatValue } from "@ourworldindata/utils"
+import {
+    stringifyUnknownError,
+    formatValue,
+    ChartRedirect,
+    partition,
+    round,
+} from "@ourworldindata/utils"
+import { AbstractChartEditor, References } from "./AbstractChartEditor.js"
+import {
+    IndicatorChartInfo,
+    IndicatorChartEditor,
+    isIndicatorChartEditorInstance,
+} from "./IndicatorChartEditor.js"
+import { Section } from "./Forms.js"
+import {
+    ChartViewEditor,
+    isChartViewEditorInstance,
+} from "./ChartViewEditor.js"
 
 const BASE_URL = BAKED_GRAPHER_URL.replace(/^https?:\/\//, "")
+
+@observer
+export class EditorReferencesTab<
+    Editor extends AbstractChartEditor,
+> extends Component<{
+    editor: Editor
+}> {
+    render() {
+        const { editor } = this.props
+        if (isChartEditorInstance(editor))
+            return <EditorReferencesTabForChart editor={editor} />
+        else if (isIndicatorChartEditorInstance(editor))
+            return <EditorReferencesTabForIndicator editor={editor} />
+        else if (isChartViewEditorInstance(editor))
+            return <EditorReferencesTabForChartView editor={editor} />
+        else return null
+    }
+}
 
 export const ReferencesSection = (props: {
     references: References | undefined
@@ -53,7 +87,7 @@ export const ReferencesSection = (props: {
                         </a>{" "}
                         (
                         <a
-                            href={`/admin/gdocs/${post.id}`}
+                            href={`/admin/gdocs/${post.id}/preview`}
                             target="_blank"
                             rel="noopener"
                         >
@@ -96,24 +130,24 @@ export const ReferencesSection = (props: {
     ) : (
         <></>
     )
-    const legacySdgCharts = props.references?.legacySdgCharts?.length ? (
+
+    const chartViews = !!props.references?.chartViews?.length && (
         <>
-            <React.Fragment>
-                <p>
-                    Legacy SDG referenced charts (slugs of charts only, links to
-                    precise SDG page are not available):
-                </p>
-                <ul className="list-group">
-                    {props.references.legacySdgCharts.map((sdgSlug) => (
-                        <li key={sdgSlug} className="list-group-item">
-                            {sdgSlug}
-                        </li>
-                    ))}
-                </ul>
-            </React.Fragment>
+            <p>Narrative charts based on this chart</p>
+            <ul className="list-group">
+                {props.references.chartViews.map((chartView) => (
+                    <li key={chartView.id} className="list-group-item">
+                        <a
+                            href={`/admin/chartViews/${chartView.id}/edit`}
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            <strong>{chartView.title}</strong>
+                        </a>
+                    </li>
+                ))}
+            </ul>
         </>
-    ) : (
-        <></>
     )
 
     return (
@@ -125,7 +159,7 @@ export const ReferencesSection = (props: {
                     {wpPosts}
                     {gdocsPosts}
                     {explorers}
-                    {legacySdgCharts}
+                    {chartViews}
                 </>
             ) : (
                 <p>No references found</p>
@@ -135,7 +169,7 @@ export const ReferencesSection = (props: {
 }
 
 @observer
-export class EditorReferencesTab extends React.Component<{
+export class EditorReferencesTabForChart extends Component<{
     editor: ChartEditor
 }> {
     @computed get isPersisted() {
@@ -181,6 +215,16 @@ export class EditorReferencesTab extends React.Component<{
                             <strong>Last 365 days:</strong>{" "}
                             {this.renderPageview(this.pageviews?.views_365d)}
                         </div>
+                        <div>
+                            <strong>
+                                Average pageviews per day over the last year:
+                            </strong>{" "}
+                            {this.renderPageview(
+                                this.pageviews?.views_365d
+                                    ? round(this.pageviews?.views_365d / 365, 1)
+                                    : undefined
+                            )}
+                        </div>
                     </div>
                     <small className="form-text text-muted">
                         Pageview numbers are inaccurate when the chart has been
@@ -194,7 +238,7 @@ export class EditorReferencesTab extends React.Component<{
                 <section>
                     <h5>Alternative URLs for this chart</h5>
                     {this.redirects.length ? (
-                        <React.Fragment>
+                        <Fragment>
                             <p>The following URLs redirect to this chart:</p>
                             <ul className="list-group">
                                 {this.redirects.map((redirect) => (
@@ -216,7 +260,7 @@ export class EditorReferencesTab extends React.Component<{
                                 ))}
                             </ul>
                             <hr />
-                        </React.Fragment>
+                        </Fragment>
                     ) : null}
                     {this.isPersisted && (
                         <AddRedirectForm
@@ -230,9 +274,27 @@ export class EditorReferencesTab extends React.Component<{
     }
 }
 
+export class EditorReferencesTabForChartView extends Component<{
+    editor: ChartViewEditor
+}> {
+    @computed get references() {
+        return this.props.editor.references
+    }
+
+    render() {
+        return (
+            <div>
+                <section>
+                    <ReferencesSection references={this.references} />
+                </section>
+            </div>
+        )
+    }
+}
+
 @observer
-class AddRedirectForm extends React.Component<{
-    editor: ChartEditor
+class AddRedirectForm<Editor extends AbstractChartEditor> extends Component<{
+    editor: Editor
     onSuccess: (redirect: ChartRedirect) => void
 }> {
     static contextType = AdminAppContext
@@ -276,7 +338,12 @@ class AddRedirectForm extends React.Component<{
 
     render() {
         return (
-            <form onSubmit={this.onSubmit}>
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault()
+                    void this.onSubmit()
+                }}
+            >
                 <div className="input-group mb-3">
                     <div className="input-group-prepend">
                         <span className="input-group-text" id="basic-addon3">
@@ -306,6 +373,61 @@ class AddRedirectForm extends React.Component<{
                     </div>
                 )}
             </form>
+        )
+    }
+}
+
+@observer
+export class EditorReferencesTabForIndicator extends Component<{
+    editor: IndicatorChartEditor
+}> {
+    render() {
+        const { references } = this.props.editor
+
+        const publishedChildren = references?.childCharts ?? []
+        const [chartsInheritanceEnabled, chartsInheritanceDisabled] = partition(
+            publishedChildren,
+            (chart) => chart.isInheritanceEnabled
+        )
+
+        const renderChartList = (charts: IndicatorChartInfo[]) => (
+            <ul>
+                {charts.map((chart) => (
+                    <li key={chart.id}>
+                        <a
+                            href={`/admin/charts/${chart.id}/edit`}
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            {chart.title ?? "Missing title"}
+                        </a>{" "}
+                        <span style={{ color: "#aaa" }}>
+                            {chart.variantName && `(${chart.variantName})`}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+        )
+
+        return (
+            <Section name="Inheriting charts">
+                <p>
+                    Published charts that inherit from this indicator:{" "}
+                    {chartsInheritanceEnabled.length === 0 && <i>None</i>}
+                </p>
+
+                {chartsInheritanceEnabled.length > 0 &&
+                    renderChartList(chartsInheritanceEnabled)}
+
+                <p>
+                    Published charts that may inherit from this indicator, but
+                    inheritance is currently disabled:{" "}
+                    {chartsInheritanceDisabled.length === 0 && <i>None</i>}
+                </p>
+
+                {chartsInheritanceDisabled.length > 0 &&
+                    renderChartList(chartsInheritanceDisabled)}
+            </Section>
         )
     }
 }

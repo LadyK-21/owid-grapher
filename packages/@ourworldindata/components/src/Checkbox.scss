@@ -1,0 +1,76 @@
+.checkbox {
+    $checkbox-size: 16px;
+
+    $light-stroke: $gray-30;
+    $hover-stroke: $blue-30;
+    $active-fill: $blue-30;
+
+    position: relative;
+
+    label {
+        margin: 0; // style leak in admin
+    }
+
+    input {
+        position: absolute;
+        opacity: 0;
+        left: 0;
+        cursor: pointer;
+        pointer-events: none;
+    }
+
+    .custom {
+        position: absolute;
+        left: 0;
+        top: 0;
+        content: " ";
+        width: $checkbox-size;
+        height: $checkbox-size;
+
+        background: white;
+        pointer-events: none;
+        border-radius: 2px;
+        border: 1px solid $light-stroke;
+        color: #fff;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+            font-size: 10px;
+            padding-left: 0.75px;
+        }
+    }
+
+    input:focus-visible + .custom {
+        outline: 2px solid $controls-color;
+    }
+
+    input:active + .custom {
+        background: $active-fill;
+    }
+
+    input:checked + .custom {
+        background: $active-fill;
+        border-color: $active-fill;
+    }
+
+    input:checked:active + .custom {
+        background: white;
+    }
+
+    .label {
+        @include grapher_label-2-regular;
+        padding-left: $checkbox-size + 8px;
+        cursor: pointer;
+        user-select: none;
+        color: $dark-text;
+    }
+
+    &:hover {
+        input:not(:checked) + .custom {
+            border-color: $hover-stroke;
+        }
+    }
+}

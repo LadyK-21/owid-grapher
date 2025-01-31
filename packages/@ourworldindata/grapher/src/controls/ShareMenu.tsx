@@ -1,35 +1,81 @@
 import { observer } from "mobx-react"
-import React from "react"
+import * as React from "react"
 import { computed, action } from "mobx"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import { faTwitter, faFacebook } from "@fortawesome/free-brands-svg-icons"
+import { faXTwitter, faFacebook } from "@fortawesome/free-brands-svg-icons"
 import {
     faCode,
     faShareAlt,
-    faCopy,
+    faLink,
     faEdit,
 } from "@fortawesome/free-solid-svg-icons"
-import { canWriteToClipboard } from "@ourworldindata/utils"
+import { canWriteToClipboard, isAndroid, isIOS } from "@ourworldindata/utils"
 
 export interface ShareMenuManager {
     slug?: string
     currentTitle?: string
     canonicalUrl?: string
-    embedUrl?: string
-    embedDialogAdditionalElements?: React.ReactElement
     editUrl?: string
-    addPopup: (popup: any) => void
-    removePopup: (popup: any) => void
+    isEmbedModalOpen?: boolean
 }
 
 interface ShareMenuProps {
     manager: ShareMenuManager
-    onDismiss: () => void
+    onDismiss?: () => void
+    right?: number
 }
 
 interface ShareMenuState {
     canWriteToClipboard: boolean
     copied: boolean
+}
+
+type ShareApiManager = Pick<ShareMenuManager, "canonicalUrl" | "currentTitle">
+
+const getShareData = (manager: ShareApiManager): ShareData | undefined => {
+    if (!manager.canonicalUrl) return undefined
+
+    return {
+        title: manager.currentTitle ?? "",
+        url: manager.canonicalUrl,
+    }
+}
+
+const canUseShareApi = (manager: ShareApiManager): boolean => {
+    const shareData = getShareData(manager)
+    if (!shareData) return false
+
+    return (
+        "share" in navigator &&
+        "canShare" in navigator &&
+        navigator.canShare(shareData)
+    )
+}
+
+// On mobile OSs, the system-level share API does a way better job of providing
+// relevant options to the user than our own <ShareMenu> does - for example,
+// quick access to messaging apps, the user's frequent contacts, etc.
+// So, on Android and iOS, we want to just show the system-level share dialog
+// immediately when the user clicks the share button, rather than showing our
+// own menu.
+// See https://github.com/owid/owid-grapher/issues/3446
+// -@marcelgerber, 2024-04-24
+export const shouldShareUsingShareApi = (manager: ShareApiManager): boolean =>
+    (isAndroid() || isIOS()) && canUseShareApi(manager)
+
+export const shareUsingShareApi = async (
+    manager: ShareApiManager
+): Promise<void> => {
+    if (!navigator.share) return
+
+    const shareData = getShareData(manager)
+    if (!shareData) return
+
+    try {
+        await navigator.share(shareData)
+    } catch (err) {
+        console.error("couldn't share using navigator.share", err)
+    }
 }
 
 @observer
@@ -45,6 +91,11 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
         }
     }
 
+    static shouldShow(manager: ShareMenuManager): boolean {
+        const test = new ShareMenu({ manager })
+        return test.showShareMenu
+    }
+
     @computed get manager(): ShareMenuManager {
         return this.props.manager
     }
@@ -53,8 +104,8 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
         return this.manager.currentTitle ?? ""
     }
 
-    @computed get isDisabled(): boolean {
-        return !this.manager.slug
+    @computed get showShareMenu(): boolean {
+        return !!this.canonicalUrl || !!this.manager.editUrl
     }
 
     @computed get canonicalUrl(): string | undefined {
@@ -62,7 +113,7 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
     }
 
     @action.bound dismiss(): void {
-        this.props.onDismiss()
+        this.props.onDismiss?.()
     }
 
     @action.bound onClickSomewhere(): void {
@@ -72,7 +123,7 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
 
     componentDidMount(): void {
         document.addEventListener("click", this.onClickSomewhere)
-        canWriteToClipboard().then((canWriteToClipboard) =>
+        void canWriteToClipboard().then((canWriteToClipboard) =>
             this.setState({ canWriteToClipboard })
         )
     }
@@ -81,28 +132,16 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
         document.removeEventListener("click", this.onClickSomewhere)
     }
 
-    @action.bound onEmbed(): void {
-        if (!this.canonicalUrl) return
-
-        this.manager.addPopup(
-            <EmbedMenu key="EmbedMenu" manager={this.manager} />
-        )
+    @action.bound onEmbed(e: React.MouseEvent): void {
+        const { canonicalUrl, manager } = this
+        if (!canonicalUrl) return
+        manager.isEmbedModalOpen = true
         this.dismiss()
+        e.stopPropagation()
     }
 
     @action.bound async onNavigatorShare(): Promise<void> {
-        if (!this.canonicalUrl || !navigator.share) return
-
-        const shareData = {
-            title: this.title,
-            url: this.canonicalUrl,
-        }
-
-        try {
-            await navigator.share(shareData)
-        } catch (err) {
-            console.error("couldn't share using navigator.share", err)
-        }
+        await shareUsingShareApi(this.manager)
     }
 
     @action.bound async onCopyUrl(): Promise<void> {
@@ -119,137 +158,125 @@ export class ShareMenu extends React.Component<ShareMenuProps, ShareMenuState> {
         }
     }
 
-    @computed get twitterHref(): string {
-        let href =
-            "https://twitter.com/intent/tweet/?text=" +
-            encodeURIComponent(this.title)
-        if (this.canonicalUrl)
-            href += "&url=" + encodeURIComponent(this.canonicalUrl)
-        return href
+    @computed get twitterHref(): string | undefined {
+        if (!this.canonicalUrl) return undefined
+        const queryParams = new URLSearchParams({
+            text: this.title,
+            url: this.canonicalUrl,
+        })
+        return `https://twitter.com/intent/tweet/?${queryParams}`
     }
 
-    @computed get facebookHref(): string {
-        let href =
-            "https://www.facebook.com/dialog/share?app_id=1149943818390250&display=page"
-        if (this.canonicalUrl)
-            href += "&href=" + encodeURIComponent(this.canonicalUrl)
-        return href
+    @computed get facebookHref(): string | undefined {
+        if (!this.canonicalUrl) return undefined
+        const queryParams = new URLSearchParams({
+            app_id: "1149943818390250",
+            display: "page",
+            href: this.canonicalUrl,
+        })
+        return `https://www.facebook.com/dialog/share?${queryParams}`
     }
 
-    render(): JSX.Element {
-        const { twitterHref, facebookHref, isDisabled, manager } = this
+    @computed get canUseShareApi(): boolean {
+        return canUseShareApi(this.manager)
+    }
+
+    render(): React.ReactElement {
+        const { twitterHref, facebookHref, canUseShareApi, manager } = this
         const { editUrl } = manager
+
+        const width = 200
+        const right = this.props.right ?? 0
+        const style: React.CSSProperties = {
+            width,
+            right: Math.max(-width * 0.5, -right),
+        }
 
         return (
             <div
-                className={"ShareMenu" + (isDisabled ? " disabled" : "")}
+                className="ShareMenu"
                 onClick={action(() => (this.dismissable = false))}
+                style={style}
             >
                 <h2>Share</h2>
-                <a
-                    className="btn"
-                    target="_blank"
-                    title="Tweet a link"
-                    data-track-note="chart-share-twitter"
-                    href={twitterHref}
-                    rel="noopener"
-                >
-                    <FontAwesomeIcon icon={faTwitter} /> Twitter
-                </a>
-                <a
-                    className="btn"
-                    target="_blank"
-                    title="Share on Facebook"
-                    data-track-note="chart-share-facebook"
-                    href={facebookHref}
-                    rel="noopener"
-                >
-                    <FontAwesomeIcon icon={faFacebook} /> Facebook
-                </a>
-                <a
-                    className="btn"
-                    title="Embed this visualization in another HTML document"
-                    data-track-note="chart-share-embed"
-                    onClick={this.onEmbed}
-                >
-                    <FontAwesomeIcon icon={faCode} /> Embed
-                </a>
-                {"share" in navigator && (
+                {twitterHref && (
                     <a
-                        className="btn"
-                        title="Share this visualization with an app on your device"
-                        data-track-note="chart-share-navigator"
-                        onClick={this.onNavigatorShare}
+                        target="_blank"
+                        title="Tweet a link"
+                        data-track-note="chart_share_twitter"
+                        href={twitterHref}
+                        rel="noopener"
                     >
-                        <FontAwesomeIcon icon={faShareAlt} /> Share via&hellip;
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faXTwitter} />
+                        </span>{" "}
+                        X/Twitter
                     </a>
                 )}
-                {this.state.canWriteToClipboard && (
+                {facebookHref && (
                     <a
-                        className="btn"
+                        target="_blank"
+                        title="Share on Facebook"
+                        data-track-note="chart_share_facebook"
+                        href={facebookHref}
+                        rel="noopener"
+                    >
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faFacebook} />
+                        </span>{" "}
+                        Facebook
+                    </a>
+                )}
+                {this.canonicalUrl && (
+                    <a
+                        className="embed"
+                        title="Embed this visualization in another HTML document"
+                        data-track-note="chart_share_embed"
+                        onClick={this.onEmbed}
+                    >
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faCode} />
+                        </span>{" "}
+                        Embed
+                    </a>
+                )}
+                {canUseShareApi && (
+                    <a
+                        title="Share this visualization with an app on your device"
+                        data-track-note="chart_share_navigator"
+                        onClick={this.onNavigatorShare}
+                    >
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faShareAlt} />
+                        </span>{" "}
+                        Share via&hellip;
+                    </a>
+                )}
+                {this.state.canWriteToClipboard && this.canonicalUrl && (
+                    <a
                         title="Copy link to clipboard"
-                        data-track-note="chart-share-copylink"
+                        data-track-note="chart_share_copylink"
                         onClick={this.onCopyUrl}
                     >
-                        <FontAwesomeIcon icon={faCopy} />
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faLink} />
+                        </span>{" "}
                         {this.state.copied ? "Copied!" : "Copy link"}
                     </a>
                 )}
                 {editUrl && (
                     <a
-                        className="btn"
                         target="_blank"
                         title="Edit chart"
                         href={editUrl}
                         rel="noopener"
                     >
-                        <FontAwesomeIcon icon={faEdit} /> Edit
+                        <span className="icon">
+                            <FontAwesomeIcon icon={faEdit} />
+                        </span>{" "}
+                        Edit
                     </a>
                 )}
-            </div>
-        )
-    }
-}
-
-@observer
-class EmbedMenu extends React.Component<{
-    manager: ShareMenuManager
-}> {
-    dismissable = true
-
-    @action.bound onClickSomewhere(): void {
-        if (this.dismissable) this.manager.removePopup(EmbedMenu)
-        else this.dismissable = true
-    }
-
-    @computed get manager(): ShareMenuManager {
-        return this.props.manager
-    }
-
-    @action.bound onClick(): void {
-        this.dismissable = false
-    }
-
-    componentDidMount(): void {
-        document.addEventListener("click", this.onClickSomewhere)
-    }
-
-    componentWillUnmount(): void {
-        document.removeEventListener("click", this.onClickSomewhere)
-    }
-
-    render(): JSX.Element {
-        const url = this.manager.embedUrl ?? this.manager.canonicalUrl
-        return (
-            <div className="embedMenu" onClick={this.onClick}>
-                <h2>Embed</h2>
-                <p>Paste this into any HTML page:</p>
-                <textarea
-                    readOnly={true}
-                    onFocus={(evt): void => evt.currentTarget.select()}
-                    value={`<iframe src="${url}" loading="lazy" style="width: 100%; height: 600px; border: 0px none;"></iframe>`}
-                />
-                {this.manager.embedDialogAdditionalElements}
             </div>
         )
     }

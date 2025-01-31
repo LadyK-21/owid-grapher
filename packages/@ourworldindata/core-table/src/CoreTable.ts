@@ -5,7 +5,6 @@ import {
     range,
     difference,
     intersection,
-    flatten,
     sum,
     uniqBy,
     intersectionOfSets,
@@ -33,9 +32,12 @@ import {
     InputType,
     CoreMatrix,
     TableSlug,
+    ColumnTypeNames,
+    CoreColumnDef,
     JsTypes,
-} from "./CoreTableConstants.js"
-import { ColumnTypeNames, CoreColumnDef } from "./CoreColumnDef.js"
+    OwidTableSlugs,
+    OwidColumnDef,
+} from "@ourworldindata/types"
 import {
     AlignedTextTableOptions,
     toAlignedTextTable,
@@ -57,7 +59,6 @@ import {
     getDropIndexes,
     parseDelimited,
     rowsFromMatrix,
-    cartesianProduct,
     sortColumnStore,
     emptyColumnsInFirstRowInDelimited,
     truncate,
@@ -67,8 +68,7 @@ import {
     isNotErrorValue,
     DroppedForTesting,
 } from "./ErrorValues.js"
-import { OwidTableSlugs } from "./OwidTableConstants.js"
-import { applyTransforms } from "./Transforms.js"
+import { applyTransforms, extractTransformNameAndParams } from "./Transforms.js"
 
 interface AdvancedOptions {
     tableDescription?: string
@@ -82,7 +82,7 @@ interface AdvancedOptions {
 // narrow interface for the input rows. This is helpful for OwidTable.
 export class CoreTable<
     ROW_TYPE extends CoreRow = CoreRow,
-    COL_DEF_TYPE extends CoreColumnDef = CoreColumnDef
+    COL_DEF_TYPE extends CoreColumnDef = CoreColumnDef,
 > {
     private _columns: Map<ColumnSlug, CoreColumn> = new Map()
     protected parent?: this
@@ -109,6 +109,19 @@ export class CoreTable<
             typeof inputColumnDefs === "string"
                 ? columnDefinitionsFromInput<COL_DEF_TYPE>(inputColumnDefs)
                 : inputColumnDefs
+
+        // Column definitions with a "duplicate" transform are merged with the column definition of the specified source column
+        this.inputColumnDefs = this.inputColumnDefs.map((def) => {
+            if (!def.transform) return def
+            const transform = extractTransformNameAndParams(def.transform)
+            if (transform?.transformName !== "duplicate") return def
+
+            const sourceSlug = transform.params[0]
+            const sourceDef = this.inputColumnDefs.find(
+                (def) => def.slug === sourceSlug
+            )
+            return { ...sourceDef, ...def }
+        })
 
         // If any values were passed in, copy those to column store now and then remove them from column definitions.
         // todo: remove values property entirely? may be an anti-pattern.
@@ -184,7 +197,6 @@ export class CoreTable<
             valuesFromColumnDefs,
             inputColumnsToParsedColumnStore,
             inputColumnDefs,
-            isRoot,
             advancedOptions,
         } = this
 
@@ -203,12 +215,28 @@ export class CoreTable<
                 inputColumnsToParsedColumnStore
             )
 
-        // NB: transforms are *only* run on the root table for now. They will not be rerun later on (after adding or filtering rows, for example)
+        // If we ever pass Mobx observable arrays, we need to convert them to regular arrays.
+        // Otherwise, operations like `.concat()` will break in unexpected ways.
+        // See https://github.com/mobxjs/mobx/blob/mobx4and5/docs/best/pitfalls.md
+        // Also, see https://github.com/owid/owid-grapher/issues/2948 for an issue caused by this problem.
+        type CoreValueArrayThatMayBeMobxProxy = CoreValueType[] & {
+            toJS?: () => CoreValueType[]
+        }
+
+        for (const [slug, values] of Object.entries(columnStore)) {
+            const valuesThatMayBeMobxProxy =
+                values as CoreValueArrayThatMayBeMobxProxy
+            if (typeof valuesThatMayBeMobxProxy.toJS === "function") {
+                columnStore[slug] = valuesThatMayBeMobxProxy.toJS()
+            }
+        }
+
         const columnsFromTransforms = inputColumnDefs.filter(
-            (def) => def.transform
+            (def) => def.transform && !def.transformHasRun
         ) // todo: sort by graph dependency order
-        if (isRoot && columnsFromTransforms.length)
+        if (columnsFromTransforms.length) {
             columnStore = applyTransforms(columnStore, columnsFromTransforms)
+        }
 
         return advancedOptions.filterMask
             ? advancedOptions.filterMask.apply(columnStore)
@@ -230,8 +258,7 @@ export class CoreTable<
             undefined,
             makeAutoTypeFn(_numericColumnSlugs)
         ) as any
-        // dsv_parse adds a columns prop to the result we don't want since we handle our own column defs.
-        // https://github.com/d3/d3-dsv#dsv_parse
+        // Remove the columns object from the parsed object
         delete parsed.columns
 
         const renamedRows = standardizeSlugs(parsed) // todo: pass renamed defs back in.
@@ -313,7 +340,7 @@ export class CoreTable<
     }
 
     toOneDimensionalArray(): any {
-        return flatten(this.toTypedMatrix().slice(1))
+        return this.toTypedMatrix().slice(1).flat()
     }
 
     private setColumn(def: COL_DEF_TYPE): void {
@@ -786,8 +813,8 @@ export class CoreTable<
         return inputType === InputType.ColumnStore
             ? this.inputColumnStoreToRows
             : inputType === InputType.Matrix
-            ? rowsFromMatrix(this.originalInput as CoreMatrix)
-            : this.originalInput
+              ? rowsFromMatrix(this.originalInput as CoreMatrix)
+              : this.originalInput
     }
 
     @imemo private get explainColumns(): Record<string, unknown>[] {
@@ -876,11 +903,17 @@ export class CoreTable<
         return this.toDelimited("\t")
     }
 
-    toCsvWithColumnNames(): string {
+    toCsvWithColumnNames(useShortNames: boolean = false): string {
         const delimiter = ","
         const header =
             this.columnsAsArray
-                .map((col) => csvEscape(col.name))
+                .map((col) =>
+                    csvEscape(
+                        useShortNames && (col.def as OwidColumnDef).shortName
+                            ? (col.def as OwidColumnDef).shortName
+                            : col.name
+                    )
+                )
                 .join(delimiter) + "\n"
         const body = this.rows
             .map((row) =>
@@ -938,7 +971,11 @@ export class CoreTable<
 
     appendRows(rows: ROW_TYPE[], opDescription: string): this {
         return this.concat(
-            [new (this.constructor as any)(rows, this.defs) as CoreTable],
+            [
+                new (this.constructor as typeof CoreTable)(rows, this.defs, {
+                    parent: this,
+                }),
+            ],
             opDescription
         )
     }
@@ -1115,10 +1152,40 @@ export class CoreTable<
         )
     }
 
+    combineColumns(
+        columnSlugs: ColumnSlug[],
+        def: COL_DEF_TYPE,
+        combineFn: (values: Record<ColumnSlug, CoreValueType>) => CoreValueType
+    ): this {
+        if (columnSlugs.length === 0) return this
+        const newStore: CoreColumnStore = { ...this.columnStore }
+        newStore[def.slug] = this.indices.map((index) => {
+            const values: Record<ColumnSlug, CoreValueType> = {}
+            columnSlugs.forEach((slug) => {
+                values[slug] = this.get(slug).valuesIncludingErrorValues[index]
+            })
+            return combineFn(values)
+        })
+        return this.transform(
+            newStore,
+            [...this.defs, def],
+            `Combined columns '${columnSlugs.join(", ")}' into '${def.slug}'`,
+            TransformType.CombineColumns
+        )
+    }
+
     replaceNonPositiveCellsForLogScale(columnSlugs: ColumnSlug[] = []): this {
         return this.replaceCells(columnSlugs, (val) =>
             typeof val !== "number" || val <= 0
                 ? ErrorValueTypes.InvalidOnALogScale
+                : val
+        )
+    }
+
+    replaceNegativeCellsWithErrorValues(columnSlugs: ColumnSlug[] = []): this {
+        return this.replaceCells(columnSlugs, (val) =>
+            typeof val !== "number" || val < 0
+                ? ErrorValueTypes.InvalidNegativeValue
                 : val
         )
     }
@@ -1331,9 +1398,10 @@ export class CoreTable<
         sourceTable: CoreTable,
         by?: ColumnSlug[]
     ): COL_DEF_TYPE[] {
-        by =
-            by ??
-            intersection(sourceTable.columnSlugs, destinationTable.columnSlugs)
+        by ??= intersection(
+            sourceTable.columnSlugs,
+            destinationTable.columnSlugs
+        )
         const columnSlugsToAdd = difference(
             sourceTable.columnSlugs,
             destinationTable.columnSlugs
@@ -1369,7 +1437,7 @@ export class CoreTable<
 
     concat(tables: CoreTable[], message: string = `Combined tables`): this {
         const all = [this, ...tables] as CoreTable[]
-        const defs = flatten(all.map((table) => table.defs)) as COL_DEF_TYPE[]
+        const defs = all.flatMap((table) => table.defs) as COL_DEF_TYPE[]
         const uniqDefs = uniqBy(defs, (def) => def.slug)
         return this.transform(
             concatColumnStores(
@@ -1407,13 +1475,65 @@ export class CoreTable<
      *   ```
      *
      */
-    complete(columnSlugs: ColumnSlug[]): this {
-        const index = this.rowIndex(columnSlugs)
-        const cols = this.getColumns(columnSlugs)
-        const product = cartesianProduct(...cols.map((col) => col.uniqValues))
-        const toAdd = product.filter((row) => !index.has(row.join(" ")))
-        return this.appendRows(
-            rowsFromMatrix([columnSlugs, ...toAdd]),
+    complete(columnSlugs: [ColumnSlug, ColumnSlug]): this {
+        if (columnSlugs.length !== 2)
+            throw new Error("Can only run complete() for exactly 2 columns")
+
+        const [slug1, slug2] = columnSlugs
+        const col1 = this.get(slug1)
+        const col2 = this.get(slug2)
+
+        // The output table will have exactly this many rows, since we assume that [col1, col2] are primary keys
+        // (i.e. there are no two rows with the same key), and every combination that doesn't exist yet we will add.
+        const cartesianProductSize = col1.numUniqs * col2.numUniqs
+        if (this.numRows >= cartesianProductSize) {
+            if (this.numRows > cartesianProductSize)
+                throw new Error("Table has more rows than expected")
+
+            // Table is already complete
+            return this
+        }
+
+        // Map that points from a value in col1 to a set of values in col2.
+        // It's filled with all the values that already exist in the table, so we
+        // can later take the difference.
+        const existingRowValues = new Map<CoreValueType, Set<CoreValueType>>()
+        for (const index of this.indices) {
+            const val1 = col1.values[index]
+            const val2 = col2.values[index]
+            if (!existingRowValues.has(val1))
+                existingRowValues.set(val1, new Set())
+            existingRowValues.get(val1)!.add(val2)
+        }
+
+        // The below code should be as performant as possible, since it's often iterating over hundreds of thousands of rows.
+        // The below implementation has been benchmarked against a few alternatives (using flatMap, map, and Array.from), and
+        // is the fastest.
+        // See https://jsperf.app/zudoye.
+        const rowsToAddCol1 = []
+        const rowsToAddCol2 = []
+        // Add rows for all combinations of values that are not contained in `existingRowValues`.
+        for (const val1 of col1.uniqValuesAsSet) {
+            const existingVals2 = existingRowValues.get(val1)
+            for (const val2 of col2.uniqValuesAsSet) {
+                if (!existingVals2?.has(val2)) {
+                    rowsToAddCol1.push(val1)
+                    rowsToAddCol2.push(val2)
+                }
+            }
+        }
+        const appendColumnStore: CoreColumnStore = {
+            [slug1]: rowsToAddCol1,
+            [slug2]: rowsToAddCol2,
+        }
+        const appendTable = new (this.constructor as typeof CoreTable)(
+            appendColumnStore,
+            this.defs,
+            { parent: this }
+        )
+
+        return this.concat(
+            [appendTable],
             `Append missing combos of ${columnSlugs}`
         )
     }
@@ -1528,10 +1648,24 @@ class FilterMask {
 
     apply(columnStore: CoreColumnStore): CoreColumnStore {
         const columnsObject: CoreColumnStore = {}
+        const keepIndexes: number[] = []
+        for (let i = 0; i < this.numRows; i++) {
+            if (this.mask[i]) keepIndexes.push(i)
+        }
+
+        // Optimization: early return if we're keeping all rows
+        if (keepIndexes.length === this.numRows) {
+            return columnStore
+        }
+
         Object.keys(columnStore).forEach((slug) => {
-            columnsObject[slug] = columnStore[slug].filter(
-                (slug, index) => this.mask[index]
-            )
+            const originalColumn = columnStore[slug]
+            const newColumn: CoreValueType[] = new Array(keepIndexes.length)
+            for (let i = 0; i < keepIndexes.length; i++) {
+                newColumn[i] = originalColumn[keepIndexes[i]]
+            }
+
+            columnsObject[slug] = newColumn
         })
         return columnsObject
     }

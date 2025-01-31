@@ -1,0 +1,5 @@
+{
+    "version": 1,
+    "include": ["/grapher/*", "/deleted/*", "/donation/*", "/explorers/*"],
+    "exclude": ["/grapher/_grapherRedirects.json"]
+}

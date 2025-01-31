@@ -1,17 +1,16 @@
 import { Col, Radio, RadioChangeEvent, Row } from "antd"
 import {
     OwidGdocPublicationContext,
-    OwidGdocInterface,
+    OwidGdocPostInterface,
 } from "@ourworldindata/utils"
-import React from "react"
 import { GdocsErrorHelp } from "./GdocsErrorHelp.js"
 
 export const GdocsPublicationContext = ({
     gdoc,
     setCurrentGdoc,
 }: {
-    gdoc: OwidGdocInterface
-    setCurrentGdoc: (gdoc: OwidGdocInterface) => void
+    gdoc: OwidGdocPostInterface
+    setCurrentGdoc: (gdoc: OwidGdocPostInterface) => void
 }) => {
     const { publicationContext } = gdoc
 
@@ -26,13 +25,14 @@ export const GdocsPublicationContext = ({
         <>
             <Row>
                 <Col>
-                    <label htmlFor="publishedAt" className="mr-3">
+                    <label htmlFor="publicationContext" className="mr-3">
                         Publication context
                     </label>
                     <Radio.Group
                         onChange={onChange}
                         value={publicationContext}
                         optionType="button"
+                        id="publicationContext"
                     >
                         <Radio value={OwidGdocPublicationContext.unlisted}>
                             {OwidGdocPublicationContext.unlisted}

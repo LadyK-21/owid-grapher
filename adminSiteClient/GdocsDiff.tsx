@@ -1,33 +1,23 @@
-import React from "react"
-import ReactDiffViewer, { DiffMethod } from "react-diff-viewer"
+import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued"
 import { stringify } from "safe-stable-stringify"
-import { omit, OwidGdocInterface } from "@ourworldindata/utils"
+import { omit, OwidGdoc } from "@ourworldindata/utils"
+import { GDOC_DIFF_OMITTABLE_PROPERTIES } from "./constants.js"
 
 export const GdocsDiff = ({
     originalGdoc,
     currentGdoc,
 }: {
-    originalGdoc: OwidGdocInterface | undefined
-    currentGdoc: OwidGdocInterface
+    originalGdoc: OwidGdoc | undefined
+    currentGdoc: OwidGdoc
 }) => (
     <ReactDiffViewer
         oldValue={stringify(
-            omit(originalGdoc, [
-                "errors",
-                "imageMetadata",
-                "linkedCharts",
-                "linkedDocuments",
-            ]),
+            omit(originalGdoc, GDOC_DIFF_OMITTABLE_PROPERTIES),
             null,
             2
         )}
         newValue={stringify(
-            omit(currentGdoc, [
-                "errors",
-                "imageMetadata",
-                "linkedCharts",
-                "linkedDocuments",
-            ]),
+            omit(currentGdoc, GDOC_DIFF_OMITTABLE_PROPERTIES),
             null,
             2
         )}

@@ -1,41 +1,41 @@
-import { ColorScaleConfigInterface } from "../color/ColorScaleConfig"
+import * as React from "react"
 import {
     EntitySelectionMode,
     FacetStrategy,
     SeriesColorMap,
     SeriesStrategy,
     MissingDataStrategy,
-} from "../core/GrapherConstants"
-import { ComparisonLineConfig } from "../scatterCharts/ComparisonLine"
+    ColorScaleConfigInterface,
+    ComparisonLineConfig,
+    AxisConfigInterface,
+    ColorSchemeName,
+    EntityName,
+    DetailsMarker,
+    Color,
+} from "@ourworldindata/types"
 import { TooltipManager } from "../tooltip/TooltipProps"
-import { OwidTable, EntityName, CoreColumn } from "@ourworldindata/core-table"
-import { AxisConfigInterface } from "../axis/AxisConfigInterface"
-import { ColorSchemeName } from "../color/ColorConstants"
+import { OwidTable, CoreColumn } from "@ourworldindata/core-table"
+
 import { SelectionArray } from "../selection/SelectionArray"
-import {
-    Annotation,
-    ColumnSlug,
-    SortConfig,
-    TimeBound,
-} from "@ourworldindata/utils"
+import { ColumnSlug, SortConfig, TimeBound } from "@ourworldindata/utils"
 import { ColorScaleBin } from "../color/ColorScaleBin"
 import { ColorScale } from "../color/ColorScale"
+import { FocusArray } from "../focus/FocusArray"
 
 // The possible options common across our chart types. Not all of these apply to every chart type, so there is room to create a better type hierarchy.
 
 export interface ChartManager {
-    baseFontSize?: number
+    base?: React.RefObject<SVGGElement | HTMLDivElement>
+    fontSize?: number
 
     table: OwidTable
     transformedTable?: OwidTable
 
-    isSelectingData?: boolean
-    startSelectingWhenLineClicked?: boolean // used by lineLabels
-    isExportingtoSvgOrPng?: boolean
+    isExportingToSvgOrPng?: boolean
     isRelativeMode?: boolean
     comparisonLines?: ComparisonLineConfig[]
-    hideLegend?: boolean
-    tooltips?: TooltipManager["tooltips"]
+    showLegend?: boolean
+    tooltip?: TooltipManager["tooltip"]
     baseColorScheme?: ColorSchemeName
     invertColorScheme?: boolean
     compareEndPointsOnly?: boolean
@@ -47,6 +47,11 @@ export interface ChartManager {
     colorScaleColumnOverride?: CoreColumn
     // for passing colorScale to sparkline in map charts
     colorScaleOverride?: ColorScale
+    // If you want to use auto-assigned colors, but then have them preserved across selection and chart changes
+    seriesColorMap?: SeriesColorMap
+    // If you want to opt out of assigned colors and use a value-based color scheme instead
+    // (e.g. stacked bar charts coloring positive/negative values differently)
+    useValueBasedColorScheme?: boolean
 
     yAxisConfig?: Readonly<AxisConfigInterface>
     xAxisConfig?: Readonly<AxisConfigInterface>
@@ -60,12 +65,13 @@ export interface ChartManager {
     colorColumnSlug?: ColumnSlug
 
     selection?: SelectionArray | EntityName[]
+    entityType?: string
 
-    // If you want to use auto-assigned colors, but then have them preserved across selection and chart changes
-    seriesColorMap?: SeriesColorMap
+    focusArray?: FocusArray
 
     hidePoints?: boolean // for line options
     startHandleTimeBound?: TimeBound // for relative-to-first-year line chart
+    hideNoDataSection?: boolean // for slope charts
 
     // we need endTime so DiscreteBarCharts and StackedDiscreteBarCharts can
     // know what date the timeline is set to. and let's pass startTime in, too.
@@ -76,13 +82,22 @@ export interface ChartManager {
     seriesStrategy?: SeriesStrategy
 
     sortConfig?: SortConfig
-    showNoDataArea?: boolean
+    showNoDataArea?: boolean // No data area in Marimekko charts
 
-    annotation?: Annotation
-    resetAnnotation?: () => void
-
-    externalLegendFocusBin?: ColorScaleBin | undefined
+    externalLegendHoverBin?: ColorScaleBin | undefined
     disableIntroAnimation?: boolean
 
     missingDataStrategy?: MissingDataStrategy
+
+    isNarrow?: boolean
+    isStatic?: boolean
+    isSemiNarrow?: boolean
+    isStaticAndSmall?: boolean
+    isExportingForSocialMedia?: boolean
+    secondaryColorInStaticCharts?: string
+    backgroundColor?: Color
+    shouldPinTooltipToBottom?: boolean
+
+    detailsOrderedByReference?: string[]
+    detailsMarkerInSvg?: DetailsMarker
 }

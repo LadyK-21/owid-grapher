@@ -7,7 +7,7 @@ If you want to develop on your local system without any Docker containers then y
 Remove the password for root by opening the MySQL shell with `mysql` and running:
 
 ```sql
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';
+ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '';
 ```
 
 We do this for convenience so we can run `mysql` commands without providing a password each time. You can also set a password, just make sure you include it in your `.env` file later.
@@ -16,18 +16,15 @@ We do this for convenience so we can run `mysql` commands without providing a pa
 
 Daily exports from the live OWID database are published here and can be used for testing:
 
-| File                                                                            | Description                                                   | Size (compressed) |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------- |
-| [owid_metadata.sql.gz](https://files.ourworldindata.org/owid_metadata.sql.gz)   | Table structure and metadata, everything except `data_values` | ~15 MB            |
-| [owid_chartdata.sql.gz](https://files.ourworldindata.org/owid_chartdata.sql.gz) | All data values used by published visualizations              | >200MB            |
+| File                                                                          | Description                  | Size (compressed) |
+| ----------------------------------------------------------------------------- | ---------------------------- | ----------------- |
+| [owid_metadata.sql.gz](https://files.ourworldindata.org/owid_metadata.sql.gz) | Table structure and metadata | ~70 MB            |
 
 This script will create a database, then download and import all OWID charts and their data (might take a while!):
 
 ```bash
 ./db/downloadAndCreateDatabase.sh
 ```
-
-Note that the `data_values` table will be incomplete – it will only contain data used in charts. In production, this table is >20GB (uncompressed) and contains unreviewed and undocumented data, so we currently don't offer a full export of it.
 
 ### Inspecting the database
 

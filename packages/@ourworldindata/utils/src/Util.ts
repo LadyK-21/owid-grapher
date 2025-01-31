@@ -1,6 +1,7 @@
 import {
     capitalize,
     chunk,
+    clamp,
     clone,
     cloneDeep,
     compact,
@@ -8,10 +9,10 @@ import {
     debounce,
     difference,
     drop,
+    dropRightWhile,
+    dropWhile,
     escapeRegExp,
     extend,
-    findLastIndex,
-    flatten,
     get,
     groupBy,
     identity,
@@ -20,6 +21,7 @@ import {
     isBoolean,
     isEmpty,
     isEqual,
+    isInteger,
     isNil,
     isNull,
     isNumber,
@@ -33,11 +35,11 @@ import {
     maxBy,
     memoize,
     merge,
+    mergeWith,
     min,
     minBy,
     noop,
     omit,
-    once,
     orderBy,
     partition,
     pick,
@@ -48,6 +50,7 @@ import {
     sampleSize,
     set,
     sortBy,
+    sortedIndexBy,
     sortedUniqBy,
     startCase,
     sum,
@@ -69,6 +72,7 @@ import {
 export {
     capitalize,
     chunk,
+    clamp,
     clone,
     cloneDeep,
     compact,
@@ -76,10 +80,10 @@ export {
     debounce,
     difference,
     drop,
+    dropRightWhile,
+    dropWhile,
     escapeRegExp,
     extend,
-    findLastIndex,
-    flatten,
     get,
     groupBy,
     identity,
@@ -88,9 +92,11 @@ export {
     isBoolean,
     isEmpty,
     isEqual,
+    isInteger,
     isNil,
     isNull,
     isNumber,
+    isPlainObject,
     isString,
     isUndefined,
     keyBy,
@@ -99,11 +105,11 @@ export {
     maxBy,
     memoize,
     merge,
+    mergeWith,
     min,
     minBy,
     noop,
     omit,
-    once,
     orderBy,
     partition,
     pick,
@@ -114,6 +120,7 @@ export {
     sampleSize,
     set,
     sortBy,
+    sortedIndexBy,
     sortedUniqBy,
     startCase,
     sum,
@@ -137,32 +144,43 @@ import dayjs from "./dayjs.js"
 import { formatLocale, FormatLocaleObject } from "d3-format"
 import striptags from "striptags"
 import parseUrl from "url-parse"
-import linkifyHtml from "linkifyjs/html.js"
 import {
-    SortOrder,
-    Integer,
-    Time,
+    type Integer,
+    IDEAL_PLOT_ASPECT_RATIO,
     EPOCH_DATE,
+    SortOrder,
+    TimeBoundValue,
     ScaleType,
     VerticalAlign,
+    type GridParameters,
     HorizontalAlign,
-    IDEAL_PLOT_ASPECT_RATIO,
-    GridParameters,
-    OwidGdocInterface,
-    OwidGdocJSON,
-    TimeBound,
-    TimeBoundValue,
-    OwidEnrichedGdocBlock,
-    Span,
+    type OwidEnrichedGdocBlock,
+    type EnrichedBlockKeyInsightsSlide,
+    type EnrichedTopicPageIntroRelatedTopic,
+    type EnrichedTopicPageIntroDownloadButton,
+    type EnrichedRecircLink,
+    type EnrichedScrollerItem,
+    type OwidGdocPostInterface,
+    type OwidGdocDataInsightInterface,
+    type OwidGdocAuthorInterface,
+    type OwidGdoc,
     OwidGdocType,
-    EnrichedRecircLink,
-    EnrichedTopicPageIntroRelatedTopic,
-    EnrichedTopicPageIntroDownloadButton,
-    EnrichedScrollerItem,
-    EnrichedBlockKeyInsightsSlide,
-} from "./owidTypes.js"
+    type OwidGdocJSON,
+    type Span,
+    type SpanLink,
+    UserCountryInformation,
+    Time,
+    TimeBound,
+    TagGraphRoot,
+    TagGraphRootName,
+    TagGraphNode,
+    GrapherInterface,
+    DimensionProperty,
+    GRAPHER_CHART_TYPES,
+    DbPlainTag,
+} from "@ourworldindata/types"
 import { PointVector } from "./PointVector.js"
-import React from "react"
+import * as React from "react"
 import { match, P } from "ts-pattern"
 
 export type NoUndefinedValues<T> = {
@@ -212,6 +230,10 @@ export type AllKeysRequired<T> = AllowUndefinedValues<
     Exclude<T, OptionalKeysOf<T>>
 
 export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
+// doesn't do anything fancy, but makes it a bit more readable by skipping one layer of angle brackets:
+// PartialRecord<A, B> = Partial<Record<A, B>>
+export type PartialRecord<K extends keyof any, V> = Partial<Record<K, V>>
 
 // d3 v6 changed the default minus sign used in d3-format to "−" (Unicode minus sign), which looks
 // nicer but can cause issues when copy-pasting values into a spreadsheet or script.
@@ -284,11 +306,27 @@ export const exposeInstanceOnWindow = (
 export const makeSafeForCSS = (name: string): string =>
     name.replace(/[^a-z0-9]/g, (str) => {
         const char = str.charCodeAt(0)
-        if (char === 32) return "-"
+        if (char === 32 || char === 45) return "-"
         if (char === 95) return "_"
         if (char >= 65 && char <= 90) return str
         return "__" + ("000" + char.toString(16)).slice(-4)
     })
+
+function makeSafeForFigma(name: string): string {
+    return name.replace(/\s/g, "-")
+}
+
+/**
+ * Make a human-readable string meant to be be used as the ID of a SVG chart
+ * element. This is useful when a static chart is manually edited in a SVG
+ * editor since SVG manipulation software like Figma often show the element's
+ * id as its title.
+ *
+ * Note that these IDs are not meant to be used in CSS!
+ */
+export function makeIdForHumanConsumption(...unsafeKeys: string[]): string {
+    return makeSafeForFigma(unsafeKeys.join("__"))
+}
 
 export function formatDay(
     dayAsYear: number,
@@ -383,7 +421,7 @@ export const domainExtent = (
     numValues: number[],
     scaleType: ScaleType,
     maxValueMultiplierForPadding = 1
-): [number, number] => {
+): [number, number] | undefined => {
     const filterValues =
         scaleType === ScaleType.log ? numValues.filter((v) => v > 0) : numValues
     const [minValue, maxValue] = extent(filterValues)
@@ -402,9 +440,9 @@ export const domainExtent = (
                 ? [minValue / 10, minValue * 10]
                 : [minValue - 1, maxValue + 1]
         }
-    } else {
-        return scaleType === ScaleType.log ? [1, 100] : [-1, 1]
     }
+
+    return undefined
 }
 
 // Compound annual growth rate
@@ -427,15 +465,23 @@ export const makeAnnotationsSlug = (columnSlug: string): string =>
     `${columnSlug}-annotations`
 
 // Take an arbitrary string and turn it into a nice url slug
-export const slugify = (str: string): string =>
-    slugifySameCase(str.toLowerCase())
+export const slugify = (str: string, allowSlashes?: boolean): string =>
+    slugifySameCase(str.toLowerCase(), allowSlashes)
 
-export const slugifySameCase = (str: string): string =>
-    str
+export const slugifySameCase = (
+    str: string,
+    allowSlashes: boolean = false
+): string => {
+    let slug = str
         .trim()
         .replace(/\s*\*.+\*/, "")
-        .replace(/[^\w- ]+/g, "")
+        .replace(/[^\w\- /]+/g, "")
         .replace(/ +/g, "-")
+    if (!allowSlashes) {
+        slug = slug.replace(/\//g, "")
+    }
+    return slug
+}
 
 // Unique number for this execution context
 // Useful for coordinating between embeds to avoid conflicts in their ids
@@ -514,7 +560,7 @@ export interface Json {
 export const csvEscape = (value: unknown): string => {
     const valueStr = toString(value)
     return valueStr.includes(",")
-        ? `"${valueStr.replace(/\"/g, '""')}"`
+        ? `"${valueStr.replace(/"/g, '""')}"`
         : valueStr
 }
 
@@ -536,26 +582,32 @@ export const trimObject = <Obj>(
         if (isObject(val) && isEmpty(val)) {
             // Drop empty objects
         } else if (trimStringEmptyStrings && val === "") {
+            // ignore
         } else if (val !== undefined) clone[key] = obj[key]
     }
     return clone
 }
 
 export const fetchText = async (url: string): Promise<string> => {
-    return await fetch(url).then((res) => {
+    return await fetchWithRetry(url).then((res) => {
         if (!res.ok)
             throw new Error(`Fetch failed: ${res.status} ${res.statusText}`)
         return res.text()
     })
 }
 
-export const getCountryCodeFromNetlifyRedirect = async (): Promise<
-    string | undefined
+const _getUserCountryInformation = async (): Promise<
+    UserCountryInformation | undefined
 > =>
-    await fetch("/detect-country-redirect").then((res) => {
-        if (!res.ok) throw new Error("Couldn't retrieve country code")
-        return res.url.split("?")[1]
-    })
+    await fetchWithRetry("/detect-country")
+        .then((res) => res.json())
+        .then((res) => res.country)
+        .catch(() => undefined)
+
+// Memoized because this will pretty much never change during a session.
+// The memoization, however, also means that any failures will also be cached.
+// This is okay currently, because currently this information is very much an optional nice-to-have.
+export const getUserCountryInformation = memoize(_getUserCountryInformation)
 
 export const stripHTML = (html: string): string => striptags(html)
 
@@ -602,7 +654,8 @@ export const getIdealGridParams = ({
     // Also Desmos graph: https://www.desmos.com/calculator/tmajzuq5tm
     const ratio = containerAspectRatio / idealAspectRatio
     // Prefer vertical grid for count=2.
-    if (count === 2 && ratio < 2) return { rows: 2, columns: 1 }
+    if (count === 2 && containerAspectRatio < 2.8)
+        return { rows: 2, columns: 1, count }
     // Otherwise, optimize for closest to the ideal aspect ratio.
     const initialColumns = Math.min(Math.round(Math.sqrt(count * ratio)), count)
     const rows = Math.ceil(count / initialColumns)
@@ -612,6 +665,7 @@ export const getIdealGridParams = ({
     return {
         rows,
         columns,
+        count,
     }
 }
 
@@ -704,29 +758,6 @@ export const valuesByEntityAtTimes = (
         valuesAtTimes(valueByTime, targetTimes, tolerance)
     )
 
-export const valuesByEntityWithinTimes = (
-    valueByEntityAndTimes: Map<string, Map<number, string | number>>,
-    range: (number | undefined)[]
-): Map<string, DataValue[]> => {
-    const start = range[0] !== undefined ? range[0] : -Infinity
-    const end = range[1] !== undefined ? range[1] : Infinity
-    return es6mapValues(valueByEntityAndTimes, (valueByTime) =>
-        Array.from(valueByTime.keys())
-            .filter((time) => time >= start && time <= end)
-            .map((time) => ({
-                time,
-                value: valueByTime.get(time),
-            }))
-    )
-}
-
-export const getStartEndValues = (
-    values: DataValue[]
-): (DataValue | undefined)[] => [
-    minBy(values, (dv) => dv.time),
-    maxBy(values, (dv) => dv.time),
-]
-
 const MS_PER_DAY = 1000 * 60 * 60 * 24
 
 // From https://stackoverflow.com/a/15289883
@@ -748,23 +779,51 @@ export const getYearFromISOStringAndDayOffset = (
     return date.year()
 }
 
-export const addDays = (date: Date, days: number): Date => {
-    const newDate = new Date(date.getTime())
-    newDate.setDate(newDate.getDate() + days)
-    return newDate
+export const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms))
+
+interface RetryOptions {
+    maxRetries?: number
+    exponentialBackoff?: boolean
+    initialDelay?: number
 }
 
+export async function fetchWithRetry(
+    url: string,
+    fetchOptions?: RequestInit,
+    retryOptions?: RetryOptions
+): Promise<Response> {
+    const defaultRetryOptions: RetryOptions = {
+        maxRetries: 5,
+        exponentialBackoff: true,
+        initialDelay: 250,
+    }
+    return retryPromise(
+        () => fetch(url, fetchOptions),
+        retryOptions ?? defaultRetryOptions
+    )
+}
 export async function retryPromise<T>(
     promiseGetter: () => Promise<T>,
-    maxRetries: number = 3
+    {
+        maxRetries = 3,
+        exponentialBackoff = false,
+        initialDelay = 200,
+    }: RetryOptions = {}
 ): Promise<T> {
     let retried = 0
     let lastError
+    let delay = initialDelay
+
     while (retried++ < maxRetries) {
         try {
             return await promiseGetter()
         } catch (error) {
             lastError = error
+            if (exponentialBackoff && retried < maxRetries) {
+                await sleep(delay)
+                delay *= 2 // Double the delay for next retry
+            }
         }
     }
     throw lastError
@@ -858,15 +917,6 @@ export function keyMap<Key, Value>(
     return result
 }
 
-export const linkify = (str: string): string => linkifyHtml(str)
-
-export const oneOf = <T>(value: unknown, options: T[], defaultOption: T): T => {
-    for (const option of options) {
-        if (value === option) return option
-    }
-    return defaultOption
-}
-
 export const intersectionOfSets = <T>(sets: Set<T>[]): Set<T> => {
     if (!sets.length) return new Set<T>()
     const intersection = new Set<T>(sets[0])
@@ -898,6 +948,9 @@ export const differenceOfSets = <T>(sets: Set<T>[]): Set<T> => {
     })
     return diff
 }
+
+export const areSetsEqual = <T>(setA: Set<T>, setB: Set<T>): boolean =>
+    setA.size === setB.size && [...setA].every((value) => setB.has(value))
 
 /** Tests whether the first argument is a strict subset of the second. The arguments do not have
     to be sets yet, they can be any iterable. Sets will be created by the function internally */
@@ -989,20 +1042,6 @@ export const findIndexFast = (
     return -1
 }
 
-export const logMe = (
-    target: unknown,
-    propertyName: string,
-    descriptor: TypedPropertyDescriptor<any>
-): TypedPropertyDescriptor<any> => {
-    const originalMethod = descriptor.value
-    descriptor.value = function (...args: any[]): any {
-        // eslint-disable-next-line no-console
-        console.log(`Running ${propertyName} with '${args}'`)
-        return originalMethod.apply(this, args)
-    }
-    return descriptor
-}
-
 export function getClosestTimePairs(
     sortedTimesA: Time[],
     sortedTimesB: Time[],
@@ -1015,6 +1054,7 @@ export function getClosestTimePairs(
 
     let indexB = 0
 
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of
     for (let indexA = 0; indexA < sortedTimesA.length; indexA++) {
         const timeA = sortedTimesA[indexA]
 
@@ -1031,8 +1071,8 @@ export function getClosestTimePairs(
             sortedTimesB[closestIndexInB] < timeA
                 ? closestIndexInB
                 : closestIndexInB > indexB
-                ? closestIndexInB - 1
-                : undefined
+                  ? closestIndexInB - 1
+                  : undefined
 
         /**
          * the index that holds the value that is definitely equal to or greater than timeA, the candidate time
@@ -1071,7 +1111,7 @@ export function getClosestTimePairs(
         indexB = closestIndexInB
     }
 
-    const seenTimes = new Set(flatten(decidedPairs))
+    const seenTimes = new Set(decidedPairs.flat())
 
     sortBy(undecidedPairs, (pair) => Math.abs(pair[0] - pair[1])).forEach(
         (pair) => {
@@ -1104,10 +1144,43 @@ export const omitNullableValues = <T>(object: T): NoUndefinedValues<T> => {
     return result
 }
 
+export function omitUndefinedValuesRecursive<T extends Record<string, any>>(
+    obj: T
+): NoUndefinedValues<T> {
+    const result: any = {}
+    for (const key in obj) {
+        if (isPlainObject(obj[key])) {
+            // re-apply the function if we encounter a non-empty object
+            result[key] = omitUndefinedValuesRecursive(obj[key])
+        } else if (obj[key] === undefined) {
+            // omit undefined values
+        } else {
+            // otherwise, keep the value
+            result[key] = obj[key]
+        }
+    }
+    return result
+}
+
+export function omitEmptyObjectsRecursive<T extends Record<string, any>>(
+    obj: T
+): Partial<T> {
+    const result: any = {}
+    for (const key in obj) {
+        if (isPlainObject(obj[key])) {
+            const isObjectEmpty = isEmpty(omitEmptyObjectsRecursive(obj[key]))
+            if (!isObjectEmpty) result[key] = obj[key]
+        } else {
+            result[key] = obj[key]
+        }
+    }
+    return result
+}
+
 export const isInIFrame = (): boolean => {
     try {
         return window.self !== window.top
-    } catch (e) {
+    } catch {
         return false
     }
 }
@@ -1185,7 +1258,7 @@ export function stringifyUnknownError(error: unknown): string | undefined {
     }
 
     if (typeof error === "object" && !Array.isArray(error) && error !== null) {
-        if (error.hasOwnProperty("message")) {
+        if (Object.prototype.hasOwnProperty.call(error, "message")) {
             // Within this branch, `error` is an object with the `message`
             // property, so we can access the object's `message` property.
             return (error as any).message
@@ -1267,6 +1340,8 @@ export const getIndexableKeys = Object.keys as <T extends object>(
     obj: T
 ) => Array<keyof T>
 
+/** Formats a date like this: "October 10, 2024"
+ */
 export const formatDate = (date: Date): string => {
     return date.toLocaleDateString("en-US", {
         year: "numeric",
@@ -1283,7 +1358,7 @@ export const formatDate = (date: Date): string => {
  * write a custom JSON parser to handle that automatically for all keys. At this
  * stage, the manual approach is probably simpler.
  */
-export const getOwidGdocFromJSON = (json: OwidGdocJSON): OwidGdocInterface => {
+export const getOwidGdocFromJSON = (json: OwidGdocJSON): OwidGdoc => {
     return {
         ...json,
         createdAt: new Date(json.createdAt),
@@ -1312,10 +1387,42 @@ export const canWriteToClipboard = async (): Promise<boolean> => {
 
             // Asking permission was successful, we may use clipboard-write methods if permission wasn't denied.
             return ["granted", "prompt"].includes(res.state)
-        } catch (err) {}
+        } catch {
+            // ignore
+        }
     }
     // navigator.clipboard is available, but we couldn't check for permissions -- assume we can use it.
     return true
+}
+
+/** Function to copy to clipboard. This uses the new Clipboard API if it is available.
+ */
+export async function copyToClipboard(text: string): Promise<void> {
+    const useModernClipboardApi = await canWriteToClipboard()
+    if (useModernClipboardApi) {
+        // We can use the new clipboard API
+        navigator.clipboard.writeText(text).catch((err) => {
+            console.error("Failed to copy text to clipboard", err)
+        })
+    } else {
+        // GPT 4 suggested attempt to work around the lack of clipboard API
+        const textarea = document.createElement("textarea")
+        textarea.value = text
+        textarea.style.position = "fixed"
+        textarea.style.opacity = "0"
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+
+        try {
+            document.execCommand("copy")
+        } catch (err) {
+            console.error("Failed to copy text to clipboard", err)
+        }
+
+        document.body.removeChild(textarea)
+    }
+    return
 }
 
 export function findDuplicates<T>(arr: T[]): T[] {
@@ -1335,7 +1442,7 @@ export function findDuplicates<T>(arr: T[]): T[] {
 
 // Memoization for immutable getters. Run the function once for this instance and cache the result.
 export const imemo = <Type>(
-    target: unknown,
+    _target: unknown,
     propertyName: string,
     descriptor: TypedPropertyDescriptor<Type>
 ): void => {
@@ -1439,7 +1546,7 @@ export function traverseEnrichedSpan(
 // If your node has children that are Spans, the spanCallback will apply to them
 // If your node has children that aren't OwidEnrichedGdocBlocks or Spans, e.g. EnrichedBlockScroller & EnrichedScrollerItem
 // you'll have to handle those children yourself in your callback
-export function traverseEnrichedBlocks(
+export function traverseEnrichedBlock(
     node: OwidEnrichedGdocBlock,
     callback: (x: OwidEnrichedGdocBlock) => void,
     spanCallback?: (x: Span) => void
@@ -1450,24 +1557,24 @@ export function traverseEnrichedBlocks(
             (container) => {
                 callback(container)
                 container.left.forEach((leftNode) =>
-                    traverseEnrichedBlocks(leftNode, callback, spanCallback)
+                    traverseEnrichedBlock(leftNode, callback, spanCallback)
                 )
                 container.right.forEach((rightNode) =>
-                    traverseEnrichedBlocks(rightNode, callback, spanCallback)
+                    traverseEnrichedBlock(rightNode, callback, spanCallback)
                 )
             }
         )
         .with({ type: "gray-section" }, (graySection) => {
             callback(graySection)
             graySection.items.forEach((node) =>
-                traverseEnrichedBlocks(node, callback, spanCallback)
+                traverseEnrichedBlock(node, callback, spanCallback)
             )
         })
         .with({ type: "key-insights" }, (keyInsights) => {
             callback(keyInsights)
             keyInsights.insights.forEach((insight) =>
                 insight.content.forEach((node) =>
-                    traverseEnrichedBlocks(node, callback, spanCallback)
+                    traverseEnrichedBlock(node, callback, spanCallback)
                 )
             )
         })
@@ -1475,7 +1582,7 @@ export function traverseEnrichedBlocks(
             callback(callout)
             if (spanCallback) {
                 callout.text.forEach((textBlock) =>
-                    traverseEnrichedBlocks(textBlock, callback, spanCallback)
+                    traverseEnrichedBlock(textBlock, callback, spanCallback)
                 )
             }
         })
@@ -1491,7 +1598,7 @@ export function traverseEnrichedBlocks(
             callback(list)
             if (spanCallback) {
                 list.items.forEach((textBlock) =>
-                    traverseEnrichedBlocks(textBlock, callback, spanCallback)
+                    traverseEnrichedBlock(textBlock, callback, spanCallback)
                 )
             }
         })
@@ -1499,7 +1606,7 @@ export function traverseEnrichedBlocks(
             callback(numberedList)
             if (spanCallback) {
                 numberedList.items.forEach((textBlock) =>
-                    traverseEnrichedBlocks(textBlock, callback, spanCallback)
+                    traverseEnrichedBlock(textBlock, callback, spanCallback)
                 )
             }
         })
@@ -1537,17 +1644,81 @@ export function traverseEnrichedBlocks(
         .with({ type: "expandable-paragraph" }, (expandableParagraph) => {
             callback(expandableParagraph)
             expandableParagraph.items.forEach((textBlock) => {
-                traverseEnrichedBlocks(textBlock, callback, spanCallback)
+                traverseEnrichedBlock(textBlock, callback, spanCallback)
             })
+        })
+        .with({ type: "align" }, (align) => {
+            callback(align)
+            align.content.forEach((node) => {
+                traverseEnrichedBlock(node, callback, spanCallback)
+            })
+        })
+        .with({ type: "table" }, (table) => {
+            callback(table)
+            table.rows.forEach((row) => {
+                row.cells.forEach((cell) => {
+                    cell.content.forEach((node) => {
+                        traverseEnrichedBlock(node, callback, spanCallback)
+                    })
+                })
+            })
+        })
+        .with({ type: "blockquote" }, (blockquote) => {
+            callback(blockquote)
+            blockquote.text.forEach((node) => {
+                traverseEnrichedBlock(node, callback, spanCallback)
+            })
+        })
+        .with(
+            {
+                type: "key-indicator",
+            },
+            (keyIndicator) => {
+                callback(keyIndicator)
+                keyIndicator.text.forEach((node) => {
+                    traverseEnrichedBlock(node, callback, spanCallback)
+                })
+            }
+        )
+        .with(
+            { type: "key-indicator-collection" },
+            (keyIndicatorCollection) => {
+                callback(keyIndicatorCollection)
+                keyIndicatorCollection.blocks.forEach((node) =>
+                    traverseEnrichedBlock(node, callback, spanCallback)
+                )
+            }
+        )
+        .with({ type: "people" }, (people) => {
+            callback(people)
+            for (const item of people.items) {
+                traverseEnrichedBlock(item, callback, spanCallback)
+            }
+        })
+        .with({ type: "people-rows" }, (peopleRows) => {
+            callback(peopleRows)
+            for (const person of peopleRows.people) {
+                traverseEnrichedBlock(person, callback, spanCallback)
+            }
+        })
+        .with({ type: "person" }, (person) => {
+            callback(person)
+            for (const node of person.text) {
+                traverseEnrichedBlock(node, callback, spanCallback)
+            }
         })
         .with(
             {
                 type: P.union(
                     "chart-story",
                     "chart",
+                    "narrative-chart",
+                    "code",
+                    "donors",
                     "horizontal-rule",
                     "html",
                     "image",
+                    "video",
                     "missing-data",
                     "prominent-link",
                     "pull-quote",
@@ -1557,7 +1728,14 @@ export function traverseEnrichedBlocks(
                     "sdg-grid",
                     "sdg-toc",
                     "topic-page-intro",
-                    "all-charts"
+                    "all-charts",
+                    "entry-summary",
+                    "explorer-tiles",
+                    "pill-row",
+                    "homepage-search",
+                    "homepage-intro",
+                    "latest-data-insights",
+                    "socials"
                 ),
             },
             callback
@@ -1567,6 +1745,10 @@ export function traverseEnrichedBlocks(
 
 export function checkNodeIsSpan(node: NodeWithUrl): node is Span {
     return "spanType" in node
+}
+
+export function checkNodeIsSpanLink(node: unknown): node is SpanLink {
+    return isObject(node) && "spanType" in node && node.spanType === "span-link"
 }
 
 export function spansToUnformattedPlainText(spans: Span[]): string {
@@ -1598,9 +1780,9 @@ export function spansToUnformattedPlainText(spans: Span[]): string {
 }
 
 export function checkIsOwidGdocType(
-    documentType: unknown
-): documentType is OwidGdocType {
-    return Object.values(OwidGdocType).includes(documentType as any)
+    gdocType: unknown
+): gdocType is OwidGdocType {
+    return Object.values(OwidGdocType).includes(gdocType as any)
 }
 
 export function isArrayOfNumbers(arr: unknown[]): arr is number[] {
@@ -1644,4 +1826,253 @@ export function filterValidStringValues<ValidValue extends string>(
     })
 
     return filteredValues
+}
+
+/** Works for:
+ * #dod:text
+ * #dod:text-hyphenated
+ * #dod:text_underscored
+ * #dod:text_underscored-and-hyphenated
+ * Duplicated in parser.ts
+ */
+export const detailOnDemandRegex = /#dod:([\w\-_]+)/
+
+export function extractDetailsFromSyntax(str: string): string[] {
+    return [...str.matchAll(new RegExp(detailOnDemandRegex, "g"))].map(
+        ([_, term]) => term
+    )
+}
+
+/**
+ * If you're using this type guard, make sure you're okay with Fragments
+ * See https://github.com/owid/owid-grapher/issues/3426
+ */
+export function checkIsGdocPost(x: unknown): x is OwidGdocPostInterface {
+    const type = get(x, "content.type") as OwidGdocType | undefined
+    return [
+        OwidGdocType.Article,
+        OwidGdocType.TopicPage,
+        OwidGdocType.LinearTopicPage,
+        OwidGdocType.Fragment,
+        OwidGdocType.AboutPage,
+    ].includes(type as any)
+}
+
+/**
+ * Fragments were developed before we had a robust gdoc type system in place
+ * Use this function when you want to be sure you're dealing with published editorial content
+ * and not just content that has the right shape
+ * See https://github.com/owid/owid-grapher/issues/3426
+ */
+export function checkIsGdocPostExcludingFragments(
+    x: unknown
+): x is OwidGdocPostInterface {
+    const type = get(x, "content.type") as OwidGdocType | undefined
+    return [
+        OwidGdocType.Article,
+        OwidGdocType.TopicPage,
+        OwidGdocType.LinearTopicPage,
+        OwidGdocType.AboutPage,
+    ].includes(type as any)
+}
+
+export function checkIsDataInsight(
+    x: unknown
+): x is OwidGdocDataInsightInterface {
+    const type = get(x, "content.type")
+    return type === OwidGdocType.DataInsight
+}
+
+export function checkIsAuthor(x: unknown): x is OwidGdocAuthorInterface {
+    const type = get(x, "content.type")
+    return type === OwidGdocType.Author
+}
+
+/**
+ * Returns the cartesian product of the given arrays.
+ *
+ * For example, `cartesian([["a", "b"], ["x", "y"]])` returns `[["a", "x"], ["a", "y"], ["b", "x"], ["b", "y"]]`
+ */
+export function cartesian<T>(matrix: T[][]): T[][] {
+    if (matrix.length === 0) return []
+    if (matrix.length === 1) return matrix[0].map((i) => [i])
+    return matrix.reduce<T[][]>(
+        (acc, curr) => acc.flatMap((i) => curr.map((j) => [...i, j])),
+        [[]]
+    )
+}
+
+// Remove any parenthetical content from _the end_ of a string
+// E.g. "Africa (UN)" -> "Africa"
+export function removeTrailingParenthetical(str: string): string {
+    return str.replace(/\s*\(.*\)$/, "")
+}
+
+export function isElementHidden(element: Element | null): boolean {
+    if (!element) return false
+    const computedStyle = window.getComputedStyle(element)
+    if (
+        computedStyle.display === "none" ||
+        computedStyle.visibility === "hidden"
+    )
+        return true
+    return isElementHidden(element.parentElement)
+}
+
+const commafyFormatter = lazy(() => new Intl.NumberFormat("en-US"))
+/**
+ * Example: 12000 -> "12,000"
+ */
+export function commafyNumber(value: number): string {
+    return commafyFormatter().format(value)
+}
+
+export function isFiniteWithGuard(value: unknown): value is number {
+    return isFinite(value as any)
+}
+
+// Use with getParentTagArraysByChildName to collapse all paths to the child into a single array of unique parent tag names
+export function getUniqueNamesFromParentTagArrays(
+    parentTagArrays: Pick<DbPlainTag, "id" | "name" | "slug">[][]
+): string[] {
+    const tagNames = new Set<string>(
+        parentTagArrays.flatMap((parentTagArray) =>
+            parentTagArray.map((tag) => tag.name)
+        )
+    )
+
+    return [...tagNames]
+}
+
+export function createTagGraph(
+    tagGraphByParentId: Record<number, any>,
+    rootId: number
+): TagGraphRoot {
+    const tagGraph: TagGraphRoot = {
+        id: rootId,
+        name: TagGraphRootName,
+        slug: null,
+        isTopic: false,
+        path: [rootId],
+        weight: 0,
+        children: [],
+    }
+
+    function recursivelySetChildren(node: TagGraphNode): TagGraphNode {
+        const children = tagGraphByParentId[node.id]
+        if (!children) return node
+
+        for (const child of children) {
+            const childNode: TagGraphNode = {
+                id: child.childId,
+                path: [...node.path, child.childId],
+                name: child.name,
+                slug: child.slug,
+                isTopic: child.isTopic,
+                weight: child.weight,
+                children: [],
+            }
+
+            node.children.push(recursivelySetChildren(childNode))
+        }
+        return node
+    }
+
+    return recursivelySetChildren(tagGraph) as TagGraphRoot
+}
+
+export function formatInlineList(
+    array: unknown[],
+    connector: "and" | "or" = "and"
+): string {
+    if (array.length === 0) return ""
+    if (array.length === 1) return `${array[0]}`
+    return `${array.slice(0, -1).join(", ")} ${connector} ${last(array)}`
+}
+
+// The below comment marks this function as side-effect free, meaning that the bundler
+// can safely remove it if it is not used.
+// This is useful for e.g. constants that are only used in some parts of the codebase.
+// See https://rollupjs.org/configuration-options/#no-side-effects
+// @__NO_SIDE_EFFECTS__
+// Other than that, this function is like lodash's once, in that it'll run fn at most once
+// and then save the result for future calls.
+export function lazy<T>(fn: () => T): () => T {
+    let hasRun = false
+    let _value: T
+    return () => {
+        if (!hasRun) {
+            _value = fn()
+            hasRun = true
+        }
+        return _value
+    }
+}
+
+export function traverseObjects<T extends Record<string, any>>(
+    obj: T,
+    ref: Record<string, any>,
+    cb: (objValue: unknown, refValue: unknown, key: string) => unknown
+): Partial<T> {
+    const result: any = {}
+    for (const key in obj) {
+        if (isPlainObject(obj[key]) && isPlainObject(ref[key])) {
+            result[key] = traverseObjects(obj[key], ref[key], cb)
+        } else {
+            result[key] = cb(obj[key], ref[key], key)
+        }
+    }
+    return result
+}
+
+export function getParentVariableIdFromChartConfig(
+    config: GrapherInterface
+): number | undefined {
+    const { chartTypes, dimensions } = config
+
+    const chartType = chartTypes?.[0] ?? GRAPHER_CHART_TYPES.LineChart
+    if (chartType === GRAPHER_CHART_TYPES.ScatterPlot) return undefined
+    if (!dimensions) return undefined
+
+    const yVariableIds = dimensions
+        .filter((d) => d.property === DimensionProperty.y)
+        .map((d) => d.variableId)
+
+    if (yVariableIds.length !== 1) return undefined
+
+    return yVariableIds[0]
+}
+
+// Page numbers are 0-indexed - you'll have to +1 to them when rendering
+export function getPaginationPageNumbers(
+    currentPageNumber: number,
+    totalPageCount: number,
+    size: number = 5
+): number[] {
+    let start = Math.max(0, currentPageNumber - Math.floor(size / 2))
+
+    if (start + size > totalPageCount) {
+        start = Math.max(0, totalPageCount - size)
+    }
+
+    const pageNumbers = []
+
+    for (let i = start; i < Math.min(start + size, totalPageCount); i++) {
+        pageNumbers.push(i)
+    }
+
+    return pageNumbers
+}
+
+/**
+ * Checks for content equality, but doesn't care about the order of elements.
+ *
+ * For example, `isArrayDifferentFromReference([1, 2], [2, 1])` returns `false`.
+ */
+export function isArrayDifferentFromReference<T>(
+    array: T[],
+    referenceArray: T[]
+): boolean {
+    if (array.length !== referenceArray.length) return true
+    return difference(array, referenceArray).length > 0
 }

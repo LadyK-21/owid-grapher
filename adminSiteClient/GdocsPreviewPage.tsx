@@ -1,58 +1,71 @@
-import React, {
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
-} from "react"
+import { useCallback, useContext, useEffect, useRef, useState } from "react"
+import * as React from "react"
 import { AdminLayout } from "./AdminLayout.js"
 import { GdocsMatchProps } from "./GdocsIndexPage.js"
-import { GdocsSettingsForm } from "./GdocsSettingsForm.js"
+import {
+    GdocPostSettings,
+    GdocInsightSettings,
+    GdocHomepageSettings,
+    GdocAuthorSettings,
+} from "./GdocsSettingsForms.js"
 import { AdminAppContext } from "./AdminAppContext.js"
+import { getCanonicalUrl } from "@ourworldindata/components"
 import {
     checkIsPlainObjectWithGuard,
+    dayjs,
     GdocsContentSource,
     getOwidGdocFromJSON,
-    OwidGdocInterface,
     OwidGdocJSON,
     OwidGdocErrorMessage,
     OwidGdocErrorMessageType,
+    slugify,
+    OwidGdocType,
+    OwidGdoc,
+    Tippy,
+    CreateTombstoneData,
 } from "@ourworldindata/utils"
 import { Button, Col, Drawer, Row, Space, Tag, Typography } from "antd"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import {
     faGear,
-    faArrowsRotate,
-    faExclamationTriangle,
     faAngleLeft,
+    faQuestionCircle,
 } from "@fortawesome/free-solid-svg-icons"
+import { match as tsMatch, P } from "ts-pattern"
 
+import { useGdocsChanged, useLightningUpdate } from "./gdocsHooks.js"
 import { getErrors } from "./gdocsValidation.js"
 import { GdocsSaveButtons } from "./GdocsSaveButtons.js"
+import { useGdocsStore } from "./GdocsStoreContext.js"
 import { IconBadge } from "./IconBadge.js"
-import { useGdocsStore } from "./GdocsStore.js"
-import { useGdocsChanged, useLightningUpdate } from "./gdocsHooks.js"
 import { GdocsMoreMenu } from "./GdocsMoreMenu.js"
 import { GdocsEditLink } from "./GdocsEditLink.js"
 import { openSuccessNotification } from "./gdocsNotifications.js"
 import { GdocsDiffButton } from "./GdocsDiffButton.js"
 import { GdocsDiff } from "./GdocsDiff.js"
-import { useInterval } from "../site/hooks.js"
+import {
+    BAKED_BASE_URL,
+    PUBLISHED_AT_FORMAT,
+} from "../settings/clientSettings.js"
 
 export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
     const { id } = match.params
     const [gdoc, setGdoc] = useState<{
-        original?: OwidGdocInterface
-        current?: OwidGdocInterface
+        original?: OwidGdoc
+        current?: OwidGdoc
     }>({ original: undefined, current: undefined })
     const originalGdoc = gdoc.original
     const currentGdoc = gdoc.current
-    const setCurrentGdoc = (current: OwidGdocInterface | undefined) => {
-        setGdoc({ original: originalGdoc, current })
+    const setCurrentGdoc = (
+        updater: (current: OwidGdoc | undefined) => OwidGdoc | undefined
+    ) => {
+        setGdoc(({ original, current }) => ({
+            original,
+            current: updater(current),
+        }))
     }
     const hasChanges = useGdocsChanged(originalGdoc, currentGdoc)
     const [isSettingsOpen, setSettingsOpen] = useState(false)
-    const [hasSyncingError, setHasSyncingError] = useState(false)
     const [criticalErrorMessage, setCriticalErrorMessage] = useState<
         undefined | string
     >()
@@ -60,14 +73,8 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
     const [errors, setErrors] = React.useState<OwidGdocErrorMessage[]>()
     const { admin } = useContext(AdminAppContext)
     const store = useGdocsStore()
-    // Cancel all other requests in progress (most likely just the automatic fetch)
-    const cancelAllRequests = useMemo(
-        () => () =>
-            admin.currentRequestAbortControllers.forEach((abortController) => {
-                abortController.abort()
-            }),
-        [admin]
-    )
+
+    const iframeRef = useRef<HTMLIFrameElement>(null)
 
     const fetchGdoc = useCallback(
         (contentSource: GdocsContentSource) =>
@@ -86,9 +93,6 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
         if (checkIsPlainObjectWithGuard(error) && error.status === 500) {
             console.log("Critical error", error)
             setCriticalErrorMessage(error.message as string)
-        } else {
-            console.log("Syncing error", error)
-            setHasSyncingError(true)
         }
     }, [])
 
@@ -100,6 +104,9 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
                 // if images need to be uploaded from the original
                 const original = await fetchGdoc(GdocsContentSource.Internal)
                 const current = await fetchGdoc(GdocsContentSource.Gdocs)
+                if (!current.slug && current.content.title) {
+                    current.slug = slugify(current.content.title)
+                }
                 admin.loadingIndicatorSetting = "off"
                 setGdoc({ original, current })
             } catch (error) {
@@ -107,23 +114,9 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
             }
         }
         if (!originalGdoc) {
-            fetchGdocs()
+            void fetchGdocs()
         }
     }, [originalGdoc, fetchGdoc, handleError, admin])
-
-    // synchronise content every 5 seconds
-    useInterval(async () => {
-        if (currentGdoc) {
-            const latestGdoc = await fetchGdoc(GdocsContentSource.Gdocs)
-            setCurrentGdoc({
-                ...latestGdoc,
-                slug: currentGdoc.slug,
-                published: currentGdoc.published,
-                publishedAt: currentGdoc.publishedAt,
-                publicationContext: currentGdoc.publicationContext,
-            })
-        }
-    }, 5000)
 
     const isLightningUpdate = useLightningUpdate(
         originalGdoc,
@@ -141,30 +134,42 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
             (error) => error.type === OwidGdocErrorMessageType.Error
         ) ?? false
 
+    const saveDraft = async () => {
+        if (!currentGdoc) return
+
+        if (currentGdoc.published)
+            throw new Error("Cannot save a published doc as a draft")
+
+        const updatedGdoc = await store.update(currentGdoc)
+        setGdoc({ original: updatedGdoc, current: updatedGdoc })
+        openSuccessNotification("draft")
+    }
+
     const doPublish = async () => {
         if (!currentGdoc) return
-        cancelAllRequests()
         // set to today if not specified
         const publishedAt = currentGdoc.publishedAt ?? new Date()
+        publishedAt.setSeconds(0, 0)
+        const slug = currentGdoc.slug || slugify(`${currentGdoc.content.title}`)
         const publishedGdoc = await store.publish({
             ...currentGdoc,
             publishedAt,
+            slug,
         })
         setGdoc({ original: publishedGdoc, current: publishedGdoc })
-        openSuccessNotification()
+        openSuccessNotification("published")
     }
 
     const doUnpublish = async () => {
         if (!currentGdoc) return
-        cancelAllRequests()
         const unpublishedGdoc = await store.unpublish(currentGdoc)
         setGdoc({ original: unpublishedGdoc, current: unpublishedGdoc })
-        openSuccessNotification()
+        openSuccessNotification("unpublished")
     }
 
-    const onDelete = async () => {
+    const onDelete = async (tombstone?: CreateTombstoneData) => {
         if (!currentGdoc) return
-        await store.delete(currentGdoc)
+        await store.delete(currentGdoc, tombstone)
         history.push("/gdocs")
     }
 
@@ -188,7 +193,11 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
             <AdminLayout title="Preview error" noSidebar fixedNav={false}>
                 <main className="GdocsEditPage">
                     <div className="GdocsEditPage__error-container">
-                        <p>Something went wrong preparing the article.</p>
+                        <p>
+                            Something went wrong preparing the article{" "}
+                            <GdocsEditLink gdocId={id} />
+                        </p>
+
                         <pre>{criticalErrorMessage}</pre>
                         <p>
                             Ask a dev for help if necessary, and reload this
@@ -224,32 +233,39 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
                                 {currentGdoc.content.title}
                             </Typography.Title>
                             [ <GdocsEditLink gdocId={currentGdoc.id} /> ]
+                            {currentGdoc.published &&
+                                currentGdoc.publishedAt && (
+                                    <>
+                                        [
+                                        {currentGdoc.publishedAt <=
+                                        new Date() ? (
+                                            <>
+                                                <a
+                                                    href={getCanonicalUrl(
+                                                        BAKED_BASE_URL,
+                                                        currentGdoc
+                                                    )}
+                                                >
+                                                    View live
+                                                </a>
+                                                <Tippy
+                                                    content="There might be a slight delay before content scheduled into the future becomes live."
+                                                    placement="bottom"
+                                                >
+                                                    <FontAwesomeIcon
+                                                        icon={faQuestionCircle}
+                                                    />
+                                                </Tippy>
+                                            </>
+                                        ) : (
+                                            `Scheduled for ${dayjs(currentGdoc.publishedAt).utc().format(PUBLISHED_AT_FORMAT)} (UTC)`
+                                        )}
+                                        ]
+                                    </>
+                                )}
                             <div>
                                 {!currentGdoc.published && (
                                     <Tag color="default">Draft</Tag>
-                                )}
-                                {hasSyncingError ? (
-                                    <Tag
-                                        icon={
-                                            <FontAwesomeIcon
-                                                icon={faExclamationTriangle}
-                                            />
-                                        }
-                                        color="warning"
-                                    >
-                                        Syncing error, retrying...
-                                    </Tag>
-                                ) : (
-                                    <Tag
-                                        icon={
-                                            <FontAwesomeIcon
-                                                icon={faArrowsRotate}
-                                            />
-                                        }
-                                        color="success"
-                                    >
-                                        preview
-                                    </Tag>
                                 )}
                             </div>
                         </Space>
@@ -267,14 +283,15 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
                                 isLightningUpdate={isLightningUpdate}
                                 setDiffOpen={setDiffOpen}
                                 doPublish={doPublish}
+                                saveDraft={saveDraft}
                             />
                             <IconBadge
                                 status={
                                     hasErrors
                                         ? OwidGdocErrorMessageType.Error
                                         : hasWarnings
-                                        ? OwidGdocErrorMessageType.Warning
-                                        : null
+                                          ? OwidGdocErrorMessageType.Warning
+                                          : null
                                 }
                             >
                                 <Button onClick={() => setSettingsOpen(true)}>
@@ -296,17 +313,83 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
                     size="large"
                     onClose={onSettingsClose}
                     open={isSettingsOpen}
-                    extra={
-                        <Button type="primary" onClick={onSettingsClose}>
-                            Done
-                        </Button>
-                    }
                 >
-                    <GdocsSettingsForm
-                        gdoc={currentGdoc}
-                        setCurrentGdoc={setCurrentGdoc}
-                        errors={errors}
-                    />
+                    {tsMatch(currentGdoc)
+                        .with(
+                            {
+                                content: {
+                                    type: P.union(
+                                        OwidGdocType.Article,
+                                        OwidGdocType.TopicPage,
+                                        OwidGdocType.LinearTopicPage,
+                                        OwidGdocType.Fragment,
+                                        OwidGdocType.AboutPage
+                                    ),
+                                },
+                            },
+                            (gdoc) => (
+                                <GdocPostSettings
+                                    gdoc={gdoc}
+                                    setCurrentGdoc={(updatedGdoc) =>
+                                        setCurrentGdoc(() => updatedGdoc)
+                                    }
+                                    errors={errors}
+                                />
+                            )
+                        )
+                        .with(
+                            {
+                                content: {
+                                    type: OwidGdocType.DataInsight,
+                                },
+                            },
+                            (gdoc) => (
+                                <GdocInsightSettings
+                                    gdoc={gdoc}
+                                    setCurrentGdoc={(updatedGdoc) =>
+                                        setCurrentGdoc(() => updatedGdoc)
+                                    }
+                                    errors={errors}
+                                />
+                            )
+                        )
+                        .with(
+                            {
+                                content: {
+                                    type: OwidGdocType.Homepage,
+                                },
+                            },
+                            (gdoc) => (
+                                <GdocHomepageSettings
+                                    gdoc={gdoc}
+                                    errors={errors}
+                                />
+                            )
+                        )
+                        .with(
+                            {
+                                content: {
+                                    type: OwidGdocType.Author,
+                                },
+                            },
+                            (gdoc) => (
+                                <GdocAuthorSettings
+                                    gdoc={gdoc}
+                                    setCurrentGdoc={(updatedGdoc) =>
+                                        setCurrentGdoc(() => updatedGdoc)
+                                    }
+                                    errors={errors}
+                                />
+                            )
+                        )
+                        .with(P.any, () => (
+                            <div>
+                                Unknown gdoc type. Add a <strong>type</strong>{" "}
+                                to the front-matter of this gdoc and reload this
+                                page.
+                            </div>
+                        ))
+                        .run()}
                 </Drawer>
                 <Drawer
                     placement="bottom"
@@ -332,9 +415,11 @@ export const GdocsPreviewPage = ({ match, history }: GdocsMatchProps) => {
                     resets on every change)
                 */}
                 <iframe
+                    ref={iframeRef}
                     src={`/gdocs/${currentGdoc.id}/preview#owid-document-root`}
                     style={{ width: "100%", border: "none" }}
-                    key={currentGdoc.revisionId}
+                    // use `updatedAt` as a proxy for when database-level settings such as breadcrumbs have changed
+                    key={`${currentGdoc.revisionId}-${originalGdoc?.updatedAt}`}
                 />
 
                 {currentGdoc.published && (

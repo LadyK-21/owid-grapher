@@ -1,43 +1,57 @@
 import React from "react"
 import {
     ComparisonLineConfig,
-    ComparisonLine,
-} from "../scatterCharts/ComparisonLine"
+    ScaleType,
+    EntitySelectionMode,
+    ScatterPointLabelStrategy,
+    SeriesName,
+    Color,
+    EntityName,
+    OwidTableSlugs,
+    ColorSchemeName,
+    ValueRange,
+    ColumnSlug,
+    AxisAlign,
+} from "@ourworldindata/types"
+import { ComparisonLine } from "../scatterCharts/ComparisonLine"
 import { observable, computed, action } from "mobx"
 import { ScaleLinear, scaleSqrt } from "d3-scale"
+import { Quadtree, quadtree } from "d3-quadtree"
+import { quantize, interpolate } from "d3-interpolate"
 import {
     intersection,
     without,
+    excludeNullish,
     uniq,
+    first,
     last,
+    pairs,
+    clone,
     excludeUndefined,
-    flatten,
     isEmpty,
     isNumber,
     domainExtent,
+    getRelativeMouse,
     lowerCaseFirstLetterUnlessAbbreviation,
     exposeInstanceOnWindow,
     groupBy,
-    sampleFrom,
-    intersectionOfSets,
+    min,
     max,
+    PointVector,
     Bounds,
     DEFAULT_BOUNDS,
+    isTouchDevice,
+    round,
+    difference,
 } from "@ourworldindata/utils"
 import { observer } from "mobx-react"
 import { NoDataModal } from "../noDataModal/NoDataModal"
 import {
     BASE_FONT_SIZE,
-    ScaleType,
-    EntitySelectionMode,
-    ScatterPointLabelStrategy,
-    SeriesName,
+    GRAPHER_AXIS_LINE_WIDTH_DEFAULT,
+    GRAPHER_AXIS_LINE_WIDTH_THICK,
 } from "../core/GrapherConstants"
 import {
-    Color,
-    EntityName,
-    OwidRow,
-    OwidTableSlugs,
     OwidTable,
     defaultIfErrorValue,
     isNotErrorValue,
@@ -65,19 +79,20 @@ import { ChartInterface } from "../chart/ChartInterface"
 import {
     ScatterPlotManager,
     ScatterSeries,
-    SCATTER_LABEL_DEFAULT_FONT_SIZE,
-    SCATTER_LABEL_MAX_FONT_SIZE,
-    SCATTER_LABEL_MIN_FONT_SIZE,
+    SCATTER_LABEL_DEFAULT_FONT_SIZE_FACTOR,
+    SCATTER_LABEL_MAX_FONT_SIZE_FACTOR,
+    SCATTER_LABEL_MIN_FONT_SIZE_FACTOR,
     SCATTER_LINE_DEFAULT_WIDTH,
     SCATTER_LINE_MAX_WIDTH,
     SCATTER_POINT_DEFAULT_RADIUS,
     SCATTER_POINT_MAX_RADIUS,
     SeriesPoint,
+    ScatterPointQuadtreeNode,
+    SCATTER_QUADTREE_SAMPLING_DISTANCE,
 } from "./ScatterPlotChartConstants"
-import { ScatterTooltip } from "./ScatterTooltip"
 import { ScatterPointsWithLabels } from "./ScatterPointsWithLabels"
 import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
-import { ColorSchemeName, OwidNoDataGray } from "../color/ColorConstants"
+import { OWID_NO_DATA_GRAY } from "../color/ColorConstants"
 import {
     ColorScaleConfig,
     ColorScaleConfigDefaults,
@@ -88,6 +103,20 @@ import {
     ScatterSizeLegend,
     ScatterSizeLegendManager,
 } from "./ScatterSizeLegend"
+import { TooltipFooterIcon } from "../tooltip/TooltipProps.js"
+import {
+    Tooltip,
+    TooltipState,
+    TooltipValueRange,
+    makeTooltipToleranceNotice,
+    makeTooltipRoundingNotice,
+} from "../tooltip/Tooltip"
+import { NoDataSection } from "./NoDataSection"
+
+function computeSizeDomain(table: OwidTable, slug: ColumnSlug): ValueRange {
+    const sizeValues = table.get(slug).values.filter(isNumber)
+    return [0, max(sizeValues) ?? 1]
+}
 
 @observer
 export class ScatterPlotChart
@@ -102,75 +131,39 @@ export class ScatterPlotChart
         VerticalColorLegendManager,
         ColorScaleManager
 {
-    // currently hovered individual series key
-    @observable private hoveredSeries?: SeriesName
     // currently hovered legend color
     @observable private hoverColor?: Color
+    // current hovered individual series + tooltip position
+    @observable tooltipState = new TooltipState<{
+        series: ScatterSeries
+    }>()
+
+    private filterManuallySelectedEntities(table: OwidTable): OwidTable {
+        const { includedEntities, excludedEntities } = this.manager
+        const excludedEntityIdsSet = new Set(excludedEntities)
+        const includedEntityIdsSet = new Set(includedEntities)
+        const excludeEntitiesFilter = (entityId: any): boolean =>
+            !excludedEntityIdsSet.has(entityId as number)
+        const includedEntitiesFilter = (entityId: any): boolean =>
+            includedEntityIdsSet.size > 0
+                ? includedEntityIdsSet.has(entityId as number)
+                : true
+        const filterFn = (entityId: any): boolean =>
+            excludeEntitiesFilter(entityId) && includedEntitiesFilter(entityId)
+        const excludedList = excludedEntities ? excludedEntities.join(", ") : ""
+        const includedList = includedEntities ? includedEntities.join(", ") : ""
+        return table.columnFilter(
+            OwidTableSlugs.entityId,
+            filterFn,
+            `Excluded entity ids specified by author: ${excludedList} - Included entity ids specified by author: ${includedList}`
+        )
+    }
 
     transformTable(table: OwidTable): OwidTable {
-        const {
-            backgroundSeriesLimit,
-            includedEntities,
-            excludedEntities,
-            addCountryMode,
-        } = this.manager
-
-        if (
-            addCountryMode === EntitySelectionMode.Disabled ||
-            addCountryMode === EntitySelectionMode.SingleEntity
-        ) {
-            table = table.filterByEntityNames(
-                this.selectionArray.selectedEntityNames
-            )
-        }
+        const { includedEntities, excludedEntities } = this.manager
 
         if (excludedEntities || includedEntities) {
-            const excludedEntityIdsSet = new Set(excludedEntities)
-            const includedEntityIdsSet = new Set(includedEntities)
-            const excludeEntitiesFilter = (entityId: any): boolean =>
-                !excludedEntityIdsSet.has(entityId as number)
-            const includedEntitiesFilter = (entityId: any): boolean =>
-                includedEntityIdsSet.size > 0
-                    ? includedEntityIdsSet.has(entityId as number)
-                    : true
-            const filterFn = (entityId: any): boolean =>
-                excludeEntitiesFilter(entityId) &&
-                includedEntitiesFilter(entityId)
-            const excludedList = excludedEntities
-                ? excludedEntities.join(", ")
-                : ""
-            const includedList = includedEntities
-                ? includedEntities.join(", ")
-                : ""
-            table = table.columnFilter(
-                OwidTableSlugs.entityId,
-                filterFn,
-                `Excluded entity ids specified by author: ${excludedList} - Included entity ids specified by author: ${includedList}`
-            )
-        }
-
-        // Allow authors to limit the # of background entities to get better perf and clearer charts.
-        if (backgroundSeriesLimit) {
-            const selectedSeriesNames = new Set<SeriesName>(
-                this.selectionArray.selectedEntityNames
-            )
-            // Todo: implement a better strategy for picking the entities to show for context. Maybe a couple per decile?
-            const backgroundSeriesNames = new Set<SeriesName>(
-                sampleFrom(
-                    table.availableEntityNames.filter(
-                        (name) => !selectedSeriesNames.has(name)
-                    ),
-                    backgroundSeriesLimit,
-                    123
-                )
-            )
-            table = table.columnFilter(
-                table.entityNameSlug,
-                (name) =>
-                    selectedSeriesNames.has(name as string) ||
-                    backgroundSeriesNames.has(name as string),
-                `Capped background series at ${backgroundSeriesLimit}`
-            )
+            table = this.filterManuallySelectedEntities(table)
         }
 
         if (this.xScaleType === ScaleType.log && this.xColumnSlug)
@@ -179,28 +172,8 @@ export class ScatterPlotChart
         if (this.yScaleType === ScaleType.log && this.yColumnSlug)
             table = table.replaceNonPositiveCellsForLogScale([this.yColumnSlug])
 
-        if (this.sizeColumnSlug) {
-            const tolerance =
-                table.get(this.sizeColumnSlug)?.display?.tolerance ?? Infinity
-            table = table.interpolateColumnWithTolerance(
-                this.sizeColumnSlug,
-                tolerance
-            )
-        }
-
-        if (this.colorColumnSlug) {
-            const tolerance =
-                table.get(this.colorColumnSlug)?.display?.tolerance ?? Infinity
-            table = table.interpolateColumnWithTolerance(
-                this.colorColumnSlug,
-                tolerance
-            )
-            if (this.manager.matchingEntitiesOnly) {
-                table = table.dropRowsWithErrorValuesForColumn(
-                    this.colorColumnSlug
-                )
-            }
-        }
+        if (this.colorColumnSlug && this.manager.matchingEntitiesOnly)
+            table = table.dropRowsWithErrorValuesForColumn(this.colorColumnSlug)
 
         // We want to "chop off" any rows outside the time domain for X and Y to avoid creating
         // leading and trailing timeline times that don't really exist in the dataset.
@@ -252,6 +225,28 @@ export class ScatterPlotChart
         return table
     }
 
+    transformTableForDisplay(table: OwidTable): OwidTable {
+        const { includedEntities, excludedEntities } = this.manager
+
+        if (excludedEntities || includedEntities) {
+            table = this.filterManuallySelectedEntities(table)
+        }
+
+        // Drop any rows which have non-number values for X or Y.
+        table = table
+            .columnFilter(
+                this.xColumnSlug,
+                isNumber,
+                "Drop rows with non-number values in X column"
+            )
+            .columnFilter(
+                this.yColumnSlug,
+                isNumber,
+                "Drop rows with non-number values in Y column"
+            )
+        return table
+    }
+
     @computed get inputTable(): OwidTable {
         return this.manager.table
     }
@@ -266,24 +261,8 @@ export class ScatterPlotChart
     // TODO chunk this up into multiple computeds for better performance?
     @computed get transformedTable(): OwidTable {
         let table = this.transformedTableFromGrapher
-        if (
-            this.manager.hideLinesOutsideTolerance &&
-            this.manager.startTime !== undefined &&
-            this.manager.endTime !== undefined
-        ) {
-            const entityNames = Array.from(
-                intersectionOfSets(
-                    [this.manager.startTime, this.manager.endTime].map(
-                        (targetTime) =>
-                            table.filterByTargetTimes([targetTime], 0)
-                                .availableEntityNameSet
-                    )
-                )
-            )
-            table = table.filterByEntityNames(entityNames)
-        }
         // We don't want to apply this transform when relative mode is also enabled, it has a
-        // sligthly different endpoints logic that drops initial zeroes to avoid DivideByZero error.
+        // slightly different endpoints logic that drops initial zeroes to avoid DivideByZero error.
         if (this.compareEndPointsOnly && !this.manager.isRelativeMode) {
             table = table.keepMinTimeAndMaxTimeForEachEntityOnly()
         }
@@ -296,12 +275,79 @@ export class ScatterPlotChart
         return table
     }
 
+    @computed private get domainsForAnimation(): {
+        x?: ValueRange
+        y?: ValueRange
+        size?: ValueRange
+    } {
+        const { inputTable } = this
+        const {
+            animationStartTime,
+            animationEndTime,
+            includedEntities,
+            excludedEntities,
+        } = this.manager
+
+        if (!animationStartTime || !animationEndTime) return {}
+
+        let table = inputTable.filterByTimeRange(
+            animationStartTime,
+            animationEndTime
+        )
+
+        if (excludedEntities || includedEntities) {
+            table = this.filterManuallySelectedEntities(table)
+        }
+
+        if (this.manager.matchingEntitiesOnly && !this.colorColumn.isMissing) {
+            table = table.filterByEntityNames(
+                table.get(this.colorColumnSlug).uniqEntityNames
+            )
+        }
+
+        table = table
+            .columnFilter(
+                this.xColumnSlug,
+                isNumber,
+                "Drop rows with non-number values in X column"
+            )
+            .columnFilter(
+                this.yColumnSlug,
+                isNumber,
+                "Drop rows with non-number values in Y column"
+            )
+
+        const xValues = table.get(this.xColumnSlug).uniqValues
+        const yValues = table.get(this.yColumnSlug).uniqValues
+
+        return {
+            x: domainExtent(xValues, this.xScaleType),
+            y: domainExtent(yValues, this.yScaleType),
+            size: computeSizeDomain(table, this.sizeColumn.slug),
+        }
+    }
+
     @computed private get manager(): ScatterPlotManager {
         return this.props.manager
     }
 
     @computed.struct private get bounds(): Bounds {
         return this.props.bounds ?? DEFAULT_BOUNDS
+    }
+
+    @computed private get innerBounds(): Bounds {
+        return (
+            this.bounds
+                .padRight(this.sidebarWidth + 20)
+                // top padding leaves room for tick labels
+                .padTop(this.currentVerticalAxisLabel ? 0 : 6)
+                // bottom padding makes sure the x-axis label doesn't overflow
+                .padBottom(2)
+        )
+    }
+
+    @computed get axisBounds(): Bounds {
+        return this.innerBounds
     }
 
     @computed private get canAddCountry(): boolean {
@@ -311,7 +357,7 @@ export class ScatterPlotChart
     }
 
     @computed private get selectionArray(): SelectionArray {
-        return makeSelectionArray(this.manager)
+        return makeSelectionArray(this.manager.selection)
     }
 
     @action.bound private onSelectEntity(entityName: SeriesName): void {
@@ -338,25 +384,31 @@ export class ScatterPlotChart
         )
     }
 
+    @computed get detailsOrderedByReference(): string[] {
+        return this.manager.detailsOrderedByReference ?? []
+    }
+
     @computed get fontSize(): number {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+        return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
     @action.bound onLegendMouseOver(color: string): void {
+        if (isTouchDevice()) return
         this.hoverColor = color
     }
 
     @action.bound onLegendMouseLeave(): void {
+        if (isTouchDevice()) return
         this.hoverColor = undefined
     }
 
     // When the color legend is clicked, toggle selection fo all associated keys
-    @action.bound onLegendClick(): void {
-        const { hoverColor, selectionArray } = this
-        if (!this.canAddCountry || hoverColor === undefined) return
+    @action.bound onLegendClick(color: string): void {
+        const { selectionArray } = this
+        if (!this.canAddCountry) return
 
         const keysToToggle = this.series
-            .filter((g) => g.color === hoverColor)
+            .filter((g) => g.color === color)
             .map((g) => g.seriesName)
         const allKeysActive =
             intersection(keysToToggle, this.selectedEntityNames).length ===
@@ -387,7 +439,7 @@ export class ScatterPlotChart
 
     // All currently hovered series keys, combining the legend and the main UI
     @computed private get hoveredSeriesNames(): string[] {
-        const { hoverColor, hoveredSeries } = this
+        const { hoverColor, tooltipState } = this
 
         const hoveredSeriesNames =
             hoverColor === undefined
@@ -398,7 +450,9 @@ export class ScatterPlotChart
                           .map((g) => g.seriesName)
                   )
 
-        if (hoveredSeries !== undefined) hoveredSeriesNames.push(hoveredSeries)
+        if (tooltipState.target) {
+            hoveredSeriesNames.push(tooltipState.target.series.seriesName)
+        }
 
         return hoveredSeriesNames
     }
@@ -435,27 +489,30 @@ export class ScatterPlotChart
         return new ConnectedScatterLegend(this)
     }
 
-    @action.bound private onScatterMouseOver(series: ScatterSeries): void {
-        this.hoveredSeries = series.seriesName
+    @action.bound private onScatterMouseEnter(series: ScatterSeries): void {
+        this.tooltipState.target = { series }
     }
 
     @action.bound private onScatterMouseLeave(): void {
-        this.hoveredSeries = undefined
+        this.tooltipState.target = null
+    }
+
+    @action.bound private onScatterMouseMove(
+        ev: React.MouseEvent<SVGGElement>
+    ): void {
+        const ref = this.manager?.base?.current
+        if (ref) {
+            this.tooltipState.position = getRelativeMouse(ref, ev)
+        }
     }
 
     @action.bound private onScatterClick(): void {
-        if (this.hoveredSeries) this.onSelectEntity(this.hoveredSeries)
+        const { target } = this.tooltipState
+        if (target) this.onSelectEntity(target.series.seriesName)
     }
 
     @computed get tooltipSeries(): ScatterSeries | undefined {
-        const { hoveredSeries, focusedEntityNames } = this
-        if (hoveredSeries !== undefined)
-            return this.series.find((g) => g.seriesName === hoveredSeries)
-        if (focusedEntityNames && focusedEntityNames.length === 1)
-            return this.series.find(
-                (g) => g.seriesName === focusedEntityNames[0]
-            )
-        return undefined
+        return this.tooltipState.target?.series
     }
 
     @computed private get legendDimensions(): VerticalColorLegend {
@@ -483,11 +540,10 @@ export class ScatterPlotChart
         )
     }
 
-    // todo: Refactor
     @computed get dualAxis(): DualAxis {
         const { horizontalAxisPart, verticalAxisPart } = this
         return new DualAxis({
-            bounds: this.bounds.padRight(this.sidebarWidth + 20),
+            bounds: this.axisBounds,
             horizontalAxis: horizontalAxisPart,
             verticalAxis: verticalAxisPart,
         })
@@ -523,7 +579,7 @@ export class ScatterPlotChart
             series = series.filter((g) => activeKeys.includes(g.seriesName))
 
         const colorValues = uniq(
-            flatten(series.map((s) => s.points.map((p) => p.color)))
+            series.flatMap((s) => s.points.map((p) => p.color))
         )
         return excludeUndefined(
             colorValues.map((color) => this.colorScale.getColor(color))
@@ -538,7 +594,67 @@ export class ScatterPlotChart
         return !!this.manager.hideScatterLabels
     }
 
-    @computed private get points(): JSX.Element {
+    @computed private get quadtree(): Quadtree<ScatterPointQuadtreeNode> {
+        const {
+            series: seriesArray,
+            dualAxis: { horizontalAxis, verticalAxis, innerBounds },
+        } = this
+
+        const xAxis = horizontalAxis.clone()
+        xAxis.range = innerBounds.xRange()
+        const yAxis = verticalAxis.clone()
+        yAxis.range = innerBounds.yRange()
+
+        const nodes: ScatterPointQuadtreeNode[] = seriesArray.flatMap(
+            (series) => {
+                const points = series.points.map((point) => {
+                    return new PointVector(
+                        xAxis.place(point.x),
+                        yAxis.place(point.y)
+                    )
+                })
+
+                // add single points as is
+                if (points.length < 2)
+                    return points.map((point) => ({
+                        series,
+                        x: point.x,
+                        y: point.y,
+                    }))
+
+                // sample points from line segments with a fixed step size
+                return pairs(points).flatMap(([a, b]) => {
+                    const numPoints =
+                            2 + // always include endpoints
+                            Math.floor(
+                                PointVector.distance(a, b) /
+                                    SCATTER_QUADTREE_SAMPLING_DISTANCE
+                            ),
+                        lineRange = interpolate(
+                            { x: a.x, y: a.y },
+                            { x: b.x, y: b.y }
+                        ),
+                        coords = quantize(
+                            (pct: number) => clone(lineRange(pct)),
+                            numPoints
+                        )
+
+                    return coords.map((point) => ({
+                        series,
+                        x: point.x,
+                        y: point.y,
+                    }))
+                })
+            }
+        )
+
+        return quadtree<ScatterPointQuadtreeNode>()
+            .x(({ x }) => x)
+            .y(({ y }) => y)
+            .addAll(nodes)
+    }
+
+    @computed private get points(): React.ReactElement {
         return (
             <ScatterPointsWithLabels
                 noDataModalManager={this.manager}
@@ -551,13 +667,17 @@ export class ScatterPlotChart
                 }
                 sizeScale={this.sizeScale}
                 fontScale={this.fontScale}
+                baseFontSize={this.fontSize}
                 focusedSeriesNames={this.focusedEntityNames}
                 hoveredSeriesNames={this.hoveredSeriesNames}
+                tooltipSeriesName={this.tooltipSeries?.seriesName}
                 disableIntroAnimation={this.manager.disableIntroAnimation}
                 hideScatterLabels={this.hideScatterLabels}
-                onMouseOver={this.onScatterMouseOver}
+                onMouseEnter={this.onScatterMouseEnter}
                 onMouseLeave={this.onScatterMouseLeave}
                 onClick={this.onScatterClick}
+                quadtree={this.quadtree}
+                backgroundColor={this.manager.backgroundColor}
             />
         )
     }
@@ -583,40 +703,27 @@ export class ScatterPlotChart
     }
 
     @computed get sizeScale(): ScaleLinear<number, number> {
-        return scaleSqrt()
-            .domain(this.sizeDomain)
-            .range(
-                this.sizeColumn.isMissing
-                    ? // if the size column is missing, we want all points/lines to have the same width
-                      this.isConnected
-                        ? [
-                              SCATTER_LINE_DEFAULT_WIDTH,
-                              SCATTER_LINE_DEFAULT_WIDTH,
-                          ]
-                        : [
-                              SCATTER_POINT_DEFAULT_RADIUS,
-                              SCATTER_POINT_DEFAULT_RADIUS,
-                          ]
-                    : this.isConnected
-                    ? // Note that the scale starts at 0.
-                      // When using the scale to plot marks, we need to make sure the minimums
-                      // (e.g. `SCATTER_POINT_MIN_RADIUS`) are respected.
-                      [0, SCATTER_LINE_MAX_WIDTH]
-                    : [0, SCATTER_POINT_MAX_RADIUS]
-            )
+        return scaleSqrt().domain(this.sizeDomain).range(this.sizeRange)
     }
 
     @computed get fontScale(): ScaleLinear<number, number> {
+        const defaultFontSize =
+            SCATTER_LABEL_DEFAULT_FONT_SIZE_FACTOR * this.fontSize
+        const minFactor = this.manager.isNarrow
+            ? SCATTER_LABEL_DEFAULT_FONT_SIZE_FACTOR
+            : SCATTER_LABEL_MIN_FONT_SIZE_FACTOR
+        const maxFactor = this.manager.isNarrow
+            ? SCATTER_LABEL_DEFAULT_FONT_SIZE_FACTOR
+            : SCATTER_LABEL_MAX_FONT_SIZE_FACTOR
+        const minFontSize = minFactor * this.fontSize
+        const maxFontSize = maxFactor * this.fontSize
         return scaleSqrt()
             .domain(this.sizeDomain)
             .range(
                 this.sizeColumn.isMissing
                     ? // if the size column is missing, we want all labels to have the same font size
-                      [
-                          SCATTER_LABEL_DEFAULT_FONT_SIZE,
-                          SCATTER_LABEL_DEFAULT_FONT_SIZE,
-                      ]
-                    : [SCATTER_LABEL_MIN_FONT_SIZE, SCATTER_LABEL_MAX_FONT_SIZE]
+                      [defaultFontSize, defaultFontSize]
+                    : [minFontSize, maxFontSize]
             )
     }
 
@@ -630,11 +737,19 @@ export class ScatterPlotChart
         return new ScatterSizeLegend(this)
     }
 
+    @computed
+    private get selectedEntitiesWithoutData(): string[] {
+        return difference(
+            this.selectedEntityNames,
+            this.series.map((s) => s.seriesName)
+        )
+    }
+
     componentDidMount(): void {
         exposeInstanceOnWindow(this)
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         if (this.failMessage)
             return (
                 <NoDataModal
@@ -645,72 +760,241 @@ export class ScatterPlotChart
             )
 
         const {
+            manager,
             bounds,
             dualAxis,
             arrowLegend,
             sizeLegend,
             sidebarWidth,
-            tooltipSeries,
             comparisonLines,
             legendDimensions,
         } = this
 
-        const sizeLegendY = bounds.top + legendDimensions.height + 8
-        const arrowLegendY = sizeLegend
-            ? sizeLegendY + sizeLegend.height + 15
-            : sizeLegendY
-        const tooltipY = arrowLegend
-            ? arrowLegendY + arrowLegend.height + 10
-            : arrowLegendY
+        const hasLegendItems = this.legendItems.length > 0
+        const verticalLegendHeight = hasLegendItems
+            ? legendDimensions.height
+            : 0
+        const sizeLegendHeight = sizeLegend?.height ?? 0
+        const arrowLegendHeight = arrowLegend?.height ?? 0
+
+        const legendPadding = 16
+        const ySizeLegend =
+            this.legendY +
+            verticalLegendHeight +
+            (verticalLegendHeight > 0 ? legendPadding : 0)
+        const yArrowLegend =
+            ySizeLegend +
+            sizeLegendHeight +
+            (sizeLegendHeight > 0 ? legendPadding : 0)
+        const yNoDataSection =
+            yArrowLegend +
+            arrowLegendHeight +
+            (arrowLegendHeight > 0 ? legendPadding : 0)
+
+        const noDataSectionBounds = new Bounds(
+            this.legendX,
+            yNoDataSection,
+            sidebarWidth,
+            bounds.height - yNoDataSection
+        )
+
+        const separatorLine = (y: number): React.ReactElement | null =>
+            y > bounds.top ? (
+                <line
+                    x1={this.legendX}
+                    y1={y - 0.5 * legendPadding}
+                    x2={bounds.right}
+                    y2={y - 0.5 * legendPadding}
+                    stroke="#e7e7e7"
+                />
+            ) : null
 
         return (
-            <g className="ScatterPlot">
-                <DualAxisComponent dualAxis={dualAxis} showTickMarks={false} />
+            <g className="ScatterPlot" onMouseMove={this.onScatterMouseMove}>
+                <DualAxisComponent
+                    dualAxis={dualAxis}
+                    showTickMarks={false}
+                    labelColor={manager.secondaryColorInStaticCharts}
+                    lineWidth={
+                        manager.isStaticAndSmall
+                            ? GRAPHER_AXIS_LINE_WIDTH_THICK
+                            : GRAPHER_AXIS_LINE_WIDTH_DEFAULT
+                    }
+                    detailsMarker={manager.detailsMarkerInSvg}
+                />
                 {comparisonLines &&
                     comparisonLines.map((line, i) => (
                         <ComparisonLine
                             key={i}
                             dualAxis={dualAxis}
                             comparisonLine={line}
+                            baseFontSize={this.fontSize}
+                            backgroundColor={this.manager.backgroundColor}
                         />
                     ))}
                 {this.points}
                 <VerticalColorLegend manager={this} />
-                {this.sizeLegend?.render(this.legendX, sizeLegendY)}
-                {(arrowLegend || tooltipSeries) && (
-                    <line
-                        x1={bounds.right - sidebarWidth}
-                        y1={arrowLegendY - 7}
-                        x2={bounds.right - 5}
-                        y2={arrowLegendY - 7}
-                        stroke="#ccc"
-                    />
+                {sizeLegend && (
+                    <>
+                        {separatorLine(ySizeLegend)}
+                        {sizeLegend.render(this.legendX, ySizeLegend)}
+                    </>
                 )}
                 {arrowLegend && (
-                    <g className="clickable" onClick={this.onToggleEndpoints}>
-                        {arrowLegend.render(
-                            bounds.right - sidebarWidth,
-                            arrowLegendY
-                        )}
-                    </g>
+                    <>
+                        {separatorLine(yArrowLegend)}
+                        <g
+                            className="clickable"
+                            onClick={this.onToggleEndpoints}
+                        >
+                            {arrowLegend.render(this.legendX, yArrowLegend)}
+                        </g>
+                    </>
                 )}
-                {tooltipSeries && (
-                    <ScatterTooltip
-                        yColumn={this.yColumn!}
-                        xColumn={this.xColumn!}
-                        series={tooltipSeries}
-                        maxWidth={sidebarWidth}
-                        fontSize={this.fontSize}
-                        x={bounds.right - sidebarWidth}
-                        y={tooltipY}
-                    />
+                {this.selectedEntitiesWithoutData.length > 0 && (
+                    <>
+                        {!this.manager.isStatic &&
+                            separatorLine(noDataSectionBounds.top)}
+                        <NoDataSection
+                            seriesNames={this.selectedEntitiesWithoutData}
+                            bounds={noDataSectionBounds}
+                            baseFontSize={this.fontSize}
+                        />
+                    </>
                 )}
+                {this.tooltip}
             </g>
         )
     }
 
+    @computed get tooltip(): React.ReactElement | null {
+        if (!this.tooltipState.target) return null
+
+        const {
+            xColumn,
+            yColumn,
+            sizeColumn,
+            tooltipState: { target, position, fading },
+        } = this
+        const points = target.series.points ?? []
+        const values = excludeNullish(uniq([first(points), last(points)]))
+
+        let { startTime, endTime } = this.manager
+        const { x: xStart, y: yStart } = first(values)?.time ?? {},
+            { x: xEnd, y: yEnd } = last(values)?.time ?? {}
+
+        let xValues = xStart === xEnd ? [values[0].x] : values.map((v) => v.x),
+            xNoticeNeeded =
+                (xStart !== undefined && xStart !== startTime && xStart) ||
+                (xEnd !== undefined && xEnd !== endTime && xEnd),
+            xNotice = xNoticeNeeded ? [xStart, xEnd] : []
+
+        let yValues = yStart === yEnd ? [values[0].y] : values.map((v) => v.y),
+            yNoticeNeeded =
+                (yStart !== undefined && yStart !== startTime && yStart) ||
+                (yEnd !== undefined && yEnd !== endTime && yEnd),
+            yNotice = yNoticeNeeded ? [yStart, yEnd] : []
+
+        // handle the special case where the same variable is used for both axes
+        // with a different year's value on each
+        if (
+            xColumn.def.datasetId === yColumn.def.datasetId &&
+            points.length === 1
+        ) {
+            const { x, y, time } = points[0]
+            if (time.x !== time.y && isNumber(time.x) && isNumber(time.y)) {
+                startTime = min([time.x, time.y])
+                endTime = max([time.x, time.y])
+                xValues = time.x < time.y ? [x, y] : [y, x]
+                xNotice = yNotice = yValues = []
+                xNoticeNeeded = yNoticeNeeded = false
+            }
+        }
+
+        const { isRelativeMode } = this.manager,
+            timeRange = uniq(excludeNullish([startTime, endTime]))
+                .map((t) => this.yColumn.formatTime(t))
+                .join(" to "),
+            targetNotice =
+                xNoticeNeeded || yNoticeNeeded ? timeRange : undefined,
+            timeLabel =
+                timeRange + (isRelativeMode ? " (avg. annual change)" : "")
+
+        const columns = [xColumn, yColumn, sizeColumn].filter(
+            (column) => !column.isMissing
+        )
+        const allRoundedToSigFigs = columns.every(
+            (column) => column.roundsToSignificantFigures
+        )
+        const anyRoundedToSigFigs = columns.some(
+            (column) => column.roundsToSignificantFigures
+        )
+        const sigFigs = excludeUndefined(
+            columns.map((column) =>
+                column.roundsToSignificantFigures
+                    ? column.numSignificantFigures
+                    : undefined
+            )
+        )
+
+        const toleranceNotice = targetNotice
+            ? {
+                  icon: TooltipFooterIcon.notice,
+                  text: makeTooltipToleranceNotice(targetNotice),
+              }
+            : undefined
+        const roundingNotice = anyRoundedToSigFigs
+            ? {
+                  icon: allRoundedToSigFigs
+                      ? TooltipFooterIcon.none
+                      : TooltipFooterIcon.significance,
+                  text: makeTooltipRoundingNotice(sigFigs, {
+                      plural: sigFigs.length > 1,
+                  }),
+              }
+            : undefined
+        const footer = excludeUndefined([toleranceNotice, roundingNotice])
+        const superscript =
+            !!roundingNotice && roundingNotice.icon !== TooltipFooterIcon.none
+
+        return (
+            <Tooltip
+                id="scatterTooltip"
+                tooltipManager={this.manager}
+                x={position.x}
+                y={position.y}
+                offsetX={20}
+                offsetY={-16}
+                style={{ maxWidth: "250px" }}
+                title={target.series.label}
+                subtitle={timeLabel}
+                dissolve={fading}
+                footer={footer}
+                dismiss={() => (this.tooltipState.target = null)}
+            >
+                <TooltipValueRange
+                    column={xColumn}
+                    values={xValues}
+                    notice={xNotice}
+                    showSignificanceSuperscript={superscript}
+                />
+                <TooltipValueRange
+                    column={yColumn}
+                    values={yValues}
+                    notice={yNotice}
+                    showSignificanceSuperscript={superscript}
+                />
+                <TooltipValueRange
+                    column={sizeColumn}
+                    values={excludeNullish(values.map((v) => v.size))}
+                    showSignificanceSuperscript={superscript}
+                />
+            </Tooltip>
+        )
+    }
+
     @computed get legendY(): number {
-        return this.bounds.top
+        return this.bounds.top + this.yAxis.labelHeight
     }
 
     @computed get legendX(): number {
@@ -739,7 +1023,7 @@ export class ScatterPlotChart
     }
 
     defaultBaseColorScheme = ColorSchemeName.continents
-    defaultNoDataColor = OwidNoDataGray
+    defaultNoDataColor = OWID_NO_DATA_GRAY
 
     @computed get hasNoDataBin(): boolean {
         if (this.colorColumn.isMissing) return false
@@ -749,11 +1033,22 @@ export class ScatterPlotChart
     }
 
     @computed private get yAxisConfig(): AxisConfig {
-        return new AxisConfig(this.manager.yAxisConfig, this)
+        const { yAxisConfig = {} } = this.manager
+        const config = {
+            ...yAxisConfig,
+            labelPosition: AxisAlign.end,
+            labelPadding: this.manager.isNarrow ? 10 : 14,
+        }
+        return new AxisConfig(config, this)
     }
 
     @computed private get xAxisConfig(): AxisConfig {
-        return new AxisConfig(this.manager.xAxisConfig, this)
+        const { xAxisConfig = {} } = this.manager
+        const config = {
+            ...xAxisConfig,
+            labelPadding: this.manager.isNarrow ? 6 : undefined,
+        }
+        return new AxisConfig(config, this)
     }
 
     @computed private get yColumnSlug(): string {
@@ -809,12 +1104,6 @@ export class ScatterPlotChart
         return this.manager.xOverrideTime
     }
 
-    // Unlike other charts, the scatterplot shows all available data by default, and the selection
-    // is just for emphasis. But this behavior can be disabled.
-    @computed private get hideBackgroundEntities(): boolean {
-        return this.manager.addCountryMode === EntitySelectionMode.Disabled
-    }
-
     @computed private get allEntityNamesWithXAndY(): EntityName[] {
         return intersection(
             this.yColumn.uniqEntityNames,
@@ -823,12 +1112,8 @@ export class ScatterPlotChart
     }
 
     // todo: remove. do this at table filter level
-    getSeriesNamesToShow(
-        filterBackgroundEntities = this.hideBackgroundEntities
-    ): Set<SeriesName> {
-        const seriesNames = filterBackgroundEntities
-            ? this.selectionArray.selectedEntityNames
-            : this.allEntityNamesWithXAndY
+    @computed get seriesNamesToHighlight(): Set<SeriesName> {
+        const seriesNames = this.selectionArray.selectedEntityNames
 
         if (this.manager.matchingEntitiesOnly && !this.colorColumn.isMissing)
             return new Set(
@@ -843,16 +1128,22 @@ export class ScatterPlotChart
     }
 
     @computed get allPoints(): SeriesPoint[] {
-        return flatten(this.series.map((series) => series.points))
+        return this.series.flatMap((series) => series.points)
     }
 
     // domains across the entire timeline
     private domainDefault(property: "x" | "y"): [number, number] {
         const scaleType = property === "x" ? this.xScaleType : this.yScaleType
-        return domainExtent(
-            this.pointsForAxisDomains.map((point) => point[property]),
-            scaleType,
-            this.manager.zoomToSelection && this.selectedPoints.length ? 1.1 : 1
+        const defaultDomain: [number, number] =
+            scaleType === ScaleType.log ? [1, 100] : [-1, 1]
+        return (
+            domainExtent(
+                this.pointsForAxisDomains.map((point) => point[property]),
+                scaleType,
+                this.manager.zoomToSelection && this.selectedPoints.length
+                    ? 1.1
+                    : 1
+            ) ?? defaultDomain
         )
     }
 
@@ -879,7 +1170,7 @@ export class ScatterPlotChart
     }
 
     @computed private get selectedPoints(): SeriesPoint[] {
-        const seriesNamesSet = this.getSeriesNamesToShow(true)
+        const seriesNamesSet = this.seriesNamesToHighlight
         return this.allPoints.filter(
             (point) => point.entityName && seriesNamesSet.has(point.entityName)
         )
@@ -897,10 +1188,39 @@ export class ScatterPlotChart
 
     @computed private get sizeDomain(): [number, number] {
         if (this.sizeColumn.isMissing) return [1, 100]
-        const sizeValues = this.transformedTable
-            .get(this.sizeColumn.slug)
-            .values.filter(isNumber)
-        return [0, max(sizeValues) ?? 1]
+        if (
+            this.manager.isSingleTimeScatterAnimationActive &&
+            this.domainsForAnimation.size
+        ) {
+            return this.domainsForAnimation.size
+        }
+        return computeSizeDomain(this.transformedTable, this.sizeColumn.slug)
+    }
+
+    @computed private get sizeRange(): [number, number] {
+        if (this.sizeColumn.isMissing) {
+            // if the size column is missing, we want all points/lines to have the same width
+            return this.isConnected
+                ? [SCATTER_LINE_DEFAULT_WIDTH, SCATTER_LINE_DEFAULT_WIDTH]
+                : [SCATTER_POINT_DEFAULT_RADIUS, SCATTER_POINT_DEFAULT_RADIUS]
+        }
+
+        const maxLineWidth = SCATTER_LINE_MAX_WIDTH
+        const maxPointRadius = Math.min(
+            SCATTER_POINT_MAX_RADIUS,
+            round(
+                Math.min(this.innerBounds.width, this.innerBounds.height) *
+                    0.06,
+                1
+            )
+        )
+
+        return this.isConnected
+            ? // Note that the scale starts at 0.
+              // When using the scale to plot marks, we need to make sure the minimums
+              // (e.g. `SCATTER_POINT_MIN_RADIUS`) are respected.
+              [0, maxLineWidth]
+            : [0, maxPointRadius]
     }
 
     @computed private get yScaleType(): ScaleType {
@@ -913,22 +1233,40 @@ export class ScatterPlotChart
         return this.domainDefault("y")
     }
 
+    @computed get defaultYAxisLabel(): string | undefined {
+        return this.yColumn?.displayName
+    }
+
+    @computed get currentVerticalAxisLabel(): string {
+        const { manager, yAxisConfig, defaultYAxisLabel } = this
+
+        let label = yAxisConfig.label || defaultYAxisLabel || ""
+
+        if (manager.isRelativeMode && label && label.length > 1) {
+            label = `Average annual change in ${lowerCaseFirstLetterUnlessAbbreviation(
+                label
+            )}`
+        }
+
+        return label
+    }
+
     @computed private get verticalAxisPart(): VerticalAxis {
         const { manager, yDomainDefault, validValuesForAxisDomainY } = this
         const axisConfig = this.yAxisConfig
 
         const axis = axisConfig.toVerticalAxis()
         axis.formatColumn = this.yColumn
-        const label = axisConfig.label || this.yColumn?.displayName || ""
         axis.scaleType = this.yScaleType
+        axis.label = this.currentVerticalAxisLabel
 
-        if (manager.isRelativeMode) {
+        if (
+            this.manager.isSingleTimeScatterAnimationActive &&
+            this.domainsForAnimation.y
+        ) {
+            axis.updateDomainPreservingUserSettings(this.domainsForAnimation.y)
+        } else if (manager.isRelativeMode) {
             axis.domain = yDomainDefault // Overwrite author's min/max
-            if (label && label.length > 1) {
-                axis.label = `Average annual change in ${lowerCaseFirstLetterUnlessAbbreviation(
-                    label
-                )}`
-            }
         } else {
             const isAnyValueOutsideUserDomain = validValuesForAxisDomainY.some(
                 (value) => value < axis.domain[0] || value > axis.domain[1]
@@ -942,8 +1280,6 @@ export class ScatterPlotChart
             ) {
                 axis.updateDomainPreservingUserSettings(yDomainDefault)
             }
-
-            axis.label = label
         }
 
         return axis
@@ -952,30 +1288,50 @@ export class ScatterPlotChart
     @computed private get xScaleType(): ScaleType {
         return this.manager.isRelativeMode
             ? ScaleType.linear
-            : this.xAxisConfig.scaleType ?? ScaleType.linear
+            : (this.xAxisConfig.scaleType ?? ScaleType.linear)
+    }
+
+    @computed get defaultXAxisLabel(): string | undefined {
+        return this.xColumn?.displayName
     }
 
     @computed private get xAxisLabelBase(): string {
-        const xDimName = this.xColumn?.displayName
+        const xDimName = this.defaultXAxisLabel ?? ""
         if (this.xOverrideTime !== undefined)
             return `${xDimName} in ${this.xOverrideTime}`
         return xDimName
     }
 
+    @computed get currentHorizontalAxisLabel(): string {
+        const { manager, xAxisConfig, xAxisLabelBase } = this
+
+        let label = xAxisConfig.label || xAxisLabelBase
+        if (manager.isRelativeMode && label && label.length > 1) {
+            label = `Average annual change in ${lowerCaseFirstLetterUnlessAbbreviation(
+                label
+            )}`
+        }
+
+        return label
+    }
+
     @computed private get horizontalAxisPart(): HorizontalAxis {
-        const { xDomainDefault, manager, xAxisLabelBase } = this
+        const { xDomainDefault, manager } = this
         const { xAxisConfig, validValuesForAxisDomainX } = this
         const axis = xAxisConfig.toHorizontalAxis()
         axis.formatColumn = this.xColumn
         axis.scaleType = this.xScaleType
-        if (manager.isRelativeMode) {
+
+        if (this.currentHorizontalAxisLabel)
+            axis.label = this.currentHorizontalAxisLabel
+
+        if (
+            this.manager.isSingleTimeScatterAnimationActive &&
+            this.domainsForAnimation.x
+        ) {
+            axis.updateDomainPreservingUserSettings(this.domainsForAnimation.x)
+        } else if (manager.isRelativeMode) {
             axis.domain = xDomainDefault // Overwrite author's min/max
-            const label = xAxisConfig.label || xAxisLabelBase
-            if (label && label.length > 1) {
-                axis.label = `Average annual change in ${lowerCaseFirstLetterUnlessAbbreviation(
-                    label
-                )}`
-            }
         } else {
             const isAnyValueOutsideUserDomain = validValuesForAxisDomainX.some(
                 (value) => value < axis.domain[0] || value > axis.domain[1]
@@ -989,23 +1345,27 @@ export class ScatterPlotChart
             ) {
                 axis.updateDomainPreservingUserSettings(xDomainDefault)
             }
-
-            const label = xAxisConfig.label || xAxisLabelBase
-            if (label) axis.label = label
         }
+
         return axis
     }
 
-    getPointLabel(row: OwidRow): string | undefined {
+    getPointLabel(rowIndex: number): string | undefined {
         const strat = this.manager.scatterPointLabelStrategy
+        const { xColumn, yColumn } = this
+        const { timeColumn } = this.transformedTable
         let label
         if (strat === ScatterPointLabelStrategy.y) {
-            label = this.yColumn?.formatValue(row[this.yColumnSlug])
+            label = yColumn?.formatValue(
+                yColumn.valuesIncludingErrorValues[rowIndex]
+            )
         } else if (strat === ScatterPointLabelStrategy.x) {
-            label = this.xColumn?.formatValue(row[this.xColumnSlug])
+            label = xColumn?.formatValue(
+                xColumn.valuesIncludingErrorValues[rowIndex]
+            )
         } else {
-            label = this.transformedTable.timeColumn.formatTime(
-                row[this.transformedTable.timeColumn.slug]
+            label = timeColumn.formatTime(
+                timeColumn.valuesIncludingErrorValues[rowIndex] as number
             )
         }
         return label
@@ -1028,28 +1388,36 @@ export class ScatterPlotChart
     }
 
     @computed private get allPointsBeforeEndpointsFilter(): SeriesPoint[] {
-        const { entityNameSlug, timeColumn } = this.transformedTable
+        const { entityNameColumn, timeColumn } = this.transformedTable
+        const { xColumn, yColumn, sizeColumn, colorColumn } = this
+
         // We are running this filter first because it only depends on author-specified config, not
         // on any user interaction.
         return this.removePointsOutsidePlane(
-            this.transformedTable.rows.map((row) => {
+            this.transformedTable.indices.map((rowIndex) => {
                 return {
-                    x: row[this.xColumnSlug],
-                    y: row[this.yColumnSlug],
+                    x: xColumn.valuesIncludingErrorValues[rowIndex] as number,
+                    y: yColumn.valuesIncludingErrorValues[rowIndex] as number,
                     size: defaultIfErrorValue(
-                        row[this.sizeColumn.slug],
+                        sizeColumn.valuesIncludingErrorValues[rowIndex],
                         undefined
-                    ),
+                    ) as number | undefined,
                     color: defaultIfErrorValue(
-                        row[this.colorColumn.slug],
+                        colorColumn.valuesIncludingErrorValues[rowIndex],
                         undefined
-                    ),
-                    entityName: row[entityNameSlug],
-                    label: this.getPointLabel(row) ?? "",
-                    timeValue: row[timeColumn.slug],
+                    ) as string | number | undefined,
+                    entityName: entityNameColumn.valuesIncludingErrorValues[
+                        rowIndex
+                    ] as EntityName,
+                    label: this.getPointLabel(rowIndex) ?? "",
+                    timeValue: timeColumn.valuesIncludingErrorValues[
+                        rowIndex
+                    ] as number,
                     time: {
-                        x: row[this.xColumn!.originalTimeColumnSlug!],
-                        y: row[this.yColumn!.originalTimeColumnSlug!],
+                        x: xColumn.originalTimeColumn
+                            .valuesIncludingErrorValues[rowIndex] as number,
+                        y: yColumn.originalTimeColumn
+                            .valuesIncludingErrorValues[rowIndex] as number,
                     },
                 }
             })

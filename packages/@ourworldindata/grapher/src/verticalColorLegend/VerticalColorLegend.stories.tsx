@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import {
     VerticalColorLegend,
     VerticalColorLegendManager,
@@ -25,7 +25,7 @@ const manager: VerticalColorLegendManager = {
     activeColors: ["red", "green"],
 }
 
-export const CategoricalBins = (): JSX.Element => {
+export const CategoricalBins = (): React.ReactElement => {
     return (
         <svg width={600} height={400}>
             <VerticalColorLegend manager={manager} />

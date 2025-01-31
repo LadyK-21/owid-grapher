@@ -1,11 +1,11 @@
-import React from "react"
+import * as React from "react"
 import { default as OriginalTippy, TippyProps } from "@tippyjs/react"
 
 interface CustomTippyProps extends TippyProps {
     lazy?: boolean
 }
 
-export const Tippy = (props: CustomTippyProps): JSX.Element => {
+export const Tippy = (props: CustomTippyProps): React.ReactElement => {
     const { lazy, ...tippyProps } = props
 
     const TippyInstance = lazy ? LazyTippy : OriginalTippy
@@ -19,9 +19,9 @@ export const LazyTippy = (props: TippyProps): React.ReactElement => {
     const [mounted, setMounted] = React.useState(false)
 
     const lazyPlugin = {
-        fn: () => ({
-            onMount: () => setMounted(true),
-            onHidden: () => setMounted(false),
+        fn: (): { onMount: () => void; onHidden: () => void } => ({
+            onMount: (): void => setMounted(true),
+            onHidden: (): void => setMounted(false),
         }),
     }
 
@@ -49,7 +49,7 @@ interface TippyIfInteractiveProps extends CustomTippyProps {
 // then it bypasses Tippy and just renders the children.
 export const TippyIfInteractive = (
     props: TippyIfInteractiveProps
-): JSX.Element => {
+): React.ReactElement => {
     const { isInteractive, ...tippyProps } = props
 
     if (isInteractive) return <Tippy {...tippyProps} />

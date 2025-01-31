@@ -1,9 +1,10 @@
-import React from "react"
+import * as React from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faCaretDown, faCaretUp } from "@fortawesome/free-solid-svg-icons"
 import cx from "classnames"
 
 export const SiteNavigationToggle = ({
+    ariaLabel,
     children,
     isActive,
     onToggle,
@@ -11,6 +12,7 @@ export const SiteNavigationToggle = ({
     dropdown,
     className,
 }: {
+    ariaLabel: string
     children: React.ReactNode
     isActive: boolean
     onToggle: () => void
@@ -25,6 +27,7 @@ export const SiteNavigationToggle = ({
             })}
         >
             <button
+                aria-label={ariaLabel}
                 onClick={onToggle}
                 className={cx("SiteNavigationToggle__button", {
                     active: isActive,

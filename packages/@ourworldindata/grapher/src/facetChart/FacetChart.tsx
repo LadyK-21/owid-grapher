@@ -4,7 +4,6 @@ import {
     Bounds,
     DEFAULT_BOUNDS,
     excludeUndefined,
-    flatten,
     getIdealGridParams,
     max,
     maxBy,
@@ -18,24 +17,31 @@ import {
     PositionMap,
     HorizontalAlign,
     Color,
-    shortenForTargetWidth,
+    uniq,
 } from "@ourworldindata/utils"
+import { shortenForTargetWidth } from "@ourworldindata/components"
 import { action, computed, observable } from "mobx"
+import { BASE_FONT_SIZE } from "../core/GrapherConstants"
 import {
-    BASE_FONT_SIZE,
-    ChartTypeName,
+    GRAPHER_CHART_TYPES,
+    GrapherChartType,
     FacetAxisDomain,
     FacetStrategy,
     SeriesColorMap,
     SeriesStrategy,
-} from "../core/GrapherConstants"
+    AxisConfigInterface,
+} from "@ourworldindata/types"
 import {
     ChartComponentClassMap,
     DefaultChartClass,
 } from "../chart/ChartTypeMap"
 import { ChartManager } from "../chart/ChartManager"
 import { ChartInterface } from "../chart/ChartInterface"
-import { getChartPadding, getFontSize } from "./FacetChartUtils"
+import {
+    getChartPadding,
+    getFontSize,
+    getLabelPadding,
+} from "./FacetChartUtils"
 import {
     FacetSeries,
     FacetChartProps,
@@ -45,7 +51,6 @@ import {
 import { OwidTable, CoreColumn } from "@ourworldindata/core-table"
 import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
 import { SelectionArray } from "../selection/SelectionArray"
-import { AxisConfigInterface } from "../axis/AxisConfigInterface"
 import { AxisConfig } from "../axis/AxisConfig"
 import { HorizontalAxis, VerticalAxis } from "../axis/Axis"
 import {
@@ -59,8 +64,11 @@ import {
     ColorScaleBin,
     NumericBin,
 } from "../color/ColorScaleBin"
+import { GRAPHER_DARK_TEXT } from "../color/ColorConstants"
 
-const facetBackgroundColor = "transparent" // we don't use color yet but may use it for background later
+const SHARED_X_AXIS_MIN_FACET_COUNT = 12
+
+const facetBackgroundColor = "none" // we don't use color yet but may use it for background later
 
 const getContentBounds = (
     containerBounds: Bounds,
@@ -131,8 +139,8 @@ export class FacetChart
         return this.props.manager
     }
 
-    @computed private get chartTypeName(): ChartTypeName {
-        return this.props.chartTypeName ?? ChartTypeName.LineChart
+    @computed private get chartTypeName(): GrapherChartType {
+        return this.props.chartTypeName ?? GRAPHER_CHART_TYPES.LineChart
     }
 
     @computed get failMessage(): string {
@@ -149,16 +157,17 @@ export class FacetChart
     }
 
     @computed private get facetsContainerBounds(): Bounds {
-        const fontSize = this.facetFontSize
         const legendHeightWithPadding =
             this.showLegend && this.legend.height > 0
                 ? this.legend.height + this.legendPadding
                 : 0
-        return this.bounds.padTop(legendHeightWithPadding + 1.8 * fontSize)
+        return this.bounds.padTop(
+            legendHeightWithPadding + 1.25 * this.facetFontSize
+        )
     }
 
     @computed get fontSize(): number {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+        return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
     @computed private get facetFontSize(): number {
@@ -190,9 +199,12 @@ export class FacetChart
     @computed private get gridParams(): GridParameters {
         const count = this.facetCount
         const { width, height } = this.bounds
+
+        const aspectRatio = width / height // can be NaN if height is 0, which can happen when the chart is temporarily hidden
+
         return getIdealGridParams({
             count,
-            containerAspectRatio: width / height,
+            containerAspectRatio: isNaN(aspectRatio) ? 1 : aspectRatio,
             idealAspectRatio: IDEAL_PLOT_ASPECT_RATIO,
         })
     }
@@ -202,7 +214,11 @@ export class FacetChart
         columnPadding: number
         outerPadding: number
     } {
-        return getChartPadding(this.facetCount, this.facetFontSize)
+        const { isSharedXAxis, facetFontSize } = this
+        return getChartPadding({
+            baseFontSize: facetFontSize,
+            isSharedXAxis,
+        })
     }
 
     @computed private get hideFacetLegends(): boolean {
@@ -228,7 +244,7 @@ export class FacetChart
         const { manager, series, facetCount, seriesColorMap } = this
 
         // Copy properties from manager to facets
-        const baseFontSize = this.facetFontSize
+        const fontSize = this.facetFontSize
         // We are using `bounds` instead of `facetsContainerBounds` because the legend
         // is not yet created, and it is derived from the intermediate chart series.
         const gridBoundsArr = this.bounds.grid(
@@ -249,6 +265,8 @@ export class FacetChart
             startTime,
             endTime,
             missingDataStrategy,
+            backgroundColor,
+            focusArray,
         } = manager
 
         // Use compact labels, e.g. 50k instead of 50,000.
@@ -262,8 +280,7 @@ export class FacetChart
 
         // We infer that the user cares about the trend if the axis is not uniform
         // and the metrics on all facets are the same
-        const careAboutTrend =
-            !this.uniformYAxis && this.facetStrategy === FacetStrategy.entity
+        const careAboutTrend = !this.uniformYAxis
         if (careAboutTrend) {
             // Force disable nice axes if we care about the trend,
             // because nice axes misrepresent trends.
@@ -278,15 +295,17 @@ export class FacetChart
 
         return series.map((series, index) => {
             const { bounds } = gridBoundsArr[index]
-            const hideLegend = this.hideFacetLegends
+            const showLegend = !this.hideFacetLegends
+
             const hidePoints = true
+            const hideNoDataSection = true
 
             // NOTE: The order of overrides is important!
             // We need to preserve most config coming in.
             const manager: ChartManager = {
                 table,
-                baseFontSize,
-                hideLegend,
+                fontSize,
+                showLegend,
                 hidePoints,
                 yColumnSlug,
                 xColumnSlug,
@@ -302,6 +321,9 @@ export class FacetChart
                 startTime,
                 endTime,
                 missingDataStrategy,
+                backgroundColor,
+                hideNoDataSection,
+                focusArray,
                 ...series.manager,
                 xAxisConfig: {
                     ...globalXAxisConfig,
@@ -324,7 +346,7 @@ export class FacetChart
         })
     }
 
-    @computed private get intermediateChartInstances(): ChartInterface[] {
+    @computed get intermediateChartInstances(): ChartInterface[] {
         return this.intermediatePlacedSeries.map(({ bounds, manager }) => {
             const ChartClass =
                 ChartComponentClassMap.get(this.chartTypeName) ??
@@ -333,42 +355,54 @@ export class FacetChart
         })
     }
 
-    // Only made public for testing
-    @computed get placedSeries(): PlacedFacetSeries[] {
-        const { intermediateChartInstances } = this
-        // Define the global axis config, shared between all facets
-        const sharedAxesSizes: PositionMap<number> = {}
-
+    @computed private get isSharedYAxis(): boolean {
         // When the Y axis is uniform for all facets:
         // - for most charts, we want to only show the axis on the left-most facet charts, and omit
         //   it on the others
         // - for bar charts the Y axis is plotted horizontally, so we don't want to omit it
-        const isSharedYAxis =
+        return (
             this.uniformYAxis &&
             ![
-                ChartTypeName.StackedDiscreteBar,
-                ChartTypeName.DiscreteBar,
-            ].includes(this.chartTypeName)
+                GRAPHER_CHART_TYPES.StackedDiscreteBar,
+                GRAPHER_CHART_TYPES.DiscreteBar,
+            ].includes(this.chartTypeName as any)
+        )
+    }
+
+    @computed private get isSharedXAxis(): boolean {
+        return (
+            this.uniformXAxis &&
+            // TODO: do this for stacked area charts and line charts as well?
+            this.chartTypeName === GRAPHER_CHART_TYPES.StackedBar &&
+            this.facetCount >= SHARED_X_AXIS_MIN_FACET_COUNT
+        )
+    }
+
+    // Only made public for testing
+    @computed get placedSeries(): PlacedFacetSeries[] {
+        const { intermediateChartInstances } = this
+
+        // If one of the charts should use a value-based color scheme,
+        // switch them all over for consistency
+        const useValueBasedColorScheme = intermediateChartInstances.some(
+            (instance) => instance.shouldUseValueBasedColorScheme
+        )
+
+        // Define the global axis config, shared between all facets
+        const sharedAxesSizes: PositionMap<number> = {}
 
         const axes: AxesInfo = {
             x: {
                 config: {},
                 axisAccessor: (instance) => instance.xAxis,
                 uniform: this.uniformXAxis,
-                // For now, X axes are never shared for any chart.
-                // If we ever allow them to be shared, we need to be careful with how we determine
-                // the `minSize` – in the intermediate series (at this time) all axes are shown in
-                // order to find the one with maximum size, but in the placed series, some axes are
-                // hidden. This expands the available area for the chart, which can in turn increase
-                // the number of ticks shown, which can make the size of the axis in the placed
-                // series greater than the one in the intermediate series.
-                shared: false,
+                shared: this.isSharedXAxis,
             },
             y: {
                 config: {},
                 axisAccessor: (instance) => instance.yAxis,
                 uniform: this.uniformYAxis,
-                shared: isSharedYAxis,
+                shared: this.isSharedYAxis,
             },
         }
         values(axes).forEach(({ config, axisAccessor, uniform, shared }) => {
@@ -378,14 +412,27 @@ export class FacetChart
                 (axis) => axis?.size
             )
             if (uniform) {
-                // If the axes are uniform, we want to find the full domain extent across all facets
-                const domains = excludeUndefined(
-                    intermediateChartInstances
-                        .map(axisAccessor)
-                        .map((axis) => axis?.domain)
+                const axes = excludeUndefined(
+                    intermediateChartInstances.map(axisAccessor)
                 )
+
+                // If the axes are uniform, we want to find the full domain extent across all facets
+                const domains = axes.map((axis) => axis.domain)
                 config.min = min(domains.map((d) => d[0]))
                 config.max = max(domains.map((d) => d[1]))
+
+                // Find domain values across all facets
+                const domainValues = uniq(
+                    axes.flatMap((axis) => axis.config.domainValues ?? [])
+                )
+                if (domainValues.length > 0) config.domainValues = domainValues
+
+                // Find ticks across all facets
+                const ticks = uniq(
+                    axes.flatMap((axis) => axis.config.ticks ?? [])
+                )
+                if (ticks.length > 0) config.ticks = ticks
+
                 // If there was at least one chart with a non-undefined axis,
                 // this variable will be populated
                 if (axisWithMaxSize) {
@@ -396,7 +443,11 @@ export class FacetChart
                         config.max,
                     ])
                     config.minSize = size
-                    if (shared) sharedAxesSizes[axis.orient] = size
+                    if (shared) {
+                        const sharedAxisSize =
+                            axis.orient === Position.bottom ? 0 : size
+                        sharedAxesSizes[axis.orient] = sharedAxisSize
+                    }
                 }
             } else if (axisWithMaxSize) {
                 config.minSize = axisWithMaxSize.size
@@ -417,10 +468,10 @@ export class FacetChart
         return this.intermediatePlacedSeries.map((series, i) => {
             const chartInstance = intermediateChartInstances[i]
             const { xAxis, yAxis } = chartInstance
-            const { bounds: initialGridBounds, edges } = gridBoundsArr[i]
+            const { bounds: initialGridBounds, cellEdges } = gridBoundsArr[i]
             let bounds = initialGridBounds
             // Only expand bounds if the facet is on the same edge as the shared axes
-            for (const edge of edges) {
+            for (const edge of cellEdges) {
                 bounds = bounds.expand({
                     [edge]: sharedAxesSizes[edge],
                 })
@@ -429,11 +480,20 @@ export class FacetChart
             // We need to preserve most config coming in.
             const manager = {
                 ...series.manager,
-                externalLegendFocusBin: this.legendFocusBin,
+                useValueBasedColorScheme,
+                externalLegendHoverBin: this.legendHoverBin,
                 xAxisConfig: {
-                    hideAxis: shouldHideFacetAxis(
+                    // For now, sharing an x axis means hiding the tick labels of inner facets.
+                    // This means that none of the x axes are actually hidden (we just don't plot their tick labels).
+                    // If we ever allow shared x axes to be actually hidden, we need to be careful with how we determine
+                    // the `minSize` – in the intermediate series (at this time) all axes are shown in
+                    // order to find the one with maximum size, but in the placed series, some axes are
+                    // hidden. This expands the available area for the chart, which can in turn increase
+                    // the number of ticks shown, which can make the size of the axis in the placed
+                    // series greater than the one in the intermediate series.
+                    hideTickLabels: shouldHideFacetAxis(
                         xAxis,
-                        edges,
+                        cellEdges,
                         sharedAxesSizes
                     ),
                     ...series.manager.xAxisConfig,
@@ -442,13 +502,15 @@ export class FacetChart
                 yAxisConfig: {
                     hideAxis: shouldHideFacetAxis(
                         yAxis,
-                        edges,
+                        cellEdges,
                         sharedAxesSizes
                     ),
                     ...series.manager.yAxisConfig,
                     ...axes.y.config,
                 },
-                tooltips: this.manager.tooltips,
+                tooltip: this.manager.tooltip,
+                shouldPinTooltipToBottom: this.manager.shouldPinTooltipToBottom,
+                base: this.manager.base,
             }
             const contentBounds = getContentBounds(
                 bounds,
@@ -465,7 +527,7 @@ export class FacetChart
     }
 
     @computed private get selectionArray(): SelectionArray {
-        return makeSelectionArray(this.manager)
+        return makeSelectionArray(this.manager.selection)
     }
 
     @computed private get entityFacets(): FacetSeries[] {
@@ -556,7 +618,8 @@ export class FacetChart
         if (!hasBins) return false
         if (isNumericLegend) return true
         if (
-            this.props.chartTypeName === ChartTypeName.StackedDiscreteBar &&
+            this.props.chartTypeName ===
+                GRAPHER_CHART_TYPES.StackedDiscreteBar &&
             this.facetStrategy === FacetStrategy.metric
         ) {
             return false
@@ -578,7 +641,7 @@ export class FacetChart
     }
 
     private getExternalLegendProp<
-        Prop extends keyof HorizontalColorLegendManager
+        Prop extends keyof HorizontalColorLegendManager,
     >(prop: Prop): HorizontalColorLegendManager[Prop] | undefined {
         for (const externalLegend of this.externalLegends) {
             if (externalLegend[prop] !== undefined) {
@@ -620,7 +683,7 @@ export class FacetChart
     }
 
     @computed get legendAlign(): HorizontalAlign {
-        return HorizontalAlign.center
+        return HorizontalAlign.left
     }
 
     @computed get legendTitle(): string | undefined {
@@ -663,13 +726,34 @@ export class FacetChart
         return this.getExternalLegendProp("equalSizeBins")
     }
 
+    @computed get hoverColors(): Color[] | undefined {
+        if (!this.legendHoverBin) return undefined
+        return [this.legendHoverBin.color]
+    }
+
+    @computed get activeColors(): Color[] | undefined {
+        const { focusArray } = this.manager
+        if (!focusArray) return undefined
+
+        // find colours of all currently focused series
+        const activeColors = uniq(
+            this.intermediateChartInstances.flatMap((chartInstance) =>
+                chartInstance.series
+                    .filter((series) => focusArray.has(series.seriesName))
+                    .map((series) => series.color)
+            )
+        )
+
+        return activeColors.length > 0 ? activeColors : undefined
+    }
+
     @computed get numericLegendData(): ColorScaleBin[] {
         if (!this.isNumericLegend || !this.hideFacetLegends) return []
-        const allBins: ColorScaleBin[] = flatten(
-            this.externalLegends.map((legend) => [
+        const allBins: ColorScaleBin[] = this.externalLegends.flatMap(
+            (legend) => [
                 ...(legend.numericLegendData ?? []),
                 ...(legend.categoricalLegendData ?? []),
-            ])
+            ]
         )
         const uniqBins = this.getUniqBins(allBins)
         const sortedBins = sortBy(
@@ -681,12 +765,12 @@ export class FacetChart
 
     @computed get categoricalLegendData(): CategoricalBin[] {
         if (this.isNumericLegend || !this.hideFacetLegends) return []
-        const allBins: CategoricalBin[] = flatten(
-            this.externalLegends.map((legend) => [
+        const allBins: CategoricalBin[] = this.externalLegends
+            .flatMap((legend) => [
                 ...(legend.numericLegendData ?? []),
                 ...(legend.categoricalLegendData ?? []),
             ])
-        ).filter((bin) => bin instanceof CategoricalBin) as CategoricalBin[]
+            .filter((bin) => bin instanceof CategoricalBin) as CategoricalBin[]
         const uniqBins = this.getUniqBins(allBins)
         const newBins = uniqBins.map(
             // remap index to ensure it's unique (the above procedure can lead to duplicates)
@@ -696,24 +780,48 @@ export class FacetChart
                     index,
                 })
         )
-        return newBins
+        if (this.facetStrategy === FacetStrategy.metric && newBins.length <= 1)
+            return []
+        const sortedBins = sortBy(newBins, (bin) => bin.label)
+        return sortedBins
     }
 
-    @observable.ref private legendFocusBin: ColorScaleBin | undefined =
+    @observable.ref private legendHoverBin: ColorScaleBin | undefined =
         undefined
 
     @action.bound onLegendMouseOver(bin: ColorScaleBin): void {
-        this.legendFocusBin = bin
+        this.legendHoverBin = bin
     }
 
     @action.bound onLegendMouseLeave(): void {
-        this.legendFocusBin = undefined
+        this.legendHoverBin = undefined
+    }
+
+    @action.bound onLegendClick(bin: ColorScaleBin): void {
+        if (!this.manager.focusArray || !this.isFocusModeSupported) return
+
+        // find all series (of all facets) that are contained in the bin
+        const seriesNames = uniq(
+            this.intermediateChartInstances.flatMap((chartInstance) =>
+                chartInstance.series
+                    .filter((series) => bin.contains(series.seriesName))
+                    .map((series) => series.seriesName)
+            )
+        )
+        this.manager.focusArray.toggle(...seriesNames)
     }
 
     // end of legend props
 
     @computed private get legend(): HorizontalColorLegend {
         return new this.LegendClass({ manager: this })
+    }
+
+    @computed private get isFocusModeSupported(): boolean {
+        return (
+            this.chartTypeName === GRAPHER_CHART_TYPES.LineChart ||
+            this.chartTypeName === GRAPHER_CHART_TYPES.SlopeChart
+        )
     }
 
     /**
@@ -757,7 +865,7 @@ export class FacetChart
         return { fontSize, shortenedLabel: label }
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const { facetFontSize, LegendClass, showLegend } = this
         return (
             <React.Fragment>
@@ -767,7 +875,7 @@ export class FacetChart
                         ChartComponentClassMap.get(this.chartTypeName) ??
                         DefaultChartClass
                     const { bounds, contentBounds, seriesName } = facetChart
-                    const shiftTop = facetFontSize * 0.9
+                    const labelPadding = getLabelPadding(facetFontSize)
 
                     const { fontSize, shortenedLabel } =
                         this.shrinkAndShortenFacetLabel(
@@ -780,8 +888,8 @@ export class FacetChart
                         <React.Fragment key={index}>
                             <text
                                 x={contentBounds.x}
-                                y={contentBounds.top - shiftTop}
-                                fill={"#1d3d63"}
+                                y={contentBounds.top - labelPadding}
+                                fill={GRAPHER_DARK_TEXT}
                                 fontSize={fontSize}
                                 style={{ fontWeight: 700 }}
                             >

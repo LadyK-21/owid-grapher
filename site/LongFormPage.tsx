@@ -1,5 +1,4 @@
-import { WORDPRESS_URL } from "../settings/serverSettings.js"
-import React from "react"
+import { Fragment } from "react"
 import { Head } from "./Head.js"
 import { CitationMeta } from "./CitationMeta.js"
 import { SiteHeader } from "./SiteHeader.js"
@@ -10,19 +9,16 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faBook, faSync } from "@fortawesome/free-solid-svg-icons"
 import { faCreativeCommons } from "@fortawesome/free-brands-svg-icons"
 import { TableOfContents } from "../site/TableOfContents.js"
-import {
-    FormattedPost,
-    FormattingOptions,
-    TocHeading,
-    omit,
-} from "@ourworldindata/utils"
-import { Breadcrumb } from "./Breadcrumb/Breadcrumb.js"
+import { FormattedPost, TocHeading, omit } from "@ourworldindata/utils"
+import { FormattingOptions } from "@ourworldindata/types"
+import { BreadcrumbsFromSubnav } from "./Breadcrumb/Breadcrumb.js"
 import { Byline } from "./Byline.js"
 import { PageInfo } from "./PageInfo.js"
 import { BackToTopic } from "./BackToTopic.js"
 import StickyNav from "./blocks/StickyNav.js"
-import { CodeSnippet } from "./blocks/CodeSnippet.js"
+import { CodeSnippet } from "@ourworldindata/components"
 import { formatAuthors } from "./clientFormatting.js"
+import { Html } from "./Html.js"
 
 export interface PageOverrides {
     pageTitle?: string
@@ -99,13 +95,11 @@ export const LongFormPage = (props: {
 
     const citationText = `${formatAuthors({
         authors: citationAuthors,
-        requireMax: true,
-    })} (${citationPublishedYear}) - "${citationTitle}". Published online at OurWorldInData.org. Retrieved from: '${citationCanonicalUrl}' [Online Resource]`
+    })} (${citationPublishedYear}) - "${citationTitle}". Published online at OurWorldinData.org. Retrieved from: '${citationCanonicalUrl}' [Online Resource]`
 
     const bibtex = `@article{owid${citationSlug.replace(/-/g, "")},
     author = {${formatAuthors({
         authors: citationAuthors,
-        requireMax: true,
         forBibtex: true,
     })}},
     title = {${citationTitle}},
@@ -114,12 +108,15 @@ export const LongFormPage = (props: {
     note = {${citationCanonicalUrl}}
 }`
     return (
-        <html>
+        <Html>
             <Head
                 pageTitle={pageTitleSEO}
                 pageDesc={pageDesc}
                 canonicalUrl={canonicalUrl}
-                imageUrl={post.imageUrl ? formatUrls(post.imageUrl) : undefined}
+                imageUrl={
+                    // uriEncoding is taken care of inside the Head component
+                    post.imageUrl ? formatUrls(post.imageUrl) : undefined
+                }
                 baseUrl={baseUrl}
             >
                 {withCitation && (
@@ -155,7 +152,7 @@ export const LongFormPage = (props: {
                                     )}
                                     <h1 className="entry-title">{pageTitle}</h1>
                                     {!isPost && formattingOptions.subnavId && (
-                                        <Breadcrumb
+                                        <BreadcrumbsFromSubnav
                                             subnavId={
                                                 formattingOptions.subnavId
                                             }
@@ -170,7 +167,6 @@ export const LongFormPage = (props: {
                                         {!formattingOptions.hideAuthors && (
                                             <Byline
                                                 authors={post.authors}
-                                                withMax={withCitation}
                                                 override={post.byline}
                                             />
                                         )}
@@ -259,7 +255,7 @@ export const LongFormPage = (props: {
                                                     />
                                                 )}
                                                 {post.footnotes.length ? (
-                                                    <React.Fragment>
+                                                    <Fragment>
                                                         <h3
                                                             id={endNotes.slug}
                                                             className="h3-bold"
@@ -288,7 +284,7 @@ export const LongFormPage = (props: {
                                                                 )
                                                             )}
                                                         </ol>
-                                                    </React.Fragment>
+                                                    </Fragment>
                                                 ) : undefined}
                                                 {withCitation && (
                                                     <>
@@ -353,7 +349,7 @@ export const LongFormPage = (props: {
                                                             <a
                                                                 href="https://creativecommons.org/licenses/by/4.0/"
                                                                 target="_blank"
-                                                                rel="noopener noreferrer"
+                                                                rel="noopener"
                                                             >
                                                                 Creative Commons
                                                                 BY license
@@ -389,7 +385,7 @@ export const LongFormPage = (props: {
                                                         </p>
                                                         <p>
                                                             All of{" "}
-                                                            <a href="/how-to-use-our-world-in-data#how-to-embed-interactive-charts-in-your-article">
+                                                            <a href="/faqs#how-can-i-embed-one-of-your-interactive-charts-in-my-website">
                                                                 our charts can
                                                                 be embedded
                                                             </a>{" "}
@@ -406,37 +402,6 @@ export const LongFormPage = (props: {
                         </div>
                     </article>
                 </main>
-                <div id="wpadminbar" style={{ display: "none" }}>
-                    <div
-                        className="quicklinks"
-                        id="wp-toolbar"
-                        role="navigation"
-                        aria-label="Toolbar"
-                    >
-                        <ul
-                            id="wp-admin-bar-root-default"
-                            className="ab-top-menu"
-                        >
-                            <li id="wp-admin-bar-site-name" className="menupop">
-                                <a
-                                    className="ab-item"
-                                    aria-haspopup="true"
-                                    href={`${WORDPRESS_URL}/wp/wp-admin`}
-                                >
-                                    Wordpress
-                                </a>
-                            </li>{" "}
-                            <li id="wp-admin-bar-edit">
-                                <a
-                                    className="ab-item"
-                                    href={formatWordpressEditLink(post.id)}
-                                >
-                                    Edit Page
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
                 <SiteFooter
                     hideDonate={formattingOptions.hideDonateFooter}
                     baseUrl={baseUrl}
@@ -455,15 +420,10 @@ export const LongFormPage = (props: {
                             pageTitle,
                             // hideSubheadings: true
                         })})
-                        runRelatedCharts(${JSON.stringify(post.relatedCharts)})
                         `,
                     }}
                 />
             </body>
-        </html>
+        </Html>
     )
-}
-
-export const formatWordpressEditLink = (postId: number) => {
-    return `${WORDPRESS_URL}/wp/wp-admin/post.php?post=${postId}&action=edit`
 }

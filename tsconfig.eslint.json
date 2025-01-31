@@ -1,12 +1,12 @@
 {
     "extends": "./tsconfig.json",
     "include": [
-        "**/*.ts",
-        "**/*.tsx",
+        "**/*.cts",
+        "**/*.ctsx",
         "**/*.mts",
         "**/*.mtsx",
-        "**/*.cts",
-        "**/*.ctsx"
+        "**/*.ts",
+        "**/*.tsx"
     ],
     "compilerOptions": {
         // ensure that nobody can accidentally use this config for a build

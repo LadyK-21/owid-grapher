@@ -1,19 +1,14 @@
-import React from "react"
-
 export const SiteResources = () => {
     return (
         <ul>
             <li>
-                <a href="/charts">Charts and Explorers</a>
+                <a href="/data">Data Catalog</a>
             </li>
             <li>
-                <a
-                    href="https://sdg-tracker.org"
-                    target="_blank"
-                    rel="noopener"
-                >
-                    Sustainable Development Goals Tracker
-                </a>
+                <a href="/data-insights">Daily Data Insights</a>
+            </li>
+            <li>
+                <a href="/sdgs">Sustainable Development Goals Tracker</a>
             </li>
             <li>
                 <a href="/teaching">Teaching Hub</a>

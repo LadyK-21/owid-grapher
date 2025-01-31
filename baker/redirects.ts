@@ -1,23 +1,31 @@
 import * as db from "../db/db.js"
-import * as wpdb from "../db/wpdb.js"
-import {
-    getCountryDetectionRedirects,
-    memoize,
-    JsonError,
-    Url,
-} from "@ourworldindata/utils"
+import { memoize, Url } from "@ourworldindata/utils"
 import { isCanonicalInternalUrl } from "./formatting.js"
 import { resolveExplorerRedirect } from "./replaceExplorerRedirects.js"
-import { logErrorAndMaybeSendToBugsnag } from "../serverUtils/errorLog.js"
+import { logErrorAndMaybeCaptureInSentry } from "../serverUtils/errorLog.js"
+import {
+    // deleteExpiredRedirects,
+    getRedirectsFromDb,
+} from "../db/model/Redirect.js"
 
-export const getRedirects = async () => {
-    const redirects = [
+export const getRedirects = async (knex: db.KnexReadonlyTransaction) => {
+    const staticRedirects = [
         // RSS feed
-        "/feed /atom.xml 302!",
+        "/feed /atom.xml 302",
 
-        // Backwards compatibility-- admin urls
-        "/wp-admin/* https://owid.cloud/wp/wp-admin/:splat 301",
-        "/grapher/admin/* https://owid.cloud/grapher/admin/:splat 301",
+        // Entries and blog (we should keep these for a while)
+        "/entries / 302",
+        "/blog /latest 301",
+        "/subscribe /#subscribe 301",
+
+        // Country detection
+        "/detect-country https://detect-country.owid.io 302",
+    ]
+
+    // Dynamic redirects are all redirects that contain an asterisk
+    const dynamicRedirects = [
+        // Always remove trailing slash
+        "/*/ /:splat 301",
 
         // TODO: this should only get triggered by external hits (indexed .pdf files for instance)
         // and should be removed when no evidence of these inbound links can be found.
@@ -34,106 +42,114 @@ export const getRedirects = async () => {
         "/slides/Max_PPT_presentations/* https://www.maxroser.com/slides/Max_PPT_presentations/:splat 301",
         "/slides/Max_Interactive_Presentations/* https://www.maxroser.com/slides/Max_Interactive_Presentations/:splat 301",
 
-        // Backwards compatibility-- public urls
+        // Entries and blog (we should keep these for a while)
         "/entries/* /:splat 301",
-        "/entries /#entries 302",
-        "/data/food-agriculture/* /:splat 301",
-        "/data/political-regimes/* /:splat 301",
-        "/data/population-growth-vital-statistics/* /:splat 301",
-        "/data/growth-and-distribution-of-prosperity/* /:splat 301",
+        "/blog/* /latest/:splat 301",
 
         // Backwards compatibility-- grapher url style
         "/chart-builder/* /grapher/:splat 301",
         "/grapher/public/* /grapher/:splat 301",
         "/grapher/view/* /grapher/:splat 301",
 
+        // Slides
         "/slides/* https://slides.ourworldindata.org/:splat 301",
-        "/subscribe /#subscribe 301",
+
+        // These are needed for the Cloudflare Pages migration
+
+        // Wordpress uploads, mostly images
+        // Example: https://assets.ourworldindata.org/uploads/2022/03/Age-of-onset-depression2-01-1-800x521.png
+        "/uploads/* https://assets.ourworldindata.org/uploads/:splat 301",
+
+        // Automatic static grapher exports for graphers embedded into Wordpress, taking query params such as `country=USA` into account
+        // Example: https://assets.ourworldindata.org/exports/absolute-change-co2-a847e6c96bb2640c05a8cd075949d1bb_v26_850x600.svg
+        "/exports/* https://assets.ourworldindata.org/exports/:splat 301",
+
+        // Automatic static grapher exports for every grapher chart
+        // Example: https://assets.ourworldindata.org/grapher/exports/absolute-change-co2.svg
+        "/grapher/exports/* https://ourworldindata.org/grapher/:splat 301",
     ]
 
-    getCountryDetectionRedirects().forEach((redirect) =>
-        redirects.push(redirect)
+    // TODO: Fix this transaction locking up the DB for too long.
+    // await deleteExpiredRedirects(knex)
+    // Get redirects from the database (exported from the Wordpress DB)
+    // Redirects are assumed to be trailing-slash-free (see syncRedirectsToGrapher.ts)
+    const redirectsFromDb = (await getRedirectsFromDb(knex)).map(
+        (row) => `${row.source} ${row.target} ${row.code}`
     )
 
-    // Redirects from Wordpress admin UI
-    const rows = await wpdb.singleton.query(
-        `SELECT url, action_data, action_code FROM wp_redirection_items WHERE status = 'enabled'`
+    // Add newlines in between so we get some more overview
+    return [
+        ...staticRedirects,
+        "",
+        ...redirectsFromDb,
+        "",
+        ...dynamicRedirects, // Cloudflare requires all dynamic redirects to be at the very end of the _redirects file
+    ]
+}
+
+export const getGrapherRedirectsMap = async (
+    knex: db.KnexReadonlyTransaction,
+    urlPrefix: string = "/grapher/"
+) => {
+    const chartRedirectRows = (await db.knexRaw<{
+        oldSlug: string
+        newSlug: string
+    }>(
+        knex,
+        `-- sql
+            SELECT chart_slug_redirects.slug as oldSlug, chart_configs.slug as newSlug
+            FROM chart_slug_redirects
+            INNER JOIN charts ON charts.id=chart_id
+            INNER JOIN chart_configs ON chart_configs.id=charts.configId
+        `
+    )) as Array<{ oldSlug: string; newSlug: string }>
+
+    return new Map(
+        chartRedirectRows
+            .filter((row) => row.oldSlug !== row.newSlug)
+            .map((row) => [
+                `${urlPrefix}${row.oldSlug}`,
+                `${urlPrefix}${row.newSlug}`,
+            ])
     )
-    redirects.push(
-        ...rows.map(
-            (row) =>
-                `${row.url.replace(/__/g, "/")} ${row.action_data.replace(
-                    /__/g,
-                    "/"
-                )} ${row.action_code}!`
-        )
-    )
+}
 
-    // Redirect old slugs to new slugs
-    const chartRedirectRows = await db.queryMysql(`
-    SELECT chart_slug_redirects.slug, chart_id, JSON_EXTRACT(charts.config, "$.slug") as trueSlug
-    FROM chart_slug_redirects INNER JOIN charts ON charts.id=chart_id
-`)
+export const getWordpressRedirectsMap = async (
+    knex: db.KnexReadonlyTransaction
+) => {
+    const redirectsFromDb = await getRedirectsFromDb(knex)
 
-    for (const row of chartRedirectRows) {
-        const trueSlug = JSON.parse(row.trueSlug)
-        if (row.slug !== trueSlug) {
-            redirects.push(`/grapher/${row.slug} /grapher/${trueSlug} 302!`)
-        }
-    }
-
-    return redirects
+    return new Map(redirectsFromDb.map((row) => [row.source, row.target]))
 }
 
 export const getGrapherAndWordpressRedirectsMap = memoize(
-    async (): Promise<Map<string, string>> => {
+    async (knex: db.KnexReadonlyTransaction): Promise<Map<string, string>> => {
         // source: pathnames only (e.g. /transport)
         // target: pathnames with or without origins (e.g. /transport-new or https://ourworldindata.org/transport-new)
-        const redirects = new Map()
 
-        // todo(refactor): export as function to reuse in getRedirects?
-        const chartRedirectRows = await db.queryMysql(`
-        SELECT chart_slug_redirects.slug, JSON_EXTRACT(charts.config, "$.slug") as trueSlug
-        FROM chart_slug_redirects INNER JOIN charts ON charts.id=chart_id
-    `)
-
-        // todo(refactor) : export as function to reuse in getRedirects?
-        const wordpressRedirectRows = await wpdb.singleton.query(
-            `SELECT url, action_data FROM wp_redirection_items WHERE status = 'enabled'`
-        )
+        const grapherRedirects = await getGrapherRedirectsMap(knex)
+        const wordpressRedirects = await getWordpressRedirectsMap(knex)
 
         // The order the redirects are added to the map is important. Adding the
         // Wordpress redirects last means that Wordpress redirects can overwrite
         // grapher redirects.
-        for (const row of chartRedirectRows) {
-            const trueSlug = JSON.parse(row.trueSlug)
-            if (row.slug !== trueSlug) {
-                redirects.set(`/grapher/${row.slug}`, `/grapher/${trueSlug}`)
-            }
-        }
-
-        for (const row of wordpressRedirectRows) {
-            redirects.set(row.url, row.action_data)
-        }
-
-        return redirects
+        return new Map([...grapherRedirects, ...wordpressRedirects])
     }
 )
 
-export const resolveGrapherAndWordpressRedirect = async (
-    url: Url
+export const resolveRedirectFromMap = async (
+    url: Url,
+    redirectsMap: Map<string, string>
 ): Promise<Url> => {
     const MAX_RECURSION_DEPTH = 25
     let recursionDepth = 0
     const originalUrl = url
 
-    const _resolveGrapherAndWordpressRedirect = async (
-        url: Url
-    ): Promise<Url> => {
+    const _resolveRedirectFromMap = async (url: Url): Promise<Url> => {
         ++recursionDepth
         if (recursionDepth > MAX_RECURSION_DEPTH) {
-            logErrorAndMaybeSendToBugsnag(
-                new JsonError(
+            void logErrorAndMaybeCaptureInSentry(
+                new Error(
                     `A circular redirect (/a -> /b -> /a) has been detected for ${originalUrl.pathname} and is ignored.`
                 )
             )
@@ -142,22 +158,21 @@ export const resolveGrapherAndWordpressRedirect = async (
 
         if (!url.pathname || !isCanonicalInternalUrl(url)) return url
 
-        const redirects = await getGrapherAndWordpressRedirectsMap()
-        const target = redirects.get(url.pathname)
+        const target = redirectsMap.get(url.pathname)
 
         if (!target) return url
         const targetUrl = Url.fromURL(target)
 
         if (targetUrl.pathname === url.pathname) {
-            logErrorAndMaybeSendToBugsnag(
-                new JsonError(
+            void logErrorAndMaybeCaptureInSentry(
+                new Error(
                     `A self redirect (/a -> /a) has been detected for ${originalUrl.pathname} and is ignored.`
                 )
             )
             return originalUrl
         }
 
-        return _resolveGrapherAndWordpressRedirect(
+        return _resolveRedirectFromMap(
             // Pass query params through only if none present on the target (cf.
             // netlify behaviour)
             url.queryStr && !targetUrl.queryStr
@@ -165,10 +180,13 @@ export const resolveGrapherAndWordpressRedirect = async (
                 : targetUrl
         )
     }
-    return _resolveGrapherAndWordpressRedirect(url)
+    return _resolveRedirectFromMap(url)
 }
 
-export const resolveInternalRedirect = async (url: Url): Promise<Url> => {
+export const resolveInternalRedirect = async (
+    url: Url,
+    knex: db.KnexReadonlyTransaction
+): Promise<Url> => {
     if (!isCanonicalInternalUrl(url)) return url
 
     // Assumes that redirects in explorer code are final (in line with the
@@ -194,7 +212,10 @@ export const resolveInternalRedirect = async (url: Url): Promise<Url> => {
     //   (wordpress), not what is redirected.
 
     return resolveExplorerRedirect(
-        await resolveGrapherAndWordpressRedirect(url)
+        await resolveRedirectFromMap(
+            url,
+            await getGrapherAndWordpressRedirectsMap(knex)
+        )
     )
 }
 

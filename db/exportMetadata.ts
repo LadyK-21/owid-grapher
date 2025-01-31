@@ -1,4 +1,4 @@
-// Script to export everything in the database except sensitive info and data_values (which is big)
+// Script to export everything in the database except sensitive info
 
 import * as db from "./db.js"
 import fs from "fs-extra"
@@ -22,18 +22,21 @@ const filePath =
         ? "/tmp/owid_metadata.sql"
         : "/tmp/owid_metadata_with_passwords.sql")
 
-const excludeTables = ["sessions", "dataset_files", "data_values", "pageviews"]
+const excludeTables = [
+    "analytics_pageviews",
+    "dataset_files",
+    "donors",
+    "sessions",
+]
 
 async function dataExport(): Promise<void> {
-    await db.getConnection()
-
     console.log(`Exporting database structure and metadata to ${filePath}...`)
 
     // Expose password to mysqldump
     // Safer than passing as an argument because it's not shown in 'ps aux'
     process.env.MYSQL_PWD = GRAPHER_DB_PASS
 
-    // Dump all tables including schema but exclude the rows of data_values
+    // Dump all tables including schema
     await execWrapper(
         `mysqldump --default-character-set=utf8mb4 --no-tablespaces -u '${GRAPHER_DB_USER}' -h '${GRAPHER_DB_HOST}' -P ${GRAPHER_DB_PORT} ${GRAPHER_DB_NAME} ${excludeTables
             .map(
@@ -60,4 +63,4 @@ async function dataExport(): Promise<void> {
     await db.closeTypeOrmAndKnexConnections()
 }
 
-dataExport()
+void dataExport()

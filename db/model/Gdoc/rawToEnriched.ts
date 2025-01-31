@@ -3,16 +3,18 @@ import {
     ChartPositionChoice,
     ChartControlKeyword,
     ChartTabKeyword,
-    compact,
     EnrichedBlockAside,
     EnrichedBlockCallout,
     EnrichedBlockChart,
     EnrichedBlockChartStory,
+    EnrichedBlockDonorList,
     EnrichedBlockGraySection,
     EnrichedBlockHeading,
     EnrichedBlockHorizontalRule,
     EnrichedBlockHtml,
     EnrichedBlockImage,
+    EnrichedBlockExplorerTiles,
+    EnrichedBlockVideo,
     EnrichedBlockKeyInsights,
     EnrichedBlockList,
     EnrichedBlockNumberedList,
@@ -32,20 +34,22 @@ import {
     EnrichedRecircLink,
     EnrichedScrollerItem,
     EnrichedSDGGridItem,
-    isArray,
+    EnrichedBlockKeyIndicator,
     OwidEnrichedGdocBlock,
     OwidRawGdocBlock,
+    OwidGdocErrorMessage,
     ParseError,
-    partition,
     RawBlockAdditionalCharts,
     RawBlockAside,
     RawBlockCallout,
     RawBlockChart,
     RawBlockChartStory,
+    RawBlockDonorList,
     RawBlockGraySection,
     RawBlockHeading,
     RawBlockHtml,
     RawBlockImage,
+    RawBlockVideo,
     RawBlockKeyInsights,
     RawBlockList,
     RawBlockNumberedList,
@@ -58,24 +62,18 @@ import {
     RawBlockStickyLeftContainer,
     RawBlockStickyRightContainer,
     RawBlockText,
+    RawBlockKeyIndicator,
     Span,
     SpanSimpleText,
-    omitUndefinedValues,
     EnrichedBlockSimpleText,
-    checkIsInternalLink,
     BlockImageSize,
     checkIsBlockImageSize,
     RawBlockTopicPageIntro,
     EnrichedBlockTopicPageIntro,
-    Url,
     EnrichedTopicPageIntroRelatedTopic,
     DetailDictionary,
     EnrichedDetail,
-    checkIsPlainObjectWithGuard,
     EnrichedBlockKeyInsightsSlide,
-    keyBy,
-    filterValidStringValues,
-    uniq,
     RawBlockResearchAndWriting,
     RawBlockResearchAndWritingLink,
     EnrichedBlockResearchAndWriting,
@@ -85,18 +83,84 @@ import {
     RawBlockExpandableParagraph,
     RawBlockAllCharts,
     EnrichedBlockAllCharts,
+    RefDictionary,
+    OwidGdocErrorMessageType,
+    RawBlockResearchAndWritingRow,
+    EnrichedBlockAlign,
+    HorizontalAlign,
+    RawBlockAlign,
+    FaqDictionary,
+    RawBlockLatestDataInsights,
+    EnrichedBlockLatestDataInsights,
+    EnrichedFaq,
+    RawBlockEntrySummary,
+    EnrichedBlockEntrySummary,
+    EnrichedBlockEntrySummaryItem,
+    RawBlockTable,
+    EnrichedBlockTable,
+    EnrichedBlockTableRow,
+    TableTemplate,
+    TableSize,
+    EnrichedBlockTableCell,
+    tableSizes,
+    tableTemplates,
+    RawBlockBlockquote,
+    EnrichedBlockBlockquote,
+    RawBlockKeyIndicatorCollection,
+    EnrichedBlockKeyIndicatorCollection,
+    RawBlockExplorerTiles,
+    RawBlockPillRow,
+    EnrichedBlockPillRow,
+    RawBlockHomepageSearch,
+    EnrichedBlockHomepageSearch,
+    EnrichedBlockHomepageIntro,
+    RawBlockHomepageIntro,
+    EnrichedBlockHomepageIntroPost,
+    RawSocialLink,
+    RawBlockSocials,
+    EnrichedBlockSocials,
+    EnrichedSocialLink,
+    SocialLinkType,
+    RawBlockLatestWork,
+    EnrichedBlockLatestWork,
+    RawBlockPeople,
+    EnrichedBlockPeople,
+    RawBlockPerson,
+    EnrichedBlockPerson,
+    RawBlockPeopleRows,
+    EnrichedBlockPeopleRows,
+    RawBlockNarrativeChart,
+    EnrichedBlockNarrativeChart,
+    RawBlockCode,
+    EnrichedBlockCode,
+} from "@ourworldindata/types"
+import {
+    traverseEnrichedSpan,
+    keyBy,
+    filterValidStringValues,
+    uniq,
+    excludeNullish,
+    checkIsPlainObjectWithGuard,
+    omitUndefinedValues,
+    Url,
+    isArray,
+    partition,
+    compact,
+    toAsciiQuotes,
 } from "@ourworldindata/utils"
+import { checkIsInternalLink, getLinkType } from "@ourworldindata/components"
 import {
     extractUrl,
     getTitleSupertitleFromHeadingText,
     parseAuthors,
+    spansToSimpleString,
 } from "./gdocUtils.js"
 import {
     htmlToEnrichedTextBlock,
     htmlToSimpleTextBlock,
     htmlToSpans,
 } from "./htmlToEnriched.js"
-import { match } from "ts-pattern"
+import { P, match } from "ts-pattern"
 import { isObject, parseInt } from "lodash"
 import { GDOCS_DETAILS_ON_DEMAND_ID } from "../../../settings/serverSettings.js"
 
@@ -107,13 +171,21 @@ export function parseRawBlocksToEnrichedBlocks(
         .with({ type: "all-charts" }, parseAllCharts)
         .with({ type: "additional-charts" }, parseAdditionalCharts)
         .with({ type: "aside" }, parseAside)
+        .with({ type: "blockquote" }, parseBlockquote)
         .with({ type: "callout" }, parseCallout)
         .with({ type: "chart" }, parseChart)
+        .with({ type: "narrative-chart" }, parseNarrativeChart)
+        .with({ type: "code" }, parseCode)
+        .with({ type: "donors" }, parseDonorList)
         .with({ type: "scroller" }, parseScroller)
         .with({ type: "chart-story" }, parseChartStory)
         .with({ type: "image" }, parseImage)
+        .with({ type: "video" }, parseVideo)
         .with({ type: "list" }, parseList)
         .with({ type: "numbered-list" }, parseNumberedList)
+        .with({ type: "people" }, parsePeople)
+        .with({ type: "people-rows" }, parsePeopleRows)
+        .with({ type: "person" }, parsePerson)
         .with({ type: "pull-quote" }, parsePullQuote)
         .with(
             { type: "horizontal-rule" },
@@ -162,6 +234,17 @@ export function parseRawBlocksToEnrichedBlocks(
             })
         )
         .with({ type: "expandable-paragraph" }, parseExpandableParagraph)
+        .with({ type: "align" }, parseAlign)
+        .with({ type: "entry-summary" }, parseEntrySummary)
+        .with({ type: "explorer-tiles" }, parseExplorerTiles)
+        .with({ type: "table" }, parseTable)
+        .with({ type: "key-indicator" }, parseKeyIndicator)
+        .with({ type: "key-indicator-collection" }, parseKeyIndicatorCollection)
+        .with({ type: "latest-data-insights" }, parseLatestDataInsights)
+        .with({ type: "pill-row" }, parsePillRow)
+        .with({ type: "homepage-search" }, parseHomepageSearch)
+        .with({ type: "homepage-intro" }, parseHomepageIntro)
+        .with({ type: "socials" }, parseSocials)
         .exhaustive()
 }
 
@@ -217,10 +300,24 @@ function parseAdditionalCharts(
         parseErrors: [error],
     })
 
-    if (!isArray(raw.value))
-        return createError({ message: "Value is not a list" })
+    if (isArray(raw.value))
+        return createError({
+            message: `additional-charts block is using an array tag (e.g. [.additional-charts]). Please update it to use curly braces (e.g. {.additional-charts})`,
+        })
 
-    const items = raw.value.map(htmlToSpans)
+    if (!isArray(raw.value.list))
+        return createError({ message: "Block does not contain a list" })
+
+    for (const item of raw.value.list) {
+        if (typeof item !== "string")
+            return createError({
+                message: `Item in list with value "${JSON.stringify(
+                    item
+                )}" isn't a plain string.`,
+            })
+    }
+
+    const items = raw.value.list.map(htmlToSpans)
 
     return {
         type: "additional-charts",
@@ -262,6 +359,50 @@ const parseAside = (raw: RawBlockAside): EnrichedBlockAside => {
         caption,
         position,
         parseErrors: [],
+    }
+}
+
+const parseBlockquote = (raw: RawBlockBlockquote): EnrichedBlockBlockquote => {
+    const createError = (error: ParseError): EnrichedBlockBlockquote => ({
+        type: "blockquote",
+        text: [],
+        parseErrors: [error],
+    })
+
+    if (
+        typeof raw.value.citation !== "undefined" &&
+        typeof raw.value.citation !== "string"
+    ) {
+        return createError({
+            message: "Citation is not a string",
+        })
+    }
+    // citation might not be a URL, in which case this is a no-op
+    // but if it is a URL, Gdocs may have wrapped it in an <a> tag which we want to remove
+    const citation = extractUrl(raw.value.citation)
+    // Enforcing http prefix for URLs so that the UI component can easily decide whether to use it in a cite attribute or <cite> tag
+    if (citation.includes("www.") && !citation.startsWith("http")) {
+        return createError({
+            message:
+                "Citation is a URL but is missing the http:// or https:// prefix",
+        })
+    }
+
+    if (!isArray(raw.value.text))
+        return createError({
+            message:
+                "Text is not a freeform array. Make sure you've written [.+text]",
+        })
+
+    const parsedText = raw.value.text.map(parseText)
+
+    const parsedTextErrors = parsedText.flatMap((block) => block.parseErrors)
+
+    return {
+        type: "blockquote",
+        text: parsedText,
+        citation,
+        parseErrors: parsedTextErrors,
     }
 }
 
@@ -358,6 +499,90 @@ const parseChart = (raw: RawBlockChart): EnrichedBlockChart => {
     }
 }
 
+const parseNarrativeChart = (
+    raw: RawBlockNarrativeChart
+): EnrichedBlockNarrativeChart => {
+    const createError = (
+        error: ParseError,
+        name: string,
+        caption: Span[] = []
+    ): EnrichedBlockNarrativeChart => ({
+        type: "narrative-chart",
+        name,
+        caption,
+        parseErrors: [error],
+    })
+
+    const val = raw.value
+
+    if (typeof val === "string") {
+        return {
+            type: "narrative-chart",
+            name: val,
+            parseErrors: [],
+        }
+    } else {
+        if (!val.name)
+            return createError(
+                {
+                    message: "name property is missing",
+                },
+                ""
+            )
+
+        const warnings: ParseError[] = []
+
+        const height = val.height
+        const row = val.row
+        const column = val.column
+        // This property is currently unused, a holdover from @mathisonian's gdocs demo.
+        // We will decide soon™️ if we want to use it for something
+        let position: ChartPositionChoice | undefined = undefined
+        if (val.position)
+            if (val.position === "featured") position = val.position
+            else {
+                warnings.push({
+                    message: "position must be 'featured' or unset",
+                })
+            }
+        const caption = val.caption ? htmlToSpans(val.caption) : []
+
+        return omitUndefinedValues({
+            type: "narrative-chart",
+            name: val.name,
+            height,
+            row,
+            column,
+            position,
+            caption: caption.length > 0 ? caption : undefined,
+            parseErrors: [],
+        }) as EnrichedBlockNarrativeChart
+    }
+}
+
+const parseCode = (raw: RawBlockCode): EnrichedBlockCode => {
+    return {
+        type: "code",
+        text: raw.value.map((text) => ({
+            type: "simple-text",
+            value: {
+                spanType: "span-simple-text",
+                text: toAsciiQuotes(text.value),
+            },
+            parseErrors: [],
+        })),
+        parseErrors: [],
+    }
+}
+
+const parseDonorList = (raw: RawBlockDonorList): EnrichedBlockDonorList => {
+    return {
+        type: "donors",
+        value: raw.value,
+        parseErrors: [],
+    }
+}
+
 const parseScroller = (raw: RawBlockScroller): EnrichedBlockScroller => {
     const createError = (
         error: ParseError,
@@ -446,11 +671,15 @@ const parseChartStory = (raw: RawBlockChartStory): EnrichedBlockChartStory => {
                     message:
                         "Item is missing chart property or it is not a string value",
                 }
+            if (isArray(item?.technical))
+                return {
+                    message: `Item's technical tag is an array (e.g. "[.technical]"). Please update this tag to use curly braces (e.g. {.technical})`,
+                }
             return {
                 narrative: htmlToEnrichedTextBlock(item.narrative),
                 chart: { type: "chart", url: chart, parseErrors: [] },
-                technical: item.technical
-                    ? item.technical.map(htmlToEnrichedTextBlock)
+                technical: item.technical?.list
+                    ? item.technical.list.map(htmlToEnrichedTextBlock)
                     : [],
             }
         }
@@ -482,6 +711,7 @@ const parseImage = (image: RawBlockImage): EnrichedBlockImage => {
         caption,
         size,
         originalWidth: undefined,
+        hasOutline: false,
         parseErrors: [error],
     })
 
@@ -504,13 +734,99 @@ const parseImage = (image: RawBlockImage): EnrichedBlockImage => {
         ? htmlToSpans(image.value.caption)
         : undefined
 
+    if (
+        image.value.hasOutline &&
+        image.value.hasOutline !== "true" &&
+        image.value.hasOutline !== "false"
+    ) {
+        return createError({
+            message:
+                "If set, image `hasOutline` property must be true or false",
+        })
+    }
+    const hasOutline = Boolean(image.value.hasOutline === "true")
+
     return {
         type: "image",
         filename,
+        smallFilename: image.value.smallFilename,
         alt: image.value.alt,
         caption,
         size,
+        hasOutline,
         originalWidth: undefined,
+        parseErrors: [],
+    }
+}
+
+const parseVideo = (raw: RawBlockVideo): EnrichedBlockVideo => {
+    const createError = (
+        error: ParseError,
+        url: string = "",
+        filename: string = "",
+        shouldLoop: boolean = false,
+        shouldAutoplay: boolean = false,
+        caption?: Span[]
+    ): EnrichedBlockVideo => ({
+        type: "video",
+        url,
+        filename,
+        shouldLoop,
+        shouldAutoplay,
+        caption,
+        parseErrors: [error],
+    })
+
+    const url = extractUrl(raw.value.url)
+    if (!url) {
+        return createError({
+            message: "url property is missing or empty",
+        })
+    }
+
+    if (!url.endsWith(".mp4")) {
+        return createError({
+            message: "video must have a .mp4 file extension",
+        })
+    }
+
+    const filename = raw.value.filename
+    if (!filename) {
+        return createError({
+            message: "filename property is missing or empty",
+        })
+    }
+
+    const shouldLoop = raw.value.shouldLoop
+    if (!!shouldLoop && shouldLoop !== "true" && shouldLoop !== "false") {
+        return createError({
+            message: "If specified, shouldLoop property must be true or false",
+        })
+    }
+
+    const shouldAutoplay = raw.value.shouldAutoplay
+    if (
+        !!shouldAutoplay &&
+        shouldAutoplay !== "true" &&
+        shouldAutoplay !== "false"
+    ) {
+        return createError({
+            message:
+                "If specified, shouldAutoplay property must be true or false",
+        })
+    }
+
+    const caption = raw.value.caption
+        ? htmlToSpans(raw.value.caption)
+        : undefined
+
+    return {
+        type: "video",
+        url,
+        filename,
+        caption,
+        shouldLoop: shouldLoop === "true",
+        shouldAutoplay: shouldAutoplay === "true",
         parseErrors: [],
     }
 }
@@ -578,6 +894,61 @@ const parseList = (raw: RawBlockList): EnrichedBlockList => {
 //     return { errors, texts }
 // }
 
+const parsePerson = (raw: RawBlockPerson): EnrichedBlockPerson => {
+    const createError = (error: ParseError): EnrichedBlockPerson => ({
+        type: "person",
+        name: "",
+        text: [],
+        parseErrors: [error],
+    })
+
+    if (!raw.value?.name) {
+        return createError({ message: "Person must have a name" })
+    }
+
+    return {
+        type: "person",
+        image: raw.value.image,
+        name: raw.value.name,
+        title: raw.value.title,
+        url: extractUrl(raw.value.url),
+        text: raw.value.text.map(parseText),
+        socials: raw.value.socials?.map(parseSocialLink),
+        parseErrors: [],
+    }
+}
+
+const parsePeopleRows = (raw: RawBlockPeopleRows): EnrichedBlockPeopleRows => {
+    return {
+        type: "people-rows",
+        columns: raw.value.columns,
+        people: raw.value.people.map(parsePerson),
+        parseErrors: [],
+    }
+}
+
+const parsePeople = (raw: RawBlockPeople): EnrichedBlockPeople => {
+    const createError = (
+        error: ParseError,
+        items: EnrichedBlockPerson[] = []
+    ): EnrichedBlockPeople => ({
+        type: "people",
+        items,
+        parseErrors: [error],
+    })
+
+    if (typeof raw.value === "string")
+        return createError({
+            message: "Value is a string, not a list of {.person} blocks",
+        })
+
+    return {
+        type: "people",
+        items: raw.value.map(parsePerson),
+        parseErrors: [],
+    }
+}
+
 const parsePullQuote = (raw: RawBlockPullQuote): EnrichedBlockPullQuote => {
     const createError = (
         error: ParseError,
@@ -600,10 +971,8 @@ const parsePullQuote = (raw: RawBlockPullQuote): EnrichedBlockPullQuote => {
         (item): item is EnrichedBlockText => item.type === "text"
     )
 
-    const otherBlockErrors = otherBlocks
-        .map((block) => block.parseErrors)
-        .flat()
-    const textBlockErrors = textBlocks.map((block) => block.parseErrors).flat()
+    const otherBlockErrors = otherBlocks.flatMap((block) => block.parseErrors)
+    const textBlockErrors = textBlocks.flatMap((block) => block.parseErrors)
 
     const simpleTextSpans: SpanSimpleText[] = []
     const unexpectedTextSpanErrors: ParseError[] = []
@@ -682,6 +1051,111 @@ const parseRecirc = (raw: RawBlockRecirc): EnrichedBlockRecirc => {
     }
 }
 
+function validateRawEnum<T extends string>(
+    validValues: ReadonlyArray<T>,
+    value: unknown
+): value is T {
+    return typeof value === "string" && validValues.includes(value as T)
+}
+
+export const parseTable = (raw: RawBlockTable): EnrichedBlockTable => {
+    const createError = (
+        error: ParseError,
+        template: TableTemplate = "header-row",
+        size: TableSize = "narrow",
+        rows: EnrichedBlockTableRow[] = []
+    ): EnrichedBlockTable => ({
+        type: "table",
+        template,
+        rows,
+        size,
+        parseErrors: [error],
+    })
+
+    const parseErrors: ParseError[] = []
+
+    const template = raw.value?.template || "header-row"
+    if (!validateRawEnum(tableTemplates, template))
+        return createError({
+            message: `Invalid table template "${template}". Must be one of ${tableTemplates.join(
+                ", "
+            )}`,
+        })
+
+    const size = raw.value?.size || "narrow"
+    if (!validateRawEnum(tableSizes, size))
+        return createError({
+            message: `Invalid table size "${size}". Must be one of ${tableSizes.join(
+                ", "
+            )}`,
+        })
+
+    const rows = raw.value?.rows
+    const enrichedRows: EnrichedBlockTableRow[] = []
+    if (!rows)
+        return createError({
+            message: "Table must have at least one row",
+        })
+
+    for (const [rowIndex, row] of rows.entries()) {
+        const enrichedCells: EnrichedBlockTableCell[] = []
+        const cells = row.value.cells
+        if (!cells) {
+            parseErrors.push({
+                message: `Row ${rowIndex} is missing cells`,
+            })
+        } else {
+            for (const [cellIndex, cell] of cells.entries()) {
+                const enrichedCellContent: OwidEnrichedGdocBlock[] = []
+                const content = cell.value
+                if (!content || !content.length) {
+                    enrichedCells.push({
+                        type: "table-cell",
+                        content: [],
+                    })
+                } else {
+                    for (const [
+                        contentIndex,
+                        contentItem,
+                    ] of content.entries()) {
+                        const enrichedContent =
+                            parseRawBlocksToEnrichedBlocks(contentItem)
+                        if (!enrichedContent) {
+                            parseErrors.push({
+                                message: `Cell (${rowIndex}, ${cellIndex}) content item ${contentIndex} is invalid`,
+                            })
+                        } else if (enrichedContent.parseErrors.length) {
+                            parseErrors.push(
+                                ...enrichedContent.parseErrors.map((error) => ({
+                                    message: `Cell (${rowIndex}, ${cellIndex}) content item ${contentIndex} has error: ${error.message}`,
+                                }))
+                            )
+                        } else {
+                            enrichedCellContent.push(enrichedContent)
+                        }
+                    }
+                    enrichedCells.push({
+                        type: "table-cell",
+                        content: enrichedCellContent,
+                    })
+                }
+            }
+            enrichedRows.push({
+                type: "table-row",
+                cells: enrichedCells,
+            })
+        }
+    }
+
+    return {
+        type: "table",
+        rows: enrichedRows,
+        template,
+        size,
+        parseErrors,
+    }
+}
+
 export const parseText = (raw: RawBlockText): EnrichedBlockText => {
     const createError = (
         error: ParseError,
@@ -692,6 +1166,8 @@ export const parseText = (raw: RawBlockText): EnrichedBlockText => {
         parseErrors: [error],
     })
 
+    const parseErrors: ParseError[] = []
+
     if (typeof raw.value !== "string")
         return createError({
             message: "Value is a not a string",
@@ -699,10 +1175,26 @@ export const parseText = (raw: RawBlockText): EnrichedBlockText => {
 
     const value = htmlToSpans(raw.value)
 
+    value.forEach((node) =>
+        traverseEnrichedSpan(node, (span) => {
+            if (
+                span.spanType === "span-link" &&
+                span.url.includes("owid.cloud")
+            ) {
+                parseErrors.push({
+                    message: `Link with text "${spansToSimpleString(
+                        span.children
+                    )}" is linking to owid.cloud instead of ourworldindata.org`,
+                    isWarning: true,
+                })
+            }
+        })
+    )
+
     return {
         type: "text",
         value,
-        parseErrors: [],
+        parseErrors,
     }
 }
 
@@ -765,7 +1257,7 @@ const parseHeading = (raw: RawBlockHeading): EnrichedBlockHeading => {
 
     if (!raw.value.level)
         return createError({
-            message: "Header level property is missing",
+            message: `Header with text "${headingText}" is missing a level property`,
         })
     const level = parseInt(raw.value.level, 10)
     if (level < 1 || level > 5)
@@ -946,6 +1438,12 @@ function parseCallout(raw: RawBlockCallout): EnrichedBlockCallout {
         text: [],
     })
 
+    if (raw.value.icon && raw.value.icon !== "info") {
+        return createError({
+            message: "Only the 'info' icon is supported for callouts",
+        })
+    }
+
     if (!raw.value.text) {
         return createError({ message: "No text provided for callout block" })
     }
@@ -956,12 +1454,24 @@ function parseCallout(raw: RawBlockCallout): EnrichedBlockCallout {
                 "Text must be provided as an array e.g. inside a [.+text] block",
         })
     }
-    const enrichedTextBlocks = raw.value.text.map(parseText)
+    for (const block of raw.value.text) {
+        if (!["text", "list", "heading"].includes(block.type)) {
+            return createError({
+                message:
+                    "Callout blocks can only contain text, lists, and headings",
+            })
+        }
+    }
+
+    const enrichedTextBlocks = raw.value.text.map(
+        parseRawBlocksToEnrichedBlocks
+    ) as (EnrichedBlockText | EnrichedBlockList | EnrichedBlockHeading | null)[]
 
     return {
         type: "callout",
+        icon: raw.value.icon,
         parseErrors: [],
-        text: enrichedTextBlocks,
+        text: excludeNullish(enrichedTextBlocks),
         title: raw.value.title,
     }
 }
@@ -1087,16 +1597,25 @@ function parseKeyInsights(raw: RawBlockKeyInsights): EnrichedBlockKeyInsights {
         if (!rawInsight.title) {
             parseErrors.push({ message: "Key insight is missing a title" })
         }
-        if (!rawInsight.url && !rawInsight.filename) {
+        if (
+            !rawInsight.url &&
+            !rawInsight.filename &&
+            !rawInsight.narrativeChartName
+        ) {
             parseErrors.push({
                 message:
-                    "Key insight is missing a url or filename. One of these two fields must be specified.",
+                    "Key insight is missing a url, filename or narrativeChartName. One of these two fields must be specified.",
             })
         }
-        if (rawInsight.url && rawInsight.filename) {
+        const hasMoreThanOneResourceField =
+            Number(!!rawInsight.url) +
+                Number(!!rawInsight.filename) +
+                Number(!!rawInsight.narrativeChartName) >
+            1
+        if (hasMoreThanOneResourceField) {
             parseErrors.push({
                 message:
-                    "Key insight has both a url and a filename. Only one of these two fields can be specified.",
+                    "Key insight has more than just one of the fields url, filename, narrativeChartName. Only one of these fields can be specified.",
             })
         }
         const url = Url.fromURL(extractUrl(rawInsight.url))
@@ -1130,6 +1649,10 @@ function parseKeyInsights(raw: RawBlockKeyInsights): EnrichedBlockKeyInsights {
             if (rawInsight.filename) {
                 enrichedInsight.filename = rawInsight.filename
             }
+            if (rawInsight.narrativeChartName) {
+                enrichedInsight.narrativeChartName =
+                    rawInsight.narrativeChartName
+            }
             enrichedInsights.push(enrichedInsight)
         }
     }
@@ -1139,6 +1662,76 @@ function parseKeyInsights(raw: RawBlockKeyInsights): EnrichedBlockKeyInsights {
         heading: raw.value.heading,
         insights: enrichedInsights,
         parseErrors: [...enrichedInsightParseErrors],
+    }
+}
+
+export function parseFaqs(
+    faqs: unknown,
+    gdocId: string
+): {
+    faqs: FaqDictionary
+    parseErrors: ParseError[]
+} {
+    if (!Array.isArray(faqs))
+        return {
+            faqs: {},
+            parseErrors: [
+                {
+                    message: `No faqs defined in document with id "${gdocId}"`,
+                },
+            ],
+        }
+
+    function parseFaq(faq: unknown): EnrichedFaq {
+        const createError = (
+            error: ParseError,
+            id: string = "",
+            content: OwidEnrichedGdocBlock[] = []
+        ): EnrichedFaq => ({
+            id,
+            content,
+            parseErrors: [error],
+        })
+
+        if (!checkIsPlainObjectWithGuard(faq))
+            return createError({
+                message: "Faq is not a plain-object and cannot be parsed",
+            })
+        if (typeof faq.id !== "string")
+            return createError({
+                message: "Faq does not have an id",
+            })
+        if (!Array.isArray(faq.content) || !faq.content.length)
+            return createError({
+                message: `Faq with id "${faq.id}" does not have any blocks`,
+            })
+
+        const enrichedText = compact(
+            faq.content.map(parseRawBlocksToEnrichedBlocks)
+        )
+
+        return {
+            id: faq.id,
+            content: enrichedText,
+            parseErrors: compact([
+                ...enrichedText.flatMap((block) =>
+                    block?.parseErrors.map((parseError) => ({
+                        ...parseError,
+                        message: `Block parse error in faq with id "${faq.id}": ${parseError.message}`,
+                    }))
+                ),
+            ]),
+        }
+    }
+
+    const [enrichedFaqs, faqsWithErrors] = partition(
+        faqs.map(parseFaq),
+        (detail) => !detail.parseErrors.length
+    )
+
+    return {
+        faqs: keyBy(enrichedFaqs, "id"),
+        parseErrors: faqsWithErrors.flatMap((faq) => faq.parseErrors),
     }
 }
 
@@ -1234,24 +1827,6 @@ function parseExpandableParagraph(
 function parseResearchAndWritingBlock(
     raw: RawBlockResearchAndWriting
 ): EnrichedBlockResearchAndWriting {
-    const createError = (
-        error: ParseError,
-        primary = {
-            value: { url: "" },
-        },
-        secondary = {
-            value: { url: "" },
-        },
-        more: EnrichedBlockResearchAndWritingLink[] = [],
-        rows: EnrichedBlockResearchAndWritingRow[] = []
-    ): EnrichedBlockResearchAndWriting => ({
-        type: "research-and-writing",
-        primary,
-        secondary,
-        more,
-        rows,
-        parseErrors: [error],
-    })
     const parseErrors: ParseError[] = []
 
     function enrichLink(
@@ -1302,40 +1877,627 @@ function parseResearchAndWritingBlock(
         } else return createLinkError(`Malformed link data: ${typeof rawLink}`)
     }
 
-    if (!raw.value.primary)
-        return createError({ message: "Missing primary link" })
-    const primary = enrichLink(raw.value.primary)
-
-    if (!raw.value.secondary)
-        return createError({ message: "Missing secondary link" })
-    const secondary = enrichLink(raw.value.secondary)
-
-    if (!raw.value.more) {
-        return createError(
-            { message: "No 'more' values passed" },
-            primary,
-            secondary
-        )
+    if (
+        raw.value["hide-authors"] &&
+        !["true", "false"].includes(raw.value["hide-authors"])
+    ) {
+        parseErrors.push({
+            message: `"hide-authors" must be true or false if present`,
+        })
     }
-    const more = raw.value.more.map((rawLink) => enrichLink(rawLink, true))
-    const rows = raw.value.rows?.map((row) => {
-        if (!row.heading) {
+
+    const primary: EnrichedBlockResearchAndWritingLink[] = []
+    if (isArray(raw.value.primary)) {
+        primary.push(...raw.value.primary.map((link) => enrichLink(link)))
+    } else if (raw.value.primary) {
+        primary.push(enrichLink(raw.value.primary))
+    }
+
+    const secondary: EnrichedBlockResearchAndWritingLink[] = []
+    if (isArray(raw.value.secondary)) {
+        secondary.push(...raw.value.secondary.map((link) => enrichLink(link)))
+    } else if (raw.value.secondary) {
+        secondary.push(enrichLink(raw.value.secondary))
+    }
+
+    function parseRow(
+        rawRow: RawBlockResearchAndWritingRow,
+        skipFilenameValidation: boolean = false
+    ): EnrichedBlockResearchAndWritingRow {
+        if (!rawRow.heading) {
+            parseErrors.push({ message: `Row missing "heading" value` })
+        } else if (typeof rawRow.heading !== "string") {
+            parseErrors.push({ message: `Row "heading" must be a string` })
+        } else if (!rawRow.articles) {
             parseErrors.push({
-                message: `Row missing "heading" value`,
+                message: `Row with heading ${rawRow.heading} no articles defined. Be sure to use a "[.articles]" tag`,
             })
+        } else {
+            return {
+                heading: rawRow.heading,
+                articles: rawRow.articles.map((rawLink) =>
+                    enrichLink(rawLink, skipFilenameValidation)
+                ),
+            }
         }
-        return {
-            heading: row.heading || "",
-            articles: row.articles?.map((rawLink) => enrichLink(rawLink)) || [],
+
+        return { heading: "", articles: [] }
+    }
+
+    const parseRowLatest = (
+        rawRow: RawBlockLatestWork
+    ): EnrichedBlockLatestWork | undefined => {
+        if (rawRow.heading && typeof rawRow.heading !== "string") {
+            parseErrors.push({ message: `"heading" must be a string` })
+            return
         }
-    })
+        return { heading: rawRow.heading }
+    }
+
+    const more = raw.value.more ? parseRow(raw.value.more, true) : undefined
+    const rows = raw.value.rows?.map((row) => parseRow(row)) || []
+    const latest = raw.value.latest
+        ? parseRowLatest(raw.value.latest)
+        : undefined
 
     return {
         type: "research-and-writing",
+        heading: raw.value.heading,
+        "hide-authors": raw.value["hide-authors"] === "true",
         primary,
         secondary,
-        more: more,
-        rows: rows ?? [],
+        more,
+        rows,
+        latest,
         parseErrors,
+    }
+}
+
+function parseAlign(b: RawBlockAlign): EnrichedBlockAlign {
+    const createError = (error: ParseError): EnrichedBlockAlign => ({
+        type: "align",
+        alignment: HorizontalAlign.left,
+        content: [],
+        parseErrors: [error],
+    })
+
+    const possibleAlignValues = Object.values(HorizontalAlign) as string[]
+    const possibleAlignValuesString = possibleAlignValues
+        .map((v) => `"${v}"`)
+        .join(", ")
+
+    if (!b.value.alignment)
+        return createError({
+            message: `Missing alignment property (allowed: one of ${possibleAlignValuesString})`,
+        })
+
+    if (!possibleAlignValues.includes(b.value.alignment))
+        return createError({
+            message: `Invalid alignment property (allowed: one of ${possibleAlignValuesString})`,
+        })
+
+    if (!b.value.content) return createError({ message: "Missing content" })
+
+    return {
+        type: "align",
+        alignment: b.value.alignment as HorizontalAlign,
+        content: compact(b.value.content.map(parseRawBlocksToEnrichedBlocks)),
+        parseErrors: [],
+    }
+}
+
+function parseEntrySummary(
+    raw: RawBlockEntrySummary
+): EnrichedBlockEntrySummary {
+    const parseErrors: ParseError[] = []
+    const items: EnrichedBlockEntrySummaryItem[] = []
+
+    if (raw.value.items) {
+        raw.value.items.forEach((item, i) => {
+            if (!item.text || !item.slug) {
+                parseErrors.push({
+                    message: `entry-summary item ${i} is not valid. It must have a text and a slug property`,
+                })
+            } else {
+                items.push({
+                    text: item.text,
+                    slug: item.slug,
+                })
+            }
+        })
+    }
+
+    return {
+        type: "entry-summary",
+        items,
+        parseErrors,
+    }
+}
+
+function parseExplorerTiles(
+    raw: RawBlockExplorerTiles
+): EnrichedBlockExplorerTiles {
+    function createError(error: ParseError): EnrichedBlockExplorerTiles {
+        return {
+            type: "explorer-tiles",
+            title: "",
+            subtitle: "",
+            explorers: [],
+            parseErrors: [error],
+        }
+    }
+
+    if (!raw.value.title)
+        return createError({ message: "Explorer tiles missing title" })
+
+    if (!raw.value.subtitle)
+        return createError({ message: "Explorer tiles missing subtitle" })
+
+    if (!raw.value.explorers?.length)
+        return createError({ message: "Explorer tiles missing explorers" })
+
+    const parsedExplorerUrls: { url: string }[] = []
+    for (const explorer of raw.value.explorers) {
+        const url = extractUrl(explorer.url)
+        if (getLinkType(url) !== "explorer") {
+            return createError({
+                message: `Explorer tiles contains a non-explorer URL: ${url}`,
+            })
+        }
+        parsedExplorerUrls.push({ url })
+    }
+
+    return {
+        type: "explorer-tiles",
+        title: raw.value.title,
+        subtitle: raw.value.subtitle,
+        explorers: parsedExplorerUrls,
+        parseErrors: [],
+    }
+}
+
+export function parseRefs({
+    refs,
+    refsByFirstAppearance,
+}: {
+    refs: unknown
+    refsByFirstAppearance: Set<string>
+}): { definitions: RefDictionary; errors: OwidGdocErrorMessage[] } {
+    const parsedRefs: RefDictionary = {}
+    const refErrors: OwidGdocErrorMessage[] = []
+
+    const pushRefError = (message: string): void => {
+        refErrors.push({
+            message,
+            property: "refs",
+            type: OwidGdocErrorMessageType.Error,
+        })
+    }
+    if (isArray(refs)) {
+        for (const ref of refs) {
+            if (typeof ref.id === "string") {
+                const enrichedBlocks: OwidEnrichedGdocBlock[] = []
+                const parseErrors: ParseError[] = []
+                if (!refsByFirstAppearance.has(ref.id)) {
+                    // index will be -1 in this case
+                    pushRefError(
+                        `A ref with ID "${ref.id}" has been defined but isn't used in this document`
+                    )
+                }
+                if (!isArray(ref.content) || !ref.content.length) {
+                    pushRefError(
+                        `Ref with ID ${ref.id} has no content. Make sure the ID is defined and it has a [.+content] block`
+                    )
+                } else {
+                    ref.content.forEach((block: OwidRawGdocBlock) => {
+                        match(block)
+                            .with(
+                                {
+                                    type: P.union(
+                                        "text",
+                                        "numbered-list",
+                                        "list"
+                                    ),
+                                },
+                                (block) => {
+                                    const enrichedBlock =
+                                        parseRawBlocksToEnrichedBlocks(block)
+                                    if (enrichedBlock)
+                                        enrichedBlocks.push(enrichedBlock)
+                                }
+                            )
+                            .otherwise((block) => {
+                                pushRefError(
+                                    `Unsupported block type "${block.type}" in ref with ID "${ref.id}"`
+                                )
+                            })
+                    })
+                }
+
+                const index = [...refsByFirstAppearance].indexOf(ref.id)
+
+                parsedRefs[ref.id] = {
+                    id: ref.id,
+                    index,
+                    content: enrichedBlocks,
+                    parseErrors,
+                }
+            }
+        }
+    }
+
+    refErrors.push(
+        ...[...refsByFirstAppearance]
+            .filter((ref) => !parsedRefs[ref])
+            .map(
+                (undefinedRef): OwidGdocErrorMessage => ({
+                    message: `"${undefinedRef}" is used as a ref ID but no definition for this ref has been written.`,
+                    property: "refs",
+                    type: OwidGdocErrorMessageType.Error,
+                })
+            )
+    )
+
+    return { definitions: parsedRefs, errors: refErrors }
+}
+
+const parseKeyIndicator = (
+    raw: RawBlockKeyIndicator
+): EnrichedBlockKeyIndicator => {
+    const createError = (
+        error: ParseError,
+        datapageUrl = ""
+    ): EnrichedBlockKeyIndicator => ({
+        type: "key-indicator",
+        datapageUrl,
+        title: "",
+        text: [],
+        parseErrors: [error],
+    })
+
+    const val = raw.value
+
+    if (typeof val === "string")
+        return createError({
+            message: `key-indicator block must be written as "{.key-indicator}"`,
+        })
+
+    if (!val.datapageUrl)
+        return createError({
+            message: "datapageUrl property is missing or empty",
+        })
+
+    const url = extractUrl(val.datapageUrl)
+
+    if (!val.title)
+        return createError(
+            { message: "title property is missing or empty" },
+            url
+        )
+
+    if (!val.text) return createError({ message: "text is missing" }, url)
+
+    if (!isArray(val.text))
+        return createError(
+            {
+                message:
+                    "Blurb is not a freeform array. Make sure you've written [.+text]",
+            },
+            url
+        )
+
+    const parsedBlurb = val.text.map(parseText)
+    const parsedBlurbErrors = parsedBlurb.flatMap((block) => block.parseErrors)
+
+    return omitUndefinedValues({
+        type: "key-indicator",
+        datapageUrl: url,
+        text: parsedBlurb,
+        title: val.title,
+        source: val.source,
+        parseErrors: parsedBlurbErrors,
+    }) as EnrichedBlockKeyIndicator
+}
+
+function parseKeyIndicatorCollection(
+    raw: RawBlockKeyIndicatorCollection
+): EnrichedBlockKeyIndicatorCollection {
+    const createError = (
+        error: ParseError,
+        warnings: ParseError[] = []
+    ): EnrichedBlockKeyIndicatorCollection => ({
+        type: "key-indicator-collection",
+        blocks: [],
+        parseErrors: [error, ...warnings],
+    })
+
+    const warnings = []
+
+    if (!Array.isArray(raw.value.indicators)) {
+        return createError({
+            message:
+                "key-indicator-collection requires an [.+indicators] block with an array of {.key-indicator} blocks",
+        })
+    }
+
+    const blocks = raw.value.indicators
+    const keyIndicatorBlocks = blocks.filter(
+        (block) => block.type === "key-indicator"
+    )
+
+    if (keyIndicatorBlocks.length < blocks.length) {
+        warnings.push({
+            message:
+                "key-indicator-collection contains blocks that are not key-indicators blocks",
+            isWarning: true,
+        })
+    }
+
+    const parsedBlocks = compact(
+        keyIndicatorBlocks.map(parseRawBlocksToEnrichedBlocks)
+    ) as EnrichedBlockKeyIndicator[]
+
+    const validBlocks = parsedBlocks.filter(
+        (block) =>
+            block.parseErrors.filter((error) => !error.isWarning).length === 0
+    )
+
+    if (validBlocks.length < parsedBlocks.length) {
+        warnings.push({
+            message:
+                "key-indicator-collection contains at least one invalid key-indicators block",
+            isWarning: true,
+        })
+    }
+
+    if (validBlocks.length <= 1) {
+        const message =
+            validBlocks.length === 0
+                ? "key-indicator-collection contains no valid key-indicator blocks"
+                : "key-indicator-collection contains only one valid key-indicator block"
+        return createError({ message }, warnings)
+    }
+
+    return {
+        type: "key-indicator-collection",
+        blocks: validBlocks,
+        parseErrors: warnings,
+    }
+}
+
+function parsePillRow(raw: RawBlockPillRow): EnrichedBlockPillRow {
+    function createError(error: ParseError): EnrichedBlockPillRow {
+        return {
+            type: "pill-row",
+            parseErrors: [error],
+            pills: [],
+            title: "",
+        }
+    }
+
+    if (!raw.value.title) {
+        return createError({
+            message: "Pill row is missing a title",
+        })
+    }
+    if (!raw.value.pills?.length) {
+        return createError({
+            message: "Pill row is missing pills",
+        })
+    }
+
+    const pills: { text: string; url: string }[] = []
+
+    for (const rawPill of raw.value.pills) {
+        const url = extractUrl(rawPill.url)
+        if (!url) {
+            return createError({
+                message: "A pill is missing a url",
+            })
+        }
+
+        if (!rawPill.text && getLinkType(url) !== "gdoc") {
+            return createError({
+                message:
+                    "A pill that is linking to a non-gdoc resource is missing text",
+            })
+        }
+
+        pills.push({ text: rawPill.text!, url })
+    }
+
+    return {
+        type: "pill-row",
+        parseErrors: [],
+        pills: pills,
+        title: raw.value.title,
+    }
+}
+
+function parseLatestDataInsights(
+    _: RawBlockLatestDataInsights
+): EnrichedBlockLatestDataInsights {
+    return {
+        type: "latest-data-insights",
+        parseErrors: [],
+    }
+}
+
+function parseHomepageSearch(
+    _: RawBlockHomepageSearch
+): EnrichedBlockHomepageSearch {
+    return {
+        type: "homepage-search",
+        parseErrors: [],
+    }
+}
+
+function parseHomepageIntro(
+    raw: RawBlockHomepageIntro
+): EnrichedBlockHomepageIntro {
+    const enrichedFeaturedWork: EnrichedBlockHomepageIntroPost[] = []
+    const parseErrors: ParseError[] = []
+    function createError(error: ParseError): EnrichedBlockHomepageIntro {
+        return {
+            type: "homepage-intro",
+            featuredWork: [],
+            parseErrors: [error],
+        }
+    }
+
+    if (!raw.value["featured-work"]) {
+        return createError({
+            message: "Homepage intro is missing featured work",
+        })
+    }
+
+    for (const post of raw.value["featured-work"]) {
+        if (!post.value.url) {
+            parseErrors.push({
+                message: "Featured work is missing a url",
+            })
+        }
+        if (!["primary", "secondary", "tertiary"].includes(post.type)) {
+            parseErrors.push({
+                message:
+                    "Featured work must be of type primary, secondary, or tertiary",
+            })
+        }
+        const url = extractUrl(post.value.url)
+        const linkType = getLinkType(url)
+
+        if (["gdoc", "explorer", "grapher"].includes(linkType)) {
+            enrichedFeaturedWork.push({
+                type: post.type,
+                url,
+                title: post.value.title,
+                authors: post.value.authors
+                    ? parseAuthors(post.value.authors)
+                    : undefined,
+                description: post.value.description,
+                filename: post.value.filename,
+                kicker: post.value.kicker,
+            })
+        } else if (!post.value.title) {
+            parseErrors.push({
+                message: `Featured work using plain URL "${url}" is missing a title`,
+            })
+        } else if (!post.value.authors) {
+            parseErrors.push({
+                message: `Featured work using plain URL "${url}" is missing authors`,
+            })
+        } else if (post.type !== "tertiary" && !post.value.description) {
+            parseErrors.push({
+                message: `Featured work using plain URL "${url}" is missing a description`,
+            })
+        } else if (post.type !== "tertiary" && !post.value.filename) {
+            parseErrors.push({
+                message: `Featured work using plain URL "${url}" is missing a filename (thumbnail)`,
+            })
+        } else {
+            enrichedFeaturedWork.push({
+                type: post.type,
+                url,
+                title: post.value.title,
+                authors: parseAuthors(post.value.authors),
+                description: post.value.description,
+                filename: post.value.filename,
+                kicker: post.value.kicker,
+            })
+        }
+    }
+
+    // We will likely support multile layouts in the future even though it's static now
+    const expectedFeaturedWorkShape = {
+        primary: 1,
+        secondary: 2,
+        tertiary: 2,
+    }
+    if (!parseErrors.length) {
+        const featuredWorkCounts = enrichedFeaturedWork.reduce(
+            (counts, post) => {
+                counts[post.type]++
+                return counts
+            },
+            { primary: 0, secondary: 0, tertiary: 0 }
+        )
+        Object.entries(expectedFeaturedWorkShape).forEach((shape) => {
+            const type = shape[0] as "primary" | "secondary" | "tertiary"
+            const expectedCount = shape[1] as number
+            if (featuredWorkCounts[type] !== expectedCount) {
+                parseErrors.push({
+                    message: `Expected ${expectedCount} ${type} featured work, but found ${featuredWorkCounts[type]}`,
+                })
+            }
+        })
+    }
+
+    return {
+        type: "homepage-intro",
+        featuredWork: enrichedFeaturedWork,
+        parseErrors,
+    }
+}
+
+export const parseSocialLink = (raw: RawSocialLink): EnrichedSocialLink => {
+    const createError = (error: ParseError): EnrichedSocialLink => ({
+        url: "",
+        text: "",
+        type: undefined,
+        parseErrors: [error],
+    })
+
+    const url = extractUrl(raw.url)
+    if (!url) {
+        return createError({
+            message: "Link is missing a url",
+        })
+    }
+    if (!raw.text) {
+        return createError({
+            message: "Link is missing text",
+        })
+    }
+    if (raw.type && Object.values(SocialLinkType).indexOf(raw.type) === -1) {
+        return createError({
+            message: `Link type must be one of ${Object.values(
+                SocialLinkType
+            ).join(", ")}`,
+        })
+    }
+
+    return {
+        url:
+            raw.type === "email" && !url.startsWith("mailto:")
+                ? `mailto:${url}`
+                : url,
+        text: raw.text,
+        type: raw.type,
+        parseErrors: [],
+    }
+}
+
+export const parseSocials = (raw: RawBlockSocials): EnrichedBlockSocials => {
+    const createError = (error: ParseError): EnrichedBlockSocials => ({
+        type: "socials",
+        parseErrors: [error],
+        links: [],
+    })
+
+    if (typeof raw.value === "string")
+        return createError({
+            message: `Socials block must be written as an array ([socials] or [.socials] when used in [+body])`,
+        })
+
+    if (!raw.value.length) {
+        return createError({
+            message: "Socials block is empty",
+        })
+    }
+
+    return {
+        type: "socials",
+        links: raw.value.map(parseSocialLink),
+        parseErrors: [],
     }
 }

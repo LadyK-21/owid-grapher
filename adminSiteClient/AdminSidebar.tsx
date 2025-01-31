@@ -1,16 +1,13 @@
 import { Link } from "./Link.js"
-import React from "react"
+import * as React from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import {
     faChartBar,
     faFile,
-    faUpload,
     faTable,
-    faTruckFast,
     faSkullCrossbones,
     faPen,
     faDatabase,
-    faGlobe,
     faTag,
     faUser,
     faArrowRight,
@@ -18,19 +15,27 @@ import {
     faCoffee,
     faBook,
     faSatelliteDish,
-    faCodeBranch,
     faDownload,
+    faHatWizard,
+    faSitemap,
+    faPanorama,
+    faImage,
 } from "@fortawesome/free-solid-svg-icons"
 
-import { FASTTRACK_URL } from "../settings/clientSettings.js"
+import { ETL_WIZARD_URL } from "../settings/clientSettings.js"
 
-export const AdminSidebar = (): JSX.Element => (
+export const AdminSidebar = (): React.ReactElement => (
     <aside className="AdminSidebar">
         <ul className="sidebar-menu">
             <li className="header">SITE</li>
             <li>
                 <Link to="/charts">
                     <FontAwesomeIcon icon={faChartBar} /> Charts
+                </Link>
+            </li>
+            <li>
+                <Link to="/chartViews">
+                    <FontAwesomeIcon icon={faPanorama} /> Narrative charts
                 </Link>
             </li>
             <li>
@@ -42,24 +47,32 @@ export const AdminSidebar = (): JSX.Element => (
                 </Link>
             </li>
             <li>
+                <Link to="/images">
+                    <FontAwesomeIcon icon={faImage} /> Images
+                </Link>
+            </li>
+            <li>
                 <Link to="/explorers">
                     <FontAwesomeIcon icon={faCoffee} /> Explorers
                 </Link>
+                <ul>
+                    <li>
+                        <Link to="/explorer-tags">
+                            <FontAwesomeIcon icon={faTag} /> Explorer Tags
+                        </Link>
+                    </li>
+                </ul>
             </li>
             <li className="header">DATA</li>
-            <li>
-                <Link to="/import">
-                    <FontAwesomeIcon icon={faUpload} /> Import CSV
-                </Link>
-            </li>
+
             <li>
                 <a
-                    href={FASTTRACK_URL}
+                    href={ETL_WIZARD_URL}
                     target="_blank"
                     rel="noopener"
                     title="Tailscale required"
                 >
-                    <FontAwesomeIcon icon={faTruckFast} /> Fast-track
+                    <FontAwesomeIcon icon={faHatWizard} /> Wizard
                 </a>
             </li>
             <li>
@@ -84,24 +97,18 @@ export const AdminSidebar = (): JSX.Element => (
                 </Link>
             </li>
             <li>
-                <Link to="/standardize">
-                    <FontAwesomeIcon icon={faGlobe} /> Country tool
-                </Link>
-            </li>
-            <li>
                 <Link to="/tags">
                     <FontAwesomeIcon icon={faTag} /> Tags
                 </Link>
             </li>
             <li>
-                <Link to="/bulk-downloads">
-                    <FontAwesomeIcon icon={faDownload} /> Bulk downloads
+                <Link to="/tag-graph">
+                    <FontAwesomeIcon icon={faSitemap} /> Tag Graph
                 </Link>
             </li>
             <li>
-                <Link to="/suggested-chart-revisions/review">
-                    <FontAwesomeIcon icon={faCodeBranch} /> Suggested chart
-                    revisions
+                <Link to="/bulk-downloads">
+                    <FontAwesomeIcon icon={faDownload} /> Bulk downloads
                 </Link>
             </li>
             <li className="header">SETTINGS</li>
@@ -112,7 +119,12 @@ export const AdminSidebar = (): JSX.Element => (
             </li>
             <li>
                 <Link to="/redirects">
-                    <FontAwesomeIcon icon={faArrowRight} /> Redirects
+                    <FontAwesomeIcon icon={faArrowRight} /> Chart Redirects
+                </Link>
+            </li>
+            <li>
+                <Link to="/site-redirects">
+                    <FontAwesomeIcon icon={faArrowRight} /> Site Redirects
                 </Link>
             </li>
             <li>

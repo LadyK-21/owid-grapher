@@ -1,37 +1,46 @@
+import { useCallback, useRef, useState } from "react"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import {
+    faSearchPlus,
+    faSearchMinus,
     faCompress,
     faDownload,
     faPlus,
-    faSearchMinus,
-    faSearchPlus,
 } from "@fortawesome/free-solid-svg-icons"
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch"
 import { LoadingIndicator } from "@ourworldindata/grapher"
-import cx from "classnames"
-import React, { useRef, useState } from "react"
-import ReactDOM from "react-dom"
-import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch"
+import { triggerDownloadFromBlob } from "@ourworldindata/utils"
+import { unmountComponentAtNode } from "react-dom"
 import { useTriggerOnEscape } from "./hooks.js"
 
-export const LIGHTBOX_IMAGE_CLASS = "lightbox-image"
-
-const Lightbox = ({
+export const Lightbox = ({
     children,
     containerNode,
     imgSrc,
+    imgFilename,
 }: {
     children: any
     containerNode: Element | null
     imgSrc: string
+    // With CF Images, the filename is not the last part of the URL
+    // so we need to pass it separately
+    imgFilename?: string
 }) => {
     const [isLoaded, setIsLoaded] = useState(false)
     const contentRef = useRef<HTMLDivElement>(null)
 
-    const close = () => {
+    const close = useCallback(() => {
         if (containerNode) {
-            ReactDOM.unmountComponentAtNode(containerNode)
+            unmountComponentAtNode(containerNode)
         }
-    }
+    }, [containerNode])
+
+    const handleDownload = useCallback(async () => {
+        const response = await fetch(imgSrc)
+        const blob = await response.blob()
+        const filename = imgFilename || imgSrc.split("/").pop() || "image"
+        triggerDownloadFromBlob(filename, blob)
+    }, [imgFilename, imgSrc])
 
     useTriggerOnEscape(close)
 
@@ -77,13 +86,12 @@ const Lightbox = ({
                                     >
                                         <FontAwesomeIcon icon={faCompress} />
                                     </button>
-                                    <a
-                                        href={imgSrc}
-                                        download={imgSrc.split("/").pop()}
+                                    <button
+                                        onClick={handleDownload}
                                         aria-label="Download high resolution image"
                                     >
                                         <FontAwesomeIcon icon={faDownload} />
-                                    </a>
+                                    </button>
                                 </>
                             )}
                             <button
@@ -99,69 +107,4 @@ const Lightbox = ({
             </TransformWrapper>
         </div>
     )
-}
-
-const Image = ({
-    src,
-    alt,
-    isLoaded,
-    setIsLoaded,
-}: {
-    src: string
-    alt: string
-    isLoaded: boolean
-    setIsLoaded: any
-}) => {
-    return (
-        <>
-            <img
-                onLoad={() => {
-                    setIsLoaded(true)
-                }}
-                className={cx({
-                    "lightbox__img--is-svg": src.endsWith(".svg"),
-                })}
-                src={src}
-                alt={alt}
-                style={{ opacity: !isLoaded ? 0 : 1, transition: "opacity 1s" }}
-            />
-        </>
-    )
-}
-
-export const runLightbox = () => {
-    let lightboxContainer = document.querySelector(".lightbox")
-    if (!lightboxContainer) {
-        lightboxContainer = document.createElement("div")
-        lightboxContainer.classList.add("lightbox")
-        document.body.appendChild(lightboxContainer)
-    }
-    Array.from(
-        document.querySelectorAll<HTMLImageElement>(
-            `.article-content img, .${LIGHTBOX_IMAGE_CLASS}`
-        )
-    ).forEach((img) => {
-        if (img.closest("[data-no-lightbox]")) return
-
-        img.classList.add("lightbox-enabled")
-        img.addEventListener("click", () => {
-            const imgSrc = img.getAttribute("data-high-res-src") ?? img.src
-            const imgAlt = img.alt
-            if (imgSrc) {
-                ReactDOM.render(
-                    <Lightbox imgSrc={imgSrc} containerNode={lightboxContainer}>
-                        {(isLoaded: boolean, setIsLoaded: any) => (
-                            <Image
-                                src={imgSrc}
-                                alt={imgAlt}
-                                isLoaded={isLoaded}
-                                setIsLoaded={setIsLoaded}
-                            />
-                        )}
-                    </Lightbox>,
-                    lightboxContainer
-                )
-            }
-        })
-    })
 }

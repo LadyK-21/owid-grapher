@@ -1,17 +1,18 @@
-import React from "react"
+import * as React from "react"
 import { observer } from "mobx-react"
-import { action, runInAction, observable } from "mobx"
-import * as lodash from "lodash"
-
-import { Link } from "./Link.js"
-import { Tag } from "./TagBadge.js"
+import { runInAction, observable } from "mobx"
 import { bind } from "decko"
-import { EditableTags, Timeago } from "./Forms.js"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
-import { BAKED_GRAPHER_URL } from "../settings/clientSettings.js"
-import { ChartTypeName, GrapherInterface } from "@ourworldindata/grapher"
-import { startCase } from "@ourworldindata/utils"
-import { References, getFullReferencesCount } from "./ChartEditor.js"
+import {
+    GrapherChartType,
+    GrapherInterface,
+    GRAPHER_CHART_TYPES,
+    GRAPHER_TAB_OPTIONS,
+} from "@ourworldindata/types"
+import { startCase, DbChartTagJoin } from "@ourworldindata/utils"
+import { getFullReferencesCount } from "./ChartEditor.js"
+import { ChartRow } from "./ChartRow.js"
+import { References } from "./AbstractChartEditor.js"
 
 // These properties are coming from OldChart.ts
 export interface ChartListItem {
@@ -19,156 +20,44 @@ export interface ChartListItem {
     id: GrapherInterface["id"]
     title: GrapherInterface["title"]
     slug: GrapherInterface["slug"]
-    type: GrapherInterface["type"]
     internalNotes: GrapherInterface["internalNotes"]
     variantName: GrapherInterface["variantName"]
     isPublished: GrapherInterface["isPublished"]
     tab: GrapherInterface["tab"]
-    hasChartTab: GrapherInterface["hasChartTab"]
     hasMapTab: GrapherInterface["hasMapTab"]
+
+    type?: GrapherChartType
+    hasChartTab: boolean
 
     lastEditedAt: string
     lastEditedBy: string
     publishedAt: string
     publishedBy: string
-    isExplorable: boolean
 
-    tags: Tag[]
+    hasParentIndicator?: boolean
+    isInheritanceEnabled?: boolean
+
+    tags: DbChartTagJoin[]
+    pageviewsPerDay: number
 }
 
-function showChartType(chart: ChartListItem) {
-    const chartType = chart.type ?? ChartTypeName.LineChart
-    const displayType = ChartTypeName[chartType]
-        ? startCase(ChartTypeName[chartType])
-        : "Unknown"
-
-    if (chart.tab === "map") {
-        if (chart.hasChartTab) return `Map + ${displayType}`
-        else return "Map"
-    } else {
-        if (chart.hasMapTab) return `${displayType} + Map`
-        else return displayType
-    }
-}
-
-@observer
-class ChartRow extends React.Component<{
-    chart: ChartListItem
-    searchHighlight?: (text: string) => string | JSX.Element
-    availableTags: Tag[]
-    onDelete: (chart: ChartListItem) => void
-}> {
-    static contextType = AdminAppContext
-    context!: AdminAppContextType
-
-    async saveTags(tags: Tag[]) {
-        const { chart } = this.props
-        const json = await this.context.admin.requestJSON(
-            `/api/charts/${chart.id}/setTags`,
-            { tags },
-            "POST"
-        )
-        if (json.success) {
-            runInAction(() => (chart.tags = tags))
-        }
-    }
-
-    @action.bound onSaveTags(tags: Tag[]) {
-        this.saveTags(tags)
-    }
-
-    render() {
-        const { chart, searchHighlight, availableTags } = this.props
-
-        const highlight = searchHighlight || lodash.identity
-
-        return (
-            <tr>
-                <td style={{ minWidth: "140px", width: "12.5%" }}>
-                    {chart.isPublished && (
-                        <a href={`${BAKED_GRAPHER_URL}/${chart.slug}`}>
-                            <img
-                                src={`${BAKED_GRAPHER_URL}/exports/${chart.slug}.svg`}
-                                className="chartPreview"
-                            />
-                        </a>
-                    )}
-                </td>
-                <td style={{ minWidth: "180px" }}>
-                    {chart.isPublished ? (
-                        <a href={`${BAKED_GRAPHER_URL}/${chart.slug}`}>
-                            {highlight(chart.title ?? "")}
-                        </a>
-                    ) : (
-                        <span>
-                            <span style={{ color: "red" }}>Draft: </span>{" "}
-                            {highlight(chart.title ?? "")}
-                        </span>
-                    )}{" "}
-                    {chart.variantName ? (
-                        <span style={{ color: "#aaa" }}>
-                            ({highlight(chart.variantName)})
-                        </span>
-                    ) : undefined}
-                    {chart.internalNotes && (
-                        <div className="internalNotes">
-                            {highlight(chart.internalNotes)}
-                        </div>
-                    )}
-                </td>
-                <td style={{ minWidth: "100px" }}>{chart.id}</td>
-                <td style={{ minWidth: "100px" }}>{showChartType(chart)}</td>
-                <td style={{ minWidth: "340px" }}>
-                    <EditableTags
-                        tags={chart.tags}
-                        suggestions={availableTags}
-                        onSave={this.onSaveTags}
-                        hasKeyChartSupport={true}
-                    />
-                </td>
-                <td>
-                    <Timeago
-                        time={chart.publishedAt}
-                        by={highlight(chart.publishedBy)}
-                    />
-                </td>
-                <td>
-                    <Timeago
-                        time={chart.lastEditedAt}
-                        by={highlight(chart.lastEditedBy)}
-                    />
-                </td>
-                <td>
-                    <Link
-                        to={`/charts/${chart.id}/edit`}
-                        className="btn btn-primary"
-                    >
-                        Edit
-                    </Link>
-                </td>
-                <td>
-                    <button
-                        className="btn btn-danger"
-                        onClick={() => this.props.onDelete(chart)}
-                    >
-                        Delete
-                    </button>
-                </td>
-            </tr>
-        )
-    }
-}
+export type SortConfig = {
+    field: "pageviewsPerDay"
+    direction: "asc" | "desc"
+} | null
 
 @observer
 export class ChartList extends React.Component<{
     charts: ChartListItem[]
-    searchHighlight?: (text: string) => string | JSX.Element
+    searchHighlight?: (text: string) => string | React.ReactElement
     onDelete?: (chart: ChartListItem) => void
+    onSort?: (sort: SortConfig) => void
+    sortConfig?: SortConfig
 }> {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
-    @observable availableTags: Tag[] = []
+    @observable availableTags: DbChartTagJoin[] = []
 
     async fetchRefs(grapherId: number | undefined): Promise<References> {
         const { admin } = this.context
@@ -224,12 +113,32 @@ export class ChartList extends React.Component<{
     }
 
     componentDidMount() {
-        this.getTags()
+        void this.getTags()
     }
 
     render() {
-        const { charts, searchHighlight } = this.props
+        const { charts, searchHighlight, sortConfig, onSort } = this.props
         const { availableTags } = this
+
+        const getSortIndicator = () => {
+            if (!sortConfig || sortConfig.field !== "pageviewsPerDay") return ""
+            return sortConfig.direction === "desc" ? " ↓" : " ↑"
+        }
+
+        const handleSortClick = () => {
+            if (!sortConfig || sortConfig.field !== "pageviewsPerDay") {
+                onSort?.({ field: "pageviewsPerDay", direction: "desc" })
+            } else if (sortConfig.direction === "desc") {
+                onSort?.({ field: "pageviewsPerDay", direction: "asc" })
+            } else {
+                onSort?.(null)
+            }
+        }
+
+        // if the first chart has inheritance information, we assume all charts have it
+        const showInheritanceColumn =
+            charts[0]?.isInheritanceEnabled !== undefined
+
         return (
             <table className="table table-bordered">
                 <thead>
@@ -238,9 +147,16 @@ export class ChartList extends React.Component<{
                         <th>Chart</th>
                         <th>Id</th>
                         <th>Type</th>
+                        {showInheritanceColumn && <th>Inheritance</th>}
                         <th>Tags</th>
                         <th>Published</th>
                         <th>Last Updated</th>
+                        <th
+                            style={{ cursor: "pointer" }}
+                            onClick={handleSortClick}
+                        >
+                            views/day{getSortIndicator()}
+                        </th>
                         <th></th>
                         <th></th>
                     </tr>
@@ -253,10 +169,29 @@ export class ChartList extends React.Component<{
                             availableTags={availableTags}
                             searchHighlight={searchHighlight}
                             onDelete={this.onDeleteChart}
+                            showInheritanceColumn={showInheritanceColumn}
                         />
                     ))}
                 </tbody>
             </table>
         )
+    }
+}
+
+export function showChartType(chart: ChartListItem): string {
+    const chartType = chart.type
+
+    if (!chartType) return "Map"
+
+    const displayType = GRAPHER_CHART_TYPES[chartType]
+        ? startCase(GRAPHER_CHART_TYPES[chartType])
+        : "Unknown"
+
+    if (chart.tab === GRAPHER_TAB_OPTIONS.map) {
+        if (chart.hasChartTab) return `Map + ${displayType}`
+        else return "Map"
+    } else {
+        if (chart.hasMapTab) return `${displayType} + Map`
+        else return displayType
     }
 }

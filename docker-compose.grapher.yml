@@ -15,7 +15,7 @@
 # Before the first run you should download the database dumps. The easiest way to do this is to run the
 # following command from a bash terminal with the root of the project as the working directory.
 #
-#     ./devTools/docker/download-grapher-mysql.sh
+#     ./devTools/docker/download-grapher-metadata-mysql.sh
 #
 # Run `docker-compose up -d` to run all these services in daemon mode. The first time it will take a few minutes
 # to build the containers and initialize and fill the database, afterwards it should be up in seconds.
@@ -24,16 +24,15 @@
 # and navigate to http://localhost:8080 to work with the grapher admin.
 #
 
-version: "3.7"
-
 services:
     # Stock mysql database. Root password is hardcoded for now
     db:
         image: mysql/mysql-server:latest
-        command: --default-authentication-plugin=mysql_native_password
         restart: always
         volumes:
+            - ./devTools/docker/my.cnf:/etc/my.cnf:ro
             - mysql_data_public:/var/lib/mysql
+            - ./logs:/var/log/mysql
         ports:
             # Exposing via the port specified for Grapher
             # Should always be the same as the WordPress port, because we store both DBs on the same server

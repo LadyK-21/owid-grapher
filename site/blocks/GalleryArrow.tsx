@@ -1,11 +1,6 @@
 import { faArrowLeftLong } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
-import React from "react"
-
-export enum GalleryArrowDirection {
-    prev = "prev",
-    next = "next",
-}
+import { GalleryArrowDirection } from "../SiteConstants.js"
 
 export const GalleryArrow = ({
     disabled,
@@ -22,6 +17,9 @@ export const GalleryArrow = ({
 
     return (
         <button
+            aria-label={`Go to ${
+                direction === GalleryArrowDirection.next ? "next" : "previous"
+            } slide`}
             disabled={disabled}
             onClick={onClick}
             className={classes.join(" ")}

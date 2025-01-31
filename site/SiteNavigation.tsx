@@ -1,50 +1,79 @@
-import React, { useEffect, useState } from "react"
-import ReactDOM from "react-dom"
+import { useState, useCallback, useEffect } from "react"
 import {
     faListUl,
     faBars,
     faXmark,
     faEnvelopeOpenText,
 } from "@fortawesome/free-solid-svg-icons"
-import {
-    NewsletterSubscriptionContext,
-    NewsletterSubscriptionForm,
-} from "./NewsletterSubscription.js"
+import { NewsletterSubscriptionContext } from "./newsletter.js"
+import { NewsletterSubscriptionForm } from "./NewsletterSubscription.js"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { SiteNavigationTopics } from "./SiteNavigationTopics.js"
 import { SiteLogos } from "./SiteLogos.js"
-import { CategoryWithEntries } from "@ourworldindata/utils"
+import { SiteAbout } from "./SiteAbout.js"
 import { SiteResources } from "./SiteResources.js"
 import { SiteSearchNavigation } from "./SiteSearchNavigation.js"
 import { SiteMobileMenu } from "./SiteMobileMenu.js"
 import { SiteNavigationToggle } from "./SiteNavigationToggle.js"
 import classnames from "classnames"
 import { useTriggerOnEscape } from "./hooks.js"
-import { BAKED_BASE_URL } from "../settings/clientSettings.js"
+import { AUTOCOMPLETE_CONTAINER_ID } from "./search/Autocomplete.js"
+import { Menu, SiteNavigationStatic } from "./SiteConstants.js"
 
-export enum Menu {
-    Topics = "topics",
-    Resources = "resources",
-    About = "about",
-    Subscribe = "subscribe",
-    Search = "search",
-}
+// Note: tranforming the flag from an env string to a boolean in
+// clientSettings.ts is convoluted due to the two-pass SSR/Vite build process.
+const HAS_DONATION_FLAG = false
 
-export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
-    const [menu, setActiveMenu] = React.useState<Menu | null>(null)
-    const [categorizedTopics, setCategorizedTopics] = useState<
-        CategoryWithEntries[]
-    >([])
-    const [query, setQuery] = React.useState<string>("")
+export const SiteNavigation = ({
+    baseUrl,
+    hideDonationFlag,
+    isOnHomepage,
+}: {
+    baseUrl: string
+    hideDonationFlag?: boolean
+    isOnHomepage?: boolean
+}) => {
+    const [menu, setActiveMenu] = useState<Menu | null>(null)
+    const [query, setQuery] = useState<string>("")
 
     const isActiveMobileMenu =
         menu !== null &&
         [Menu.Topics, Menu.Resources, Menu.About].includes(menu)
 
-    const closeOverlay = () => {
+    // useCallback so as to not trigger a re-render for SiteSearchNavigation, which remounts
+    // Autocomplete and breaks it
+    const closeOverlay = useCallback(() => {
         setActiveMenu(null)
         setQuery("")
-    }
+    }, [])
+
+    // Same SiteSearchNavigation re-rendering case as above
+    const setSearchAsActiveMenu = useCallback(() => {
+        setActiveMenu(Menu.Search)
+        // Forced DOM manipulation of the algolia autocomplete panel position 🙃
+        // Without this, the panel initially renders at the same width as the shrunk search input
+        // Fortunately we only have to do this when it mounts - it takes care of resizes
+        setTimeout(() => {
+            // Only run when screen size is large, .aa-DetachedContainer gets positioned correctly
+            if (window.innerWidth < 768) return
+            const [panel, autocompleteContainer] = [
+                ".aa-Panel",
+                AUTOCOMPLETE_CONTAINER_ID,
+            ].map((className) => document.querySelector<HTMLElement>(className))
+            if (panel && autocompleteContainer) {
+                const bounds = autocompleteContainer.getBoundingClientRect()
+                panel.style.left = `${bounds.left}px`
+            }
+        }, 10)
+
+        setTimeout(() => {
+            const input = document.querySelector<HTMLElement>(".aa-Input")
+            if (input) {
+                input.focus()
+                input.setAttribute("required", "true")
+            }
+        }, 10)
+    }, [])
 
     const toggleMenu = (root: Menu) => {
         if (menu === root) {
@@ -61,21 +90,6 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
         }
     }, [query])
 
-    useEffect(() => {
-        const fetchCategorizedTopics = async () => {
-            const response = await fetch(`${BAKED_BASE_URL}/headerMenu.json`, {
-                method: "GET",
-                credentials: "same-origin",
-                headers: {
-                    Accept: "application/json",
-                },
-            })
-            const json = await response.json()
-            setCategorizedTopics(json.categories)
-        }
-        fetchCategorizedTopics()
-    }, [])
-
     useTriggerOnEscape(closeOverlay)
 
     return (
@@ -89,6 +103,7 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                         })}
                     >
                         <SiteNavigationToggle
+                            ariaLabel="Toggle menu"
                             isActive={isActiveMobileMenu}
                             onToggle={() => toggleMenu(Menu.Topics)}
                             className="SiteNavigationToggle--mobile-menu hide-sm-up"
@@ -96,7 +111,7 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                                 <SiteMobileMenu
                                     menu={menu}
                                     toggleMenu={toggleMenu}
-                                    topics={categorizedTopics}
+                                    topics={SiteNavigationStatic.categories}
                                     className="hide-sm-up"
                                 />
                             }
@@ -110,12 +125,15 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                             <ul>
                                 <li>
                                     <SiteNavigationToggle
+                                        ariaLabel="Toggle topics menu"
                                         isActive={menu === Menu.Topics}
                                         onToggle={() => toggleMenu(Menu.Topics)}
                                         dropdown={
                                             <SiteNavigationTopics
                                                 onClose={closeOverlay}
-                                                topics={categorizedTopics}
+                                                topics={
+                                                    SiteNavigationStatic.categories
+                                                }
                                                 className="hide-sm-only"
                                             />
                                         }
@@ -129,10 +147,11 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                                     </SiteNavigationToggle>
                                 </li>
                                 <li>
-                                    <a href="/blog">Latest</a>
+                                    <a href="/latest">Latest</a>
                                 </li>
                                 <li className="with-relative-dropdown">
                                     <SiteNavigationToggle
+                                        ariaLabel="Toggle resources menu"
                                         isActive={menu === Menu.Resources}
                                         onToggle={() =>
                                             toggleMenu(Menu.Resources)
@@ -143,20 +162,29 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                                         Resources
                                     </SiteNavigationToggle>
                                 </li>
-                                <li>
-                                    <a href="/about">About</a>
+                                <li className="with-relative-dropdown">
+                                    <SiteNavigationToggle
+                                        ariaLabel="Toggle about menu"
+                                        isActive={menu === Menu.About}
+                                        onToggle={() => toggleMenu(Menu.About)}
+                                        dropdown={<SiteAbout />}
+                                        withCaret={true}
+                                    >
+                                        About
+                                    </SiteNavigationToggle>
                                 </li>
                             </ul>
                         </nav>
                         <div className="site-search-cta">
-                            <SiteSearchNavigation
-                                query={query}
-                                isActive={menu === Menu.Search}
-                                setQuery={setQuery}
-                                onClose={closeOverlay}
-                                onActivate={() => setActiveMenu(Menu.Search)}
-                            />
+                            {!isOnHomepage && (
+                                <SiteSearchNavigation
+                                    isActive={menu === Menu.Search}
+                                    onClose={closeOverlay}
+                                    onActivate={setSearchAsActiveMenu}
+                                />
+                            )}
                             <SiteNavigationToggle
+                                ariaLabel="Toggle subscribe menu"
                                 isActive={menu === Menu.Subscribe}
                                 onToggle={() => toggleMenu(Menu.Subscribe)}
                                 dropdown={
@@ -181,7 +209,7 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                             <a
                                 href="/donate"
                                 className="donate"
-                                data-track-note="header-navigation"
+                                data-track-note="header_navigation"
                             >
                                 Donate
                             </a>
@@ -189,13 +217,11 @@ export const SiteNavigation = ({ baseUrl }: { baseUrl: string }) => {
                     </div>
                 </div>
             </div>
+            {HAS_DONATION_FLAG && !hideDonationFlag && (
+                <a href="/donate" className="site-navigation__giving">
+                    It’s Giving Season. Help us do more with a donation.
+                </a>
+            )}
         </>
-    )
-}
-
-export const runSiteNavigation = (baseUrl: string) => {
-    ReactDOM.render(
-        <SiteNavigation baseUrl={baseUrl} />,
-        document.querySelector(".site-navigation-root")
     )
 }

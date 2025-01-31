@@ -1,169 +1,341 @@
-import React from "react"
+import * as React from "react"
 import {
-    TextWrap,
     DEFAULT_BOUNDS,
-    MarkdownTextWrap,
+    range,
+    LogoOption,
+    makeIdForHumanConsumption,
+    Bounds,
 } from "@ourworldindata/utils"
+import { MarkdownTextWrap, TextWrap } from "@ourworldindata/components"
 import { computed } from "mobx"
 import { observer } from "mobx-react"
 import { Logo } from "../captionedChart/Logos"
-import { HeaderManager } from "./HeaderManager"
-import { BASE_FONT_SIZE } from "../core/GrapherConstants"
 
-@observer
-export class Header extends React.Component<{
+import { HeaderManager } from "./HeaderManager"
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_FRAME_PADDING_HORIZONTAL,
+    GRAPHER_FRAME_PADDING_VERTICAL,
+} from "../core/GrapherConstants"
+import { GRAPHER_DARK_TEXT } from "../color/ColorConstants"
+
+interface HeaderProps {
     manager: HeaderManager
     maxWidth?: number
-}> {
-    @computed private get manager(): HeaderManager {
+}
+
+@observer
+export class Header<
+    Props extends HeaderProps = HeaderProps,
+> extends React.Component<Props> {
+    @computed protected get manager(): HeaderManager {
         return this.props.manager
     }
 
-    @computed private get fontSize(): number {
-        return this.manager.fontSize ?? BASE_FONT_SIZE
-    }
-
-    @computed private get maxWidth(): number {
+    @computed protected get maxWidth(): number {
         return this.props.maxWidth ?? DEFAULT_BOUNDS.width
     }
 
-    @computed private get titleText(): string {
-        return this.manager.currentTitle ?? ""
+    @computed protected get useBaseFontSize(): boolean {
+        return !!this.manager.useBaseFontSize
+    }
+
+    @computed protected get baseFontSize(): number {
+        return this.manager.fontSize ?? BASE_FONT_SIZE
+    }
+
+    @computed protected get showTitle(): boolean {
+        return !this.manager.hideTitle && !!this.titleText
+    }
+
+    @computed protected get showSubtitle(): boolean {
+        return !this.manager.hideSubtitle && !!this.subtitleText
+    }
+
+    @computed protected get titleText(): string {
+        return this.manager.currentTitle?.trim() ?? ""
     }
 
     @computed private get subtitleText(): string {
-        return this.manager.subtitle ?? ""
+        return this.manager.currentSubtitle?.trim() ?? ""
     }
 
     @computed get logo(): Logo | undefined {
         const { manager } = this
         if (manager.hideLogo) return undefined
-
+        const isOwidLogo = !manager.logo || manager.logo === LogoOption.owid
         return new Logo({
             logo: manager.logo as any,
             isLink: !!manager.shouldLinkToOwid,
-            fontSize: this.fontSize,
+            // if it's the OWID logo, use the small version; otherwise, decrease the size
+            heightScale: manager.isSmall && !isOwidLogo ? 0.775 : 1,
+            useSmallVersion: manager.isSmall && isOwidLogo,
         })
     }
 
-    @computed private get logoWidth(): number {
+    @computed protected get logoWidth(): number {
         return this.logo ? this.logo.width : 0
     }
+
     @computed private get logoHeight(): number {
         return this.logo ? this.logo.height : 0
     }
 
-    @computed get title(): TextWrap {
-        const { logoWidth } = this
-        const maxWidth = this.maxWidth - logoWidth - 20
-
-        // Try to fit the title into a single line if possible-- but not if it would make the text super small
-        let title: TextWrap
-        let fontScale = 1.4
-        while (true) {
-            title = new TextWrap({
-                maxWidth,
-                fontSize: fontScale * this.fontSize,
-                text: this.titleText,
-                lineHeight: 1,
-            })
-            if (fontScale <= 1.2 || title.lines.length <= 1) break
-            fontScale -= 0.05
-        }
-
-        return new TextWrap({
-            maxWidth,
-            fontSize: fontScale * this.fontSize,
-            text: this.titleText,
-            lineHeight: 1,
-        })
+    @computed get titleFontWeight(): number {
+        return 600
     }
 
-    titleMarginBottom = 4
+    @computed get titleLineHeight(): number {
+        return this.manager.isSmall ? 1.1 : 1.2
+    }
+
+    @computed get title(): TextWrap {
+        const logoPadding = this.manager.isNarrow
+            ? 12
+            : this.manager.isSmall
+              ? 16
+              : 24
+
+        const makeTitle = (fontSize: number): TextWrap =>
+            new TextWrap({
+                text: this.titleText,
+                maxWidth: this.maxWidth - this.logoWidth - logoPadding,
+                fontWeight: this.titleFontWeight,
+                lineHeight: this.titleLineHeight,
+                fontSize,
+            })
+
+        const initialFontSize = this.useBaseFontSize
+            ? (22 / BASE_FONT_SIZE) * this.baseFontSize
+            : this.manager.isNarrow
+              ? 18
+              : this.manager.isMedium
+                ? 20
+                : 24
+
+        let title = makeTitle(initialFontSize)
+
+        // if the title is already a single line, no need to decrease font size
+        if (title.lines.length <= 1) return title
+
+        const originalLineCount = title.lines.length
+        // decrease the initial font size by no more than 15% using 0.5px steps
+        const potentialFontSizes = range(
+            initialFontSize,
+            initialFontSize * 0.85,
+            -0.5
+        )
+        // try to fit the title into a single line if possible-- but not if it would make the text too small
+        for (const fontSize of potentialFontSizes) {
+            title = makeTitle(fontSize)
+            const currentLineCount = title.lines.length
+            if (currentLineCount <= 1 || currentLineCount < originalLineCount)
+                break
+        }
+        // return the title at the new font size: either it now fits into a single line, or
+        // its size has been reduced so the multi-line title doesn't take up quite that much space
+        return title
+    }
+
+    @computed get useFullWidthForSubtitle(): boolean {
+        const subtitleWidth = Bounds.forText(this.subtitleText, {
+            fontSize: this.subtitleFontSize,
+        }).width
+        const isSmall =
+            this.manager.isSemiNarrow || this.manager.isStaticAndSmall
+        return (
+            // if the subtitle is entirely below the logo, we can go underneath it
+            this.title.height > this.logoHeight ||
+            // on narrow screens, long subtitles should also go underneath the logo
+            !!(isSmall && subtitleWidth > 2 * this.maxWidth)
+        )
+    }
+
+    @computed get subtitleMarginTop(): number {
+        let padding = 4
+
+        // make sure the subtitle doesn't overlap with the logo
+        if (
+            this.useFullWidthForSubtitle &&
+            this.logoHeight > this.title.height
+        ) {
+            padding += this.logoHeight - this.title.height
+        }
+
+        return padding
+    }
 
     @computed get subtitleWidth(): number {
-        // If the subtitle is entirely below the logo, we can go underneath it
-        return this.title.height > this.logoHeight
+        return this.useFullWidthForSubtitle
             ? this.maxWidth
-            : this.maxWidth - this.logoWidth - 10
+            : this.maxWidth - this.logoWidth - 12
+    }
+
+    @computed get subtitleFontSize(): number {
+        if (this.useBaseFontSize) {
+            return (13 / BASE_FONT_SIZE) * this.baseFontSize
+        }
+        return this.manager.isSmall ? 12 : this.manager.isMedium ? 13 : 14
+    }
+
+    @computed get subtitleLineHeight(): number {
+        return this.manager.isMedium ? 1.2 : 1.28571
     }
 
     @computed get subtitle(): MarkdownTextWrap {
         return new MarkdownTextWrap({
             maxWidth: this.subtitleWidth,
-            fontSize: 0.8 * this.fontSize,
+            fontSize: this.subtitleFontSize,
             text: this.subtitleText,
-            lineHeight: 1.2,
-            detailsOrderedByReference: this.manager
-                .shouldIncludeDetailsInStaticExport
-                ? this.manager.detailsOrderedByReference
-                : new Set(),
+            lineHeight: this.subtitleLineHeight,
+            detailsOrderedByReference: this.manager.detailsOrderedByReference,
         })
     }
 
     @computed get height(): number {
+        const {
+            title,
+            subtitle,
+            showTitle,
+            showSubtitle,
+            subtitleMarginTop,
+            logoHeight,
+        } = this
         return Math.max(
-            this.title.height + this.subtitle.height + this.titleMarginBottom,
-            this.logoHeight
+            (showTitle ? title.height : 0) +
+                (showSubtitle ? subtitle.height + subtitleMarginTop : 0),
+            logoHeight
         )
     }
 
-    renderStatic(x: number, y: number): JSX.Element {
-        const { title, logo, subtitle, manager, maxWidth } = this
-
-        return (
-            <g className="HeaderView">
-                {logo &&
-                    logo.height > 0 &&
-                    logo.renderSVG(x + maxWidth - logo.width, y)}
-                <a
-                    href={manager.canonicalUrl}
-                    style={{
-                        fontFamily:
-                            "'Playfair Display', Georgia, 'Times New Roman', 'Liberation Serif', serif",
-                    }}
-                    target="_blank"
-                    rel="noopener"
-                >
-                    {title.render(x, y, { fill: "#555" })}
-                </a>
-                {subtitle.renderSVG(
-                    x,
-                    y + title.height + this.titleMarginBottom,
-                    {
-                        fill: "#666",
-                    }
-                )}
-            </g>
-        )
-    }
-
-    render(): JSX.Element {
+    private renderTitle(): React.ReactElement {
         const { manager } = this
 
-        const titleStyle = {
-            ...this.title.htmlStyle,
-            marginBottom: this.titleMarginBottom,
+        // avoid linking to a grapher/data page when we're already on it
+        if (manager.isOnCanonicalUrl && !this.manager.isInIFrame) {
+            return (
+                <h1 style={this.title.htmlStyle}>{this.title.renderHTML()}</h1>
+            )
         }
 
-        const subtitleStyle = {
+        // on smaller screens, make the whole width of the header clickable
+        if (manager.isMedium) {
+            return (
+                <a
+                    href={manager.canonicalUrl}
+                    target="_blank"
+                    rel="noopener"
+                    data-track-note="chart_click_title"
+                >
+                    <h1 style={this.title.htmlStyle}>
+                        {this.title.renderHTML()}
+                    </h1>
+                </a>
+            )
+        }
+
+        // on larger screens, only make the title text itself clickable
+        return (
+            <h1 style={this.title.htmlStyle}>
+                <a
+                    href={manager.canonicalUrl}
+                    target="_blank"
+                    rel="noopener"
+                    data-track-note="chart_click_title"
+                >
+                    {this.title.renderHTML()}
+                </a>
+            </h1>
+        )
+    }
+
+    private renderSubtitle(): React.ReactElement {
+        const style = {
             ...this.subtitle.style,
+            marginTop: this.subtitleMarginTop,
+            width: this.useFullWidthForSubtitle ? "100%" : undefined,
             // make sure there are no scrollbars on subtitle
             overflowY: "hidden",
         }
+        return <p style={style}>{this.subtitle.renderHTML()}</p>
+    }
 
+    render(): React.ReactElement {
         return (
-            <div className="HeaderHTML">
+            <div
+                className="HeaderHTML"
+                style={{
+                    padding: `${GRAPHER_FRAME_PADDING_VERTICAL}px ${GRAPHER_FRAME_PADDING_HORIZONTAL}px`,
+                    paddingBottom: 0,
+                }}
+            >
                 {this.logo && this.logo.renderHTML()}
-                <a
-                    href={manager.canonicalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    <h1 style={titleStyle}>{this.title.renderHTML()}</h1>
-                </a>
-                <p style={subtitleStyle}>{this.subtitle.renderHTML()}</p>
+                {(this.showTitle || this.showSubtitle) && (
+                    <div style={{ minHeight: this.height }}>
+                        {this.showTitle && this.renderTitle()}
+                        {this.showSubtitle && this.renderSubtitle()}
+                    </div>
+                )}
             </div>
+        )
+    }
+}
+
+interface StaticHeaderProps extends HeaderProps {
+    targetX: number
+    targetY: number
+}
+
+@observer
+export class StaticHeader extends Header<StaticHeaderProps> {
+    @computed get titleLineHeight(): number {
+        return this.manager.isStaticAndSmall ? 1.1 : 1.2
+    }
+
+    @computed get subtitleLineHeight(): number {
+        return 1.2
+    }
+
+    render(): React.ReactElement {
+        const { targetX: x, targetY: y } = this.props
+        const { title, logo, subtitle, manager, maxWidth } = this
+        return (
+            <g id={makeIdForHumanConsumption("header")} className="HeaderView">
+                {logo &&
+                    logo.height > 0 &&
+                    logo.renderSVG(x + maxWidth - logo.width, y)}
+                {this.showTitle && (
+                    <a
+                        id={makeIdForHumanConsumption("title")}
+                        href={manager.canonicalUrl}
+                        style={{
+                            fontFamily:
+                                "'Playfair Display', Georgia, 'Times New Roman', 'Liberation Serif', serif",
+                        }}
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        {title.renderSVG(x, y, {
+                            textProps: { fill: GRAPHER_DARK_TEXT },
+                        })}
+                    </a>
+                )}
+                {this.showSubtitle &&
+                    subtitle.renderSVG(
+                        x,
+                        y +
+                            (this.showTitle
+                                ? title.height + this.subtitleMarginTop
+                                : 0),
+                        {
+                            id: makeIdForHumanConsumption("subtitle"),
+                            textProps: {
+                                fill: manager.secondaryColorInStaticCharts,
+                            },
+                            detailsMarker: this.manager.detailsMarkerInSvg,
+                        }
+                    )}
+            </g>
         )
     }
 }

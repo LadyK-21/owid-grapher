@@ -1,4 +1,4 @@
-import React from "react"
+import * as Sentry from "@sentry/react"
 import ReactDOM from "react-dom"
 import * as lodash from "lodash"
 import { observable, computed, action } from "mobx"
@@ -7,6 +7,7 @@ import urljoin from "url-join"
 import { AdminApp } from "./AdminApp.js"
 import {
     Json,
+    JsonError,
     stringifyUnknownError,
     queryParamsToStr,
 } from "@ourworldindata/utils"
@@ -31,27 +32,29 @@ export class Admin {
     @observable errorMessage?: ErrorMessage
     basePath: string
     username: string
+    email: string
     isSuperuser: boolean
     settings: ClientSettings
 
     constructor(props: {
         username: string
+        email: string
         isSuperuser: boolean
         settings: ClientSettings
     }) {
         this.basePath = "/admin"
         this.username = props.username
+        this.email = props.email
         this.isSuperuser = props.isSuperuser
         this.settings = props.settings
+
+        Sentry.setUser({
+            username: this.username,
+            email: this.email,
+        })
     }
 
     @observable currentRequests: Promise<Response>[] = []
-    // A way to cancel fetch requests
-    // e.g. currentRequestAbortControllers.get(request).abort()
-    @observable currentRequestAbortControllers: Map<
-        Promise<Response>,
-        AbortController
-    > = new Map()
 
     @computed get showLoadingIndicator(): boolean {
         return this.loadingIndicatorSetting === "default"
@@ -82,7 +85,8 @@ export class Admin {
         path: string,
         data: string | File | undefined,
         method: HTTPMethod,
-        abortController?: AbortController
+        abortController?: AbortController,
+        credentials: RequestCredentials = "same-origin"
     ): Promise<Response> {
         const headers: HeadersInit = {}
         const isFile = data instanceof File
@@ -95,7 +99,7 @@ export class Admin {
 
         return fetch(fetchUrl, {
             method: method,
-            credentials: "same-origin",
+            credentials: credentials,
             headers: headers,
             body: method !== "GET" ? data : undefined,
             signal: abortController?.signal,
@@ -132,13 +136,14 @@ export class Admin {
                 abortController
             )
             this.addRequest(request)
-            this.currentRequestAbortControllers.set(request, abortController)
 
             response = await request
             text = await response.text()
 
             json = JSON.parse(text)
-            if (json.error) throw json.error
+            if (json.error) {
+                throw new JsonError(json.error.message, json.error.status)
+            }
         } catch (err) {
             if (onFailure === "show")
                 this.setErrorMessage({
@@ -154,7 +159,6 @@ export class Admin {
         } finally {
             if (request) {
                 this.removeRequest(request)
-                this.currentRequestAbortControllers.delete(request)
             }
         }
 

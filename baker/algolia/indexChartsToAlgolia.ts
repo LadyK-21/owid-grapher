@@ -1,86 +1,14 @@
+// This should be imported as early as possible so the global error handler is
+// set up before any errors are thrown.
+import "../../serverUtils/instrument.js"
+
+import * as Sentry from "@sentry/node"
 import * as db from "../../db/db.js"
-import { getRelatedArticles } from "../../db/wpdb.js"
 import { ALGOLIA_INDEXING } from "../../settings/serverSettings.js"
 import { getAlgoliaClient } from "./configureAlgolia.js"
-import { isPathRedirectedToExplorer } from "../../explorerAdminServer/ExplorerRedirects.js"
-import { ChartRecord } from "../../site/search/searchTypes.js"
-import { MarkdownTextWrap } from "@ourworldindata/utils"
-import { Pageview } from "../../db/model/Pageview.js"
-
-const computeScore = (record: Omit<ChartRecord, "score">): number => {
-    const { numRelatedArticles, views_7d } = record
-    return numRelatedArticles * 500 + views_7d
-}
-
-const getChartsRecords = async (): Promise<ChartRecord[]> => {
-    const chartsToIndex = await db.queryMysql(`
-    SELECT c.id,
-        config ->> "$.slug"                   AS slug,
-        config ->> "$.title"                  AS title,
-        config ->> "$.variantName"            AS variantName,
-        config ->> "$.subtitle"               AS subtitle,
-        config ->> "$.data.availableEntities" AS availableEntities,
-        JSON_LENGTH(config ->> "$.dimensions") AS numDimensions,
-        c.publishedAt,
-        c.updatedAt,
-        JSON_ARRAYAGG(t.name) AS tags,
-        JSON_ARRAYAGG(IF(ct.isKeyChart, t.name, NULL)) AS keyChartForTags -- this results in an array that contains null entries, will have to filter them out
-    FROM charts c
-        LEFT JOIN chart_tags ct ON c.id = ct.chartId
-        LEFT JOIN tags t on ct.tagId = t.id
-    WHERE config ->> "$.isPublished" = 'true'
-        AND is_indexable IS TRUE
-    GROUP BY c.id
-    HAVING COUNT(t.id) >= 1
-    `)
-
-    for (const c of chartsToIndex) {
-        c.availableEntities = JSON.parse(c.availableEntities)
-        c.tags = JSON.parse(c.tags)
-        c.keyChartForTags = JSON.parse(c.keyChartForTags).filter(
-            (t: string | null) => t
-        )
-    }
-
-    const pageviews = await Pageview.getViewsByUrlObj()
-
-    const records: ChartRecord[] = []
-    for (const c of chartsToIndex) {
-        // Our search currently cannot render explorers, so don't index them because
-        // otherwise they will fail when rendered in the search results
-        if (isPathRedirectedToExplorer(`/grapher/${c.slug}`)) continue
-
-        const relatedArticles = (await getRelatedArticles(c.id)) ?? []
-
-        const plaintextSubtitle = new MarkdownTextWrap({
-            text: c.subtitle,
-            fontSize: 10, // doesn't matter, but is a mandatory field
-        }).plaintext
-
-        const record = {
-            objectID: c.id,
-            chartId: c.id,
-            slug: c.slug,
-            title: c.title,
-            variantName: c.variantName,
-            subtitle: plaintextSubtitle,
-            availableEntities: c.availableEntities,
-            numDimensions: parseInt(c.numDimensions),
-            publishedAt: c.publishedAt,
-            updatedAt: c.updatedAt,
-            tags: c.tags,
-            keyChartForTags: c.keyChartForTags,
-            titleLength: c.title.length,
-            // Number of references to this chart in all our posts and pages
-            numRelatedArticles: relatedArticles.length,
-            views_7d: pageviews[`/grapher/${c.slug}`]?.views_7d ?? 0,
-        }
-        const score = computeScore(record)
-        records.push({ ...record, score })
-    }
-
-    return records
-}
+import { SearchIndexName } from "../../site/search/searchTypes.js"
+import { getIndexName } from "../../site/search/searchClient.js"
+import { getChartsRecords } from "./utils/charts.js"
 
 const indexChartsToAlgolia = async () => {
     if (!ALGOLIA_INDEXING) return
@@ -91,13 +19,18 @@ const indexChartsToAlgolia = async () => {
         return
     }
 
-    const index = client.initIndex("charts")
+    const index = client.initIndex(getIndexName(SearchIndexName.Charts))
 
-    await db.getConnection()
-    const records = await getChartsRecords()
+    const records = await db.knexReadonlyTransaction(
+        getChartsRecords,
+        db.TransactionCloseMode.Close
+    )
     await index.replaceAllObjects(records)
-
-    await db.closeTypeOrmAndKnexConnections()
 }
 
-indexChartsToAlgolia()
+indexChartsToAlgolia().catch(async (e) => {
+    console.error("Error in indexChartsToAlgolia:", e)
+    Sentry.captureException(e)
+    await Sentry.close()
+    process.exit(1)
+})

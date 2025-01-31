@@ -1,4 +1,4 @@
-import React from "react"
+import { Component } from "react"
 import { observer } from "mobx-react"
 
 import { AdminLayout } from "./AdminLayout.js"
@@ -6,7 +6,7 @@ import { Link } from "./Link.js"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
 
 @observer
-export class TestIndexPage extends React.Component {
+export class TestIndexPage extends Component {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
@@ -171,9 +171,50 @@ export class TestIndexPage extends React.Component {
                                 Embed Variants
                             </Link>
                         </li>
+
                         <li>
-                            <Link native to="/test/compareSvgs">
-                                View changed SVGs
+                            <Link
+                                native
+                                target="_blank"
+                                to="/test/colorSchemes?slug=life-expectancy&tab=map"
+                            >
+                                Color Schemes
+                            </Link>
+                        </li>
+                    </ul>
+
+                    <h2>Test Explorer Embeds</h2>
+                    <ul>
+                        <li>
+                            <Link native target="_blank" to="/test/explorers">
+                                All explorers
+                            </Link>
+                        </li>
+                        <li>
+                            <Link
+                                native
+                                target="_blank"
+                                to="/test/explorers?type=grapher-ids"
+                            >
+                                Grapher ID-based explorers
+                            </Link>
+                        </li>
+                        <li>
+                            <Link
+                                native
+                                target="_blank"
+                                to="/test/explorers?type=csv-files"
+                            >
+                                CSV file-based explorers
+                            </Link>
+                        </li>
+                        <li>
+                            <Link
+                                native
+                                target="_blank"
+                                to="/test/explorers?type=indicators"
+                            >
+                                Indicator-based explorers
                             </Link>
                         </li>
                     </ul>

@@ -1,37 +1,44 @@
-import React from "react"
+import * as React from "react"
 import { Input, InputProps } from "antd"
 import {
-    OwidGdocInterface,
-    OwidGdocContent,
+    OwidGdocPostInterface,
     OwidGdocErrorMessage,
     OwidGdocErrorMessageType,
+    OwidGdocDataInsightInterface,
+    OwidGdocErrorMessageProperty,
+    get,
+    OwidGdocHomepageInterface,
+    OwidGdocAuthorInterface,
 } from "@ourworldindata/utils"
 import { GdocsEditLink } from "./GdocsEditLink.js"
 import { GdocsErrorHelp } from "./GdocsErrorHelp.js"
 import { getPropertyMostCriticalError } from "./gdocsValidation.js"
 import { TextAreaProps } from "antd/lib/input/TextArea.js"
+import { Help } from "./Forms.js"
 
 export const GdocsSettingsContentField = ({
     gdoc,
     property,
     render = (props) => <GdocsSettingsTextField {...props} />,
     errors,
+    description,
 }: {
-    gdoc: OwidGdocInterface
-    property: keyof OwidGdocContent
-    render?: ({
-        name,
-        value,
-        errorType,
-    }: {
+    gdoc:
+        | OwidGdocPostInterface
+        | OwidGdocDataInsightInterface
+        | OwidGdocHomepageInterface
+        | OwidGdocAuthorInterface
+    property: OwidGdocErrorMessageProperty
+    render?: (props: {
         name: string
         value: string
         errorType?: OwidGdocErrorMessageType
-    }) => JSX.Element
+    }) => React.ReactElement
     errors?: OwidGdocErrorMessage[]
+    description?: string
 }) => {
     const error = getPropertyMostCriticalError(property, errors)
-
+    const value = get(gdoc, ["content", property])
     return (
         <div className="form-group">
             <label htmlFor={property}>
@@ -41,12 +48,12 @@ export const GdocsSettingsContentField = ({
                 <GdocsEditLink gdocId={gdoc.id} />
                 {render({
                     name: property,
-                    value: gdoc.content[property] as string,
+                    value,
                     errorType: error?.type,
                 })}
             </div>
-
             <GdocsErrorHelp error={error} />
+            {description ? <Help>{description}</Help> : null}
         </div>
     )
 }

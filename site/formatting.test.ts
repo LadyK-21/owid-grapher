@@ -1,10 +1,8 @@
 import cheerio from "cheerio"
 import { WP_ColumnStyle } from "@ourworldindata/utils"
-import {
-    GRAPHER_PREVIEW_CLASS,
-    splitContentIntoSectionsAndColumns,
-} from "./formatting.js"
+import { splitContentIntoSectionsAndColumns } from "./formatting.js"
 import { formatAuthors } from "./clientFormatting.js"
+import { GRAPHER_PREVIEW_CLASS } from "@ourworldindata/types"
 
 const paragraph = `<p>Some paragraph</p>`
 const chart = `<figure data-grapher-src="https://ourworldindata.org/grapher/pneumococcal-vaccination-averted-deaths" class="${GRAPHER_PREVIEW_CLASS}"></figure>`
@@ -164,17 +162,17 @@ describe(formatAuthors, () => {
             "Author 1, Author 2 and Author 3"
         )
 
-        expect(formatAuthors({ authors, requireMax: true })).toEqual(
-            "Author 1, Author 2, Author 3 and Max Roser"
-        )
-
         expect(formatAuthors({ authors: ["Author 1"] })).toEqual("Author 1")
         expect(formatAuthors({ authors: ["Author 1", "Author 2"] })).toEqual(
             "Author 1 and Author 2"
         )
 
-        expect(
-            formatAuthors({ authors, requireMax: true, forBibtex: true })
-        ).toEqual("Author 1 and Author 2 and Author 3 and Max Roser")
+        expect(formatAuthors({ authors, forBibtex: true })).toEqual(
+            "Author 1 and Author 2 and Author 3"
+        )
+
+        expect(formatAuthors({ authors, forBibtex: false })).toEqual(
+            "Author 1, Author 2 and Author 3"
+        )
     })
 })

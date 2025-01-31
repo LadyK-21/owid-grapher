@@ -1,0 +1,35 @@
+.key-data-block {
+    row-gap: 24px;
+}
+
+.key-data {
+    @include body-3-medium;
+
+    a {
+        @include owid-link-90;
+        color: inherit;
+    }
+}
+
+.key-data__title {
+    color: $blue-50;
+}
+
+.key-data__content--hide-overflow {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.key-data-description-short__title {
+    color: $blue-50;
+    @include h5-black-caps;
+}
+
+.key-data-description-short__title-fragments {
+    color: $blue-50;
+    @include h6-black-caps;
+    font-weight: 600;
+    letter-spacing: 0.05rem;
+    margin-bottom: 8px;
+}

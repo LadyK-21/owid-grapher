@@ -1,0 +1,61 @@
+.article-block__explorer-tiles {
+    margin-bottom: 40px;
+    .explorer-tiles__title {
+        margin: 0;
+    }
+    .explorer-tiles__subtitle {
+        color: $blue-60;
+        margin: 0 0 16px 0;
+    }
+    .explorer-tiles__cta {
+        width: fit-content;
+        justify-self: end;
+        grid-row: span 2;
+        align-self: center;
+
+        @include sm-only {
+            justify-self: start;
+            margin-top: 16px;
+            order: 4;
+            text-align: center;
+            width: 100%;
+        }
+    }
+    .explorer-tiles-grid {
+        row-gap: var(--grid-gap);
+        @include md-down {
+            grid-template-rows: repeat(2, 1fr);
+            column-gap: var(--grid-gap);
+        }
+    }
+    .explorer-tile {
+        background-color: $oxford-blue; // show this if the webp image cannot be loaded
+        background-image: url("https://ourworldindata.org/explorer-thumbnail.webp");
+        background-size: cover;
+        background-position: center;
+        padding: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        align-content: space-between;
+    }
+    .explorer-tile__icon {
+        background-color: $blue-65;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+    }
+    .explorer-tile__text-container {
+        width: 100%;
+        margin-top: 18px;
+    }
+    .explorer-tile__title,
+    .explorer-tile__suffix {
+        margin: 0;
+    }
+    .explorer-tile__title {
+        color: #fff;
+    }
+    .explorer-tile__suffix {
+        color: $blue-40;
+    }
+}

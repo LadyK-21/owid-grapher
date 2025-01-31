@@ -9,9 +9,11 @@ import {
     ALGOLIA_INDEXING,
     ALGOLIA_SECRET_KEY,
 } from "../../settings/serverSettings.js"
-import { countries } from "@ourworldindata/utils"
+import { countries, regions, excludeUndefined } from "@ourworldindata/utils"
+import { SearchIndexName } from "../../site/search/searchTypes.js"
+import { getIndexName } from "../../site/search/searchClient.js"
 
-export const CONTENT_GRAPH_ALGOLIA_INDEX = "graph"
+export const CONTENT_GRAPH_ALGOLIA_INDEX = getIndexName("graph")
 
 export const getAlgoliaClient = (): SearchClient | undefined => {
     if (!ALGOLIA_ID || !ALGOLIA_SECRET_KEY) {
@@ -22,6 +24,11 @@ export const getAlgoliaClient = (): SearchClient | undefined => {
     const client = algoliasearch(ALGOLIA_ID, ALGOLIA_SECRET_KEY)
     return client
 }
+
+const allCountryNamesAndVariants = regions.flatMap((region) => [
+    region.name,
+    ...(("variantNames" in region && region.variantNames) || []),
+])
 
 // This function initializes and applies settings to the Algolia search indices
 // Algolia settings should be configured here rather than in the Algolia dashboard UI, as then
@@ -37,7 +44,9 @@ export const configureAlgolia = async () => {
     const baseSettings: Settings = {
         queryLanguages: ["en"],
         indexLanguages: ["en"],
-        ranking: ["exact", "typo", "attribute", "words", "proximity", "custom"],
+
+        // see https://www.algolia.com/doc/guides/managing-results/relevance-overview/in-depth/ranking-criteria/
+        ranking: ["typo", "words", "exact", "proximity", "attribute", "custom"],
         alternativesAsExact: [
             "ignorePlurals",
             "singleWordSynonym",
@@ -47,15 +56,13 @@ export const configureAlgolia = async () => {
         exactOnSingleWordQuery: "none",
         removeStopWords: ["en"],
         snippetEllipsisText: "…",
-        highlightPreTag: "<strong>",
-        highlightPostTag: "</strong>",
         distinct: true,
         advancedSyntax: true,
         advancedSyntaxFeatures: ["exactPhrase"],
         unretrievableAttributes: ["views_7d", "score"],
     }
 
-    const chartsIndex = client.initIndex("charts")
+    const chartsIndex = client.initIndex(getIndexName(SearchIndexName.Charts))
 
     await chartsIndex.setSettings({
         ...baseSettings,
@@ -74,6 +81,7 @@ export const configureAlgolia = async () => {
             "unordered(tags)",
             "unordered(availableEntities)",
         ],
+        ranking: ["typo", "words", "exact", "attribute", "custom", "proximity"],
         customRanking: [
             "desc(score)",
             "desc(numRelatedArticles)",
@@ -82,11 +90,17 @@ export const configureAlgolia = async () => {
         ],
         attributesToSnippet: ["subtitle:24"],
         attributeForDistinct: "id",
-        disableExactOnAttributes: ["tags"],
         optionalWords: ["vs"],
+
+        // These lines below essentially demote matches in the `subtitle` and `availableEntities` fields:
+        // If we find a match (only) there, then it doesn't count towards `exact`, and is therefore ranked lower.
+        // We also disable prefix matching and typo tolerance on these.
+        disableExactOnAttributes: ["tags", "subtitle", "availableEntities"],
+        disableTypoToleranceOnAttributes: ["subtitle", "availableEntities"],
+        disablePrefixOnAttributes: ["subtitle"],
     })
 
-    const pagesIndex = client.initIndex("pages")
+    const pagesIndex = client.initIndex(getIndexName(SearchIndexName.Pages))
 
     await pagesIndex.setSettings({
         ...baseSettings,
@@ -94,21 +108,94 @@ export const configureAlgolia = async () => {
             "unordered(title)",
             "unordered(excerpt)",
             "unordered(tags)",
-            "unordered(content)",
             "unordered(authors)",
+            "unordered(content)",
         ],
         customRanking: ["desc(score)", "desc(importance)"],
         attributesToSnippet: ["excerpt:20", "content:20"],
         attributeForDistinct: "slug",
         attributesForFaceting: [
-            "type",
-            "searchable(tags)",
-            "searchable(authors)",
+            "afterDistinct(type)",
+            "afterDistinct(searchable(tags))",
+            "afterDistinct(searchable(authors))",
+            "afterDistinct(documentType)",
         ],
-        disableExactOnAttributes: ["tags"],
+
+        // These lines below essentially demote matches in the `content` (i.e. fulltext) field:
+        // If we find a match (only) there, then it doesn't count towards `exact`, and is therefore ranked lower.
+        // We also disable prefix matching and typo tolerance on `content`, so that "corn" doesn't match "corner", for example.
+        disableExactOnAttributes: ["tags", "content"],
+        disableTypoToleranceOnAttributes: ["content"],
+        disablePrefixOnAttributes: ["content"],
+    })
+
+    const explorerViewsIndex = client.initIndex(
+        getIndexName(SearchIndexName.ExplorerViews)
+    )
+
+    await explorerViewsIndex.setSettings({
+        ...baseSettings,
+        searchableAttributes: [
+            "unordered(explorerTitle)",
+            "unordered(viewTitle)",
+            "unordered(viewSettings)",
+        ],
+        customRanking: [
+            // For multiple explorer views with the same title, we want to avoid surfacing duplicates.
+            // So, rank a result with viewTitleIndexWithinExplorer=0 way more highly than one with 1, 2, etc.
+            "asc(viewTitleIndexWithinExplorer)",
+            "desc(score)",
+            "asc(viewIndexWithinExplorer)",
+        ],
+        attributeForDistinct: "explorerSlug",
+        distinct: 4,
+        minWordSizefor1Typo: 6,
+        optionalWords: [
+            "data",
+            "explorer",
+            "explore",
+            "explorers",
+            ...allCountryNamesAndVariants,
+        ],
+    })
+
+    const explorerViewsAndChartsIndex = client.initIndex(
+        getIndexName(SearchIndexName.ExplorerViewsAndCharts)
+    )
+
+    await explorerViewsAndChartsIndex.setSettings({
+        ...baseSettings,
+        searchableAttributes: [
+            "unordered(title)",
+            "unordered(slug)",
+            "unordered(variantName)",
+            "unordered(subtitle)",
+            "unordered(tags)",
+            "unordered(availableEntities)",
+        ],
+        ranking: ["typo", "words", "exact", "attribute", "custom", "proximity"],
+        customRanking: [
+            "desc(score)",
+            // For multiple explorer views with the same title, we want to avoid surfacing duplicates.
+            // So, rank a result with viewTitleIndexWithinExplorer=0 way more highly than one with 1, 2, etc.
+            "asc(viewTitleIndexWithinExplorer)",
+            "asc(titleLength)",
+        ],
+        attributesToSnippet: ["subtitle:24"],
+        attributeForDistinct: "id",
+        optionalWords: ["vs"],
+
+        // These lines below essentially demote matches in the `subtitle` and `availableEntities` fields:
+        // If we find a match (only) there, then it doesn't count towards `exact`, and is therefore ranked lower.
+        // We also disable prefix matching and typo tolerance on these.
+        disableExactOnAttributes: ["tags", "subtitle", "availableEntities"],
+        disableTypoToleranceOnAttributes: ["subtitle", "availableEntities"],
+        disablePrefixOnAttributes: ["subtitle"],
+        attributesForFaceting: ["tags", "availableEntities"],
     })
 
     const synonyms = [
+        ["owid", "our world in data"],
         ["kids", "children"],
         ["pork", "pigmeat"],
         ["atomic", "nuclear"],
@@ -122,6 +209,8 @@ export const configureAlgolia = async () => {
             "bip" /* polish */,
             "bnp" /* swedish, danish, norwegian */,
         ],
+        ["gdp per capita", "economic growth"],
+        ["per capita", "per person"],
         ["overpopulation", "population growth"],
         ["covid", "covid-19", "coronavirus", "corona"],
         ["flu", "influenza"],
@@ -147,7 +236,7 @@ export const configureAlgolia = async () => {
             "vacuna" /* spanish */,
         ],
         ["ghg", "greenhouse gas"],
-        ["rate", "share"],
+        ["rate", "share", "percentage", "percent"],
         [
             "hospital admission",
             "hospital admissions",
@@ -182,6 +271,7 @@ export const configureAlgolia = async () => {
             "machine learning",
             "neural network",
             "chatgpt", // added in 2023-03, we might want to remove this in the future
+            "chat gpt",
         ],
         ["hdi", "human development index", "idh" /* spanish, french */],
         ["drug", "drugs", "substance use"],
@@ -218,13 +308,37 @@ export const configureAlgolia = async () => {
             "satisfaction",
             "life satisfaction",
         ],
+        [
+            "sdg",
+            "sdgs",
+            "sustainable development goal",
+            "sustainable development goals",
+            "sdg tracker",
+        ],
+        [
+            "sexism",
+            "gender discrimination",
+            "gender gap",
+            "gender inequality",
+            "gender inequalities",
+            "inequality by gender",
+        ],
+        ["child mortality", "infant mortality"],
+        ["depression", "depressive", "mental health"],
+        ["time use", "time spent", "time spend"],
+        ["enrollment", "enrolment", "enrolled"],
+        ["meter", "metre", "meters", "metres"],
+        ["kilometer", "kilometre", "kilometers", "kilometres"],
+        ["defense", "defence", "military"],
+        ["smog", "air pollution"],
+        ["jail", "prison"],
+        ["funding", "funded"],
+        ["solar", "photovoltaic", "photovoltaics", "pv"],
+        ["tb", "tuberculosis"],
+        ["ntd", "neglected tropical diseases", "neglected tropical disease"],
+        ["people", "population"],
+        ["production", "generation"],
     ]
-
-    // Send all our country variant names to algolia as synonyms
-    for (const country of countries) {
-        if (country.variantNames)
-            synonyms.push([country.name].concat(country.variantNames))
-    }
 
     const algoliaSynonyms = synonyms.map((s) => {
         return {
@@ -234,10 +348,28 @@ export const configureAlgolia = async () => {
         } as Synonym
     })
 
+    // Send all our country variant names to algolia as one-way synonyms
+    for (const country of countries) {
+        const alternatives = excludeUndefined([
+            country.shortName,
+            ...(country.variantNames ?? []),
+        ])
+        for (const alternative of alternatives)
+            algoliaSynonyms.push({
+                objectID: `${alternative}->${country.name}`,
+                type: "oneWaySynonym",
+                input: alternative,
+                synonyms: [country.name],
+            })
+    }
+
     await pagesIndex.saveSynonyms(algoliaSynonyms, {
         replaceExistingSynonyms: true,
     })
     await chartsIndex.saveSynonyms(algoliaSynonyms, {
+        replaceExistingSynonyms: true,
+    })
+    await explorerViewsIndex.saveSynonyms(algoliaSynonyms, {
         replaceExistingSynonyms: true,
     })
 
@@ -253,4 +385,4 @@ export const configureAlgolia = async () => {
     }
 }
 
-if (require.main === module) configureAlgolia()
+if (require.main === module) void configureAlgolia()

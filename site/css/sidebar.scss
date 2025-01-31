@@ -12,6 +12,11 @@
     @include xxlg-up {
         height: 100%;
     }
+
+    .entry-sidebar__overlay {
+        @include overlay;
+        z-index: $zindex-sidebar-page-overlay;
+    }
 }
 
 .entry-sidebar {
@@ -75,7 +80,8 @@
         position: absolute;
         top: 0;
         bottom: 0;
-        margin-left: -($sidebar-content-width + 2 * $padding-x-md) + $sidebar-closed-drawer-width;
+        margin-left: -($sidebar-content-width + 2 * $padding-x-md) +
+            $sidebar-closed-drawer-width;
         @include sm-only {
             margin-left: -($sidebar-content-width + 2 * $padding-x-md);
         }

@@ -1,4 +1,4 @@
-import React from "react"
+import { Component } from "react"
 import { observer } from "mobx-react"
 import { observable, computed, action, runInAction } from "mobx"
 import * as lodash from "lodash"
@@ -12,10 +12,10 @@ import {
     filterFunctionForSearchWords,
     highlightFunctionForSearchWords,
     SearchWord,
-} from "@ourworldindata/utils"
+} from "../adminShared/search.js"
 
 @observer
-export class DatasetsIndexPage extends React.Component {
+export class DatasetsIndexPage extends Component {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
@@ -114,6 +114,6 @@ export class DatasetsIndexPage extends React.Component {
     }
 
     componentDidMount() {
-        this.getData()
+        void this.getData()
     }
 }

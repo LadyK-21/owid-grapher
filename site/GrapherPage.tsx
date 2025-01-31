@@ -1,25 +1,28 @@
 import {
     getVariableDataRoute,
     getVariableMetadataRoute,
-    GrapherInterface,
     GRAPHER_PAGE_BODY_CLASS,
     LoadingIndicator,
 } from "@ourworldindata/grapher"
 import {
-    flatten,
     PostReference,
-    PostRow,
     RelatedChart,
     serializeJSONForHTML,
+    GrapherInterface,
     uniq,
     SiteFooterContext,
-    MarkdownTextWrap,
+    Url,
 } from "@ourworldindata/utils"
-import React from "react"
+import { MarkdownTextWrap } from "@ourworldindata/components"
+import {
+    HIDE_IF_JS_DISABLED_CLASSNAME,
+    HIDE_IF_JS_ENABLED_CLASSNAME,
+} from "@ourworldindata/types"
 import urljoin from "url-join"
 import {
     ADMIN_BASE_URL,
     BAKED_GRAPHER_URL,
+    DATA_API_URL,
 } from "../settings/clientSettings.js"
 import { ChartListItemVariant } from "./ChartListItemVariant.js"
 import { Head } from "./Head.js"
@@ -27,10 +30,11 @@ import { IFrameDetector } from "./IframeDetector.js"
 import { RelatedArticles } from "./RelatedArticles/RelatedArticles.js"
 import { SiteFooter } from "./SiteFooter.js"
 import { SiteHeader } from "./SiteHeader.js"
+import GrapherImage from "./GrapherImage.js"
+import { Html } from "./Html.js"
 
 export const GrapherPage = (props: {
     grapher: GrapherInterface
-    post?: PostRow
     relatedCharts?: RelatedChart[]
     relatedArticles?: PostReference[]
     baseUrl: string
@@ -40,6 +44,7 @@ export const GrapherPage = (props: {
         props
     const pageTitle = grapher.title
     const canonicalUrl = urljoin(baseGrapherUrl, grapher.slug as string)
+    const dataApiOrigin = Url.fromURL(DATA_API_URL).origin
     let pageDesc: string
     if (grapher.subtitle?.length) {
         // convert subtitle from markdown to plaintext
@@ -59,20 +64,21 @@ export const GrapherPage = (props: {
     //     `${grapher.slug}.png?v=${grapher.version}`
     // )
     const imageUrl: string = urljoin(baseUrl, "default-grapher-thumbnail.png")
-    const imageWidth: string = "1200"
-    const imageHeight: string = "628"
+    const imageWidth = "1200"
+    const imageHeight = "628"
 
     const script = `const jsonConfig = ${serializeJSONForHTML({
         ...grapher,
         adminBaseUrl: ADMIN_BASE_URL,
         bakedGrapherURL: BAKED_GRAPHER_URL,
+        dataApiUrl: DATA_API_URL,
     })}
 window.Grapher.renderSingleGrapherOnGrapherPage(jsonConfig)`
 
     const variableIds = uniq(grapher.dimensions!.map((d) => d.variableId))
 
     return (
-        <html>
+        <Html>
             <Head
                 canonicalUrl={canonicalUrl}
                 pageTitle={pageTitle}
@@ -83,48 +89,59 @@ window.Grapher.renderSingleGrapherOnGrapherPage(jsonConfig)`
                 <meta property="og:image:width" content={imageWidth} />
                 <meta property="og:image:height" content={imageHeight} />
                 <IFrameDetector />
-                <noscript>
-                    <style>{`
-                    figure { display: none !important; }
-                `}</style>
-                </noscript>
-                {flatten(
-                    variableIds.map((variableId) =>
-                        [
-                            getVariableDataRoute(variableId),
-                            getVariableMetadataRoute(variableId),
-                        ].map((href) => (
-                            <link
-                                key={href}
-                                rel="preload"
-                                href={href}
-                                as="fetch"
-                                crossOrigin="anonymous"
-                            />
-                        ))
-                    )
+                <link rel="preconnect" href={dataApiOrigin} />
+                {variableIds.flatMap((variableId) =>
+                    [
+                        getVariableDataRoute(DATA_API_URL, variableId),
+                        getVariableMetadataRoute(DATA_API_URL, variableId),
+                    ].map((href) => (
+                        <link
+                            key={href}
+                            rel="preload"
+                            href={href}
+                            as="fetch"
+                            crossOrigin="anonymous"
+                        />
+                    ))
                 )}
+                <link
+                    rel="preload"
+                    href="/fonts/PlayfairDisplayLatin-SemiBold.woff2"
+                    as="font"
+                    type="font/woff2"
+                    crossOrigin="anonymous"
+                />
             </Head>
             <body className={GRAPHER_PAGE_BODY_CLASS}>
                 <SiteHeader baseUrl={baseUrl} />
                 <main>
-                    <figure data-grapher-src={`/grapher/${grapher.slug}`}>
+                    <figure
+                        className={HIDE_IF_JS_DISABLED_CLASSNAME}
+                        data-grapher-src={`/grapher/${grapher.slug}`}
+                    >
                         <LoadingIndicator />
                     </figure>
-                    <noscript id="fallback">
-                        <img
-                            src={`${baseGrapherUrl}/exports/${grapher.slug}.svg`}
-                        />
+                    <div className={HIDE_IF_JS_ENABLED_CLASSNAME} id="fallback">
+                        {grapher.slug && (
+                            <GrapherImage
+                                slug={grapher.slug}
+                                alt={grapher.title}
+                                enablePopulatingUrlParams
+                            />
+                        )}
                         <p>Interactive visualization requires JavaScript</p>
-                    </noscript>
+                    </div>
 
-                    {((relatedArticles && relatedArticles.length != 0) ||
-                        (relatedCharts && relatedCharts.length != 0)) && (
+                    {((relatedArticles && relatedArticles.length !== 0) ||
+                        (relatedCharts && relatedCharts.length !== 0)) && (
                         <div className="related-research-data">
-                            <h2>All our related research and data</h2>
-                            {relatedArticles && relatedArticles.length != 0 && (
-                                <RelatedArticles articles={relatedArticles} />
-                            )}
+                            <h2>Related research and data</h2>
+                            {relatedArticles &&
+                                relatedArticles.length !== 0 && (
+                                    <RelatedArticles
+                                        articles={relatedArticles}
+                                    />
+                                )}
                             {relatedCharts && relatedCharts.length !== 0 && (
                                 <>
                                     <h3>Charts</h3>
@@ -156,6 +173,6 @@ window.Grapher.renderSingleGrapherOnGrapherPage(jsonConfig)`
                     dangerouslySetInnerHTML={{ __html: script }}
                 />
             </body>
-        </html>
+        </Html>
     )
 }

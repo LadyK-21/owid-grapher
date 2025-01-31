@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { SelectionArray } from "../../selection/SelectionArray"
 import { GlobalEntitySelector } from "./GlobalEntitySelector"
 
@@ -7,6 +7,6 @@ export default {
     component: GlobalEntitySelector,
 }
 
-export const WithNoGraphers = (): JSX.Element => (
+export const WithNoGraphers = (): React.ReactElement => (
     <GlobalEntitySelector selection={new SelectionArray()} />
 )

@@ -2,13 +2,13 @@
 import express, { Request, Response, Router } from "express"
 import rateLimit from "express-rate-limit"
 import filenamify from "filenamify"
-import React from "react"
+import * as React from "react"
 import { Writable } from "stream"
 import { expectInt, renderToHtmlPage } from "../serverUtils/serverUtil.js"
 import { logInWithCredentials, logOut } from "./authentication.js"
 import { LoginPage } from "./LoginPage.js"
 import * as db from "../db/db.js"
-import { Dataset } from "../db/model/Dataset.js"
+import { writeDatasetCSV } from "../db/model/Dataset.js"
 import { ExplorerAdminServer } from "../explorerAdminServer/ExplorerAdminServer.js"
 import {
     renderExplorerPage,
@@ -30,15 +30,25 @@ import {
     DefaultNewExplorerSlug,
     EXPLORERS_PREVIEW_ROUTE,
     GetAllExplorersRoute,
-} from "../explorer/ExplorerConstants.js"
-import {
+    GetAllExplorersTagsRoute,
     ExplorerProgram,
     EXPLORER_FILE_SUFFIX,
-} from "../explorer/ExplorerProgram.js"
+} from "@ourworldindata/explorer"
 import fs from "fs-extra"
 import * as Post from "../db/model/Post.js"
-import { renderPreviewDataPageOrGrapherPage } from "../baker/GrapherBaker.js"
-import { Chart } from "../db/model/Chart.js"
+import {
+    renderDataPageV2,
+    renderPreviewDataPageOrGrapherPage,
+} from "../baker/GrapherBaker.js"
+import { getChartConfigBySlug } from "../db/model/Chart.js"
+import { getVariableMetadata } from "../db/model/Variable.js"
+import { DbPlainDatasetFile, DbPlainDataset } from "@ourworldindata/types"
+import { getPlainRouteWithROTransaction } from "./plainRouterHelpers.js"
+import { getMultiDimDataPageBySlug } from "../db/model/MultiDimDataPage.js"
+import { renderMultiDimDataPageFromConfig } from "../baker/MultiDimBaker.js"
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require("express-async-errors")
 
 // Used for rate-limiting important endpoints (login, register) to prevent brute force attacks
 const limiterMiddleware = (
@@ -130,64 +140,96 @@ adminRouter.post(
 
 adminRouter.get("/logout", logOut)
 
-adminRouter.get("/datasets/:datasetId.csv", async (req, res) => {
-    const datasetId = expectInt(req.params.datasetId)
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/datasets/:datasetId.csv",
+    async (req, res, trx) => {
+        const datasetId = expectInt(req.params.datasetId)
 
-    const datasetName = (
-        await db.mysqlFirst(`SELECT name FROM datasets WHERE id=?`, [datasetId])
-    ).name
-    res.attachment(filenamify(datasetName) + ".csv")
+        const datasetName = (
+            await db.knexRawFirst<Pick<DbPlainDataset, "name">>(
+                trx,
+                `SELECT name FROM datasets WHERE id=?`,
+                [datasetId]
+            )
+        )?.name
 
-    const writeStream = new Writable({
-        write(chunk, encoding, callback) {
-            res.write(chunk.toString())
-            callback(null)
-        },
-    })
-    await Dataset.writeCSV(datasetId, writeStream)
-    res.end()
-})
+        res.attachment(filenamify(datasetName!) + ".csv")
 
-adminRouter.get("/datasets/:datasetId/downloadZip", async (req, res) => {
-    const datasetId = expectInt(req.params.datasetId)
+        const writeStream = new Writable({
+            write(chunk, encoding, callback) {
+                res.write(chunk.toString())
+                callback(null)
+            },
+        })
+        await writeDatasetCSV(trx, datasetId, writeStream)
+        res.end()
+    }
+)
 
-    res.attachment("additional-material.zip")
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/datasets/:datasetId/downloadZip",
+    async (req, res, trx) => {
+        const datasetId = expectInt(req.params.datasetId)
 
-    const file = await db.mysqlFirst(
-        `SELECT filename, file FROM dataset_files WHERE datasetId=?`,
-        [datasetId]
-    )
-    res.send(file.file)
-})
+        res.attachment("additional-material.zip")
 
-adminRouter.get("/posts/preview/:postId", async (req, res) => {
-    const postId = expectInt(req.params.postId)
+        const file = await db.knexRawFirst<
+            Pick<DbPlainDatasetFile, "filename" | "file">
+        >(trx, `SELECT filename, file FROM dataset_files WHERE datasetId=?`, [
+            datasetId,
+        ])
+        res.send(file?.file)
+    }
+)
 
-    res.send(await renderPreview(postId))
-})
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/posts/preview/:postId",
+    async (req, res, trx) => {
+        const postId = expectInt(req.params.postId)
+        const preview = await renderPreview(postId, trx)
+        res.send(preview)
+    }
+)
 
-adminRouter.get("/posts/compare/:postId", async (req, res) => {
-    const postId = expectInt(req.params.postId)
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/posts/compare/:postId",
+    async (req, res, trx) => {
+        const postId = expectInt(req.params.postId)
 
-    const wpPage = await renderPreview(postId)
-    const archieMlText = await Post.select(
-        "archieml",
-        "archieml_update_statistics"
-    ).from(db.knexTable(Post.postsTable).where({ id: postId }))
-    const archieMlJson = JSON.parse(archieMlText[0].archieml) as OwidGdocJSON
-    const updateStatsJson = JSON.parse(
-        archieMlText[0].archieml_update_statistics
-    ) as OwidArticleBackportingStatistics
+        const wpPage = await renderPreview(postId, trx)
+        const archieMlText = await Post.select(
+            "archieml",
+            "archieml_update_statistics"
+        ).from(trx(Post.postsTable).where({ id: postId }))
 
-    const errorItems = updateStatsJson.errors.map(
-        (error) => `<li>${error.details}</li>`
-    )
-    const errorList = `<ul>${errorItems.join("")}</ul>`
+        if (
+            archieMlText.length === 0 ||
+            archieMlText[0].archieml === null ||
+            archieMlText[0].archieml_update_statistics === null
+        )
+            throw new Error(
+                `Could not compare posts because archieml was not present in the database for ${postId}`
+            )
+        const archieMlJson = JSON.parse(
+            archieMlText[0].archieml
+        ) as OwidGdocJSON
+        const updateStatsJson = JSON.parse(
+            archieMlText[0].archieml_update_statistics
+        ) as OwidArticleBackportingStatistics
 
-    const archieMl = getOwidGdocFromJSON(archieMlJson)
-    const archieMlPage = renderGdoc(archieMl)
+        const errorItems = updateStatsJson.errors.map(
+            (error) => `<li>${error.details}</li>`
+        )
+        const errorList = `<ul>${errorItems.join("")}</ul>`
 
-    res.send(`<!doctype html>
+        const archieMl = getOwidGdocFromJSON(archieMlJson)
+        const archieMlPage = renderGdoc(archieMl)
+
+        res.send(`<!doctype html>
     <html>
         <head>
         </head>
@@ -220,7 +262,8 @@ adminRouter.get("/posts/compare/:postId", async (req, res) => {
             </div>
         </body>
     </html>`)
-})
+    }
+)
 
 adminRouter.get("/errorTest.csv", async (req, res) => {
     // Add `table /admin/errorTest.csv?code=404` to test fetch download failures
@@ -241,45 +284,101 @@ adminRouter.get(`/${GetAllExplorersRoute}`, async (req, res) => {
     res.send(await explorerAdminServer.getAllExplorersCommand())
 })
 
-adminRouter.get(`/${EXPLORERS_PREVIEW_ROUTE}/:slug`, async (req, res) => {
-    const slug = slugify(req.params.slug)
-    const filename = slug + EXPLORER_FILE_SUFFIX
-    if (slug === DefaultNewExplorerSlug)
-        return res.send(
-            await renderExplorerPage(
-                new ExplorerProgram(DefaultNewExplorerSlug, "")
+getPlainRouteWithROTransaction(
+    adminRouter,
+    `/${GetAllExplorersTagsRoute}`,
+    async (_, res, trx) => {
+        return res.send({
+            explorers: await db.getExplorerTags(trx),
+        })
+    }
+)
+
+getPlainRouteWithROTransaction(
+    adminRouter,
+    `/${EXPLORERS_PREVIEW_ROUTE}/:slug`,
+    async (req, res, knex) => {
+        const slug = slugify(req.params.slug)
+        const filename = slug + EXPLORER_FILE_SUFFIX
+
+        if (slug === DefaultNewExplorerSlug)
+            return renderExplorerPage(
+                new ExplorerProgram(DefaultNewExplorerSlug, ""),
+                knex,
+                { isPreviewing: true }
+            )
+        if (
+            !slug ||
+            !fs.existsSync(explorerAdminServer.absoluteFolderPath + filename)
+        )
+            return `File not found`
+        const explorer = await explorerAdminServer.getExplorerFromFile(filename)
+        const explorerPage = await renderExplorerPage(explorer, knex, {
+            isPreviewing: true,
+        })
+
+        return res.send(explorerPage)
+    }
+)
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/datapage-preview/:id",
+    async (req, res, trx) => {
+        const variableId = expectInt(req.params.id)
+        const variableMetadata = await getVariableMetadata(variableId)
+        if (!variableMetadata) throw new JsonError("No such variable", 404)
+
+        res.send(
+            await renderDataPageV2(
+                {
+                    variableId,
+                    variableMetadata,
+                    isPreviewing: true,
+                    useIndicatorGrapherConfigs: true,
+                },
+                trx
             )
         )
-    if (
-        !slug ||
-        !fs.existsSync(explorerAdminServer.absoluteFolderPath + filename)
-    )
-        return res.send(`File not found`)
-    const explorer = await explorerAdminServer.getExplorerFromFile(filename)
-    return res.send(await renderExplorerPage(explorer))
-})
-
-adminRouter.get("/grapher/:slug", async (req, res) => {
-    const entity = await Chart.getBySlug(req.params.slug)
-    if (!entity) throw new JsonError("No such chart", 404)
-
-    const explorerAdminServer = new ExplorerAdminServer(GIT_CMS_DIR)
-    const publishedExplorersBySlug =
-        await explorerAdminServer.getAllPublishedExplorersBySlug()
-
-    res.send(
-        await renderPreviewDataPageOrGrapherPage(
-            entity.config,
-            publishedExplorersBySlug
+    }
+)
+getPlainRouteWithROTransaction(
+    adminRouter,
+    "/grapher/:slug",
+    async (req, res, trx) => {
+        const { slug } = req.params
+        const chart = await getChartConfigBySlug(trx, slug).catch(
+            () => undefined
         )
-    )
-})
+        if (chart) {
+            const previewDataPageOrGrapherPage =
+                await renderPreviewDataPageOrGrapherPage(chart.config, trx)
+            res.send(previewDataPageOrGrapherPage)
+            return
+        }
+
+        const mdd = await getMultiDimDataPageBySlug(trx, slug, {
+            onlyPublished: false,
+        })
+        if (mdd) {
+            const renderedPage = await renderMultiDimDataPageFromConfig({
+                knex: trx,
+                slug,
+                config: mdd.config,
+                isPreviewing: true,
+            })
+            res.send(renderedPage)
+            return
+        }
+
+        throw new JsonError("No such chart", 404)
+    }
+)
 
 const gitCmsServer = new GitCmsServer({
     baseDir: GIT_CMS_DIR,
     shouldAutoPush: true,
 })
-gitCmsServer.createDirAndInitIfNeeded()
+void gitCmsServer.createDirAndInitIfNeeded()
 gitCmsServer.addToRouter(adminRouter)
 
 export { adminRouter }

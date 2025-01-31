@@ -1,21 +1,25 @@
-import React from "react"
+import * as React from "react"
 import {
-    GrapherConfigPatch,
-    applyPatch,
-    setValueRecursiveInplace,
-    FieldDescription,
-    extractFieldDescriptionsFromSchema,
-    FieldType,
-    EditorOption,
     Bounds,
     stringifyUnknownError,
     excludeUndefined,
     moveArrayItemToIndex,
-    Operation,
     getWindowUrl,
     setWindowUrl,
     excludeNull,
+    mergeGrapherConfigs,
 } from "@ourworldindata/utils"
+import { GrapherConfigPatch } from "../adminShared/AdminSessionTypes.js"
+import {
+    applyPatch,
+    setValueRecursiveInplace,
+} from "../adminShared/patchHelper.js"
+import {
+    FieldDescription,
+    extractFieldDescriptionsFromSchema,
+    FieldType,
+    EditorOption,
+} from "../adminShared/schemaProcessing.js"
 import {
     DragDropContext,
     Droppable,
@@ -25,15 +29,12 @@ import {
 import { Disposer, observer } from "mobx-react"
 import { observable, computed, action, runInAction, autorun } from "mobx"
 import { match, P } from "ts-pattern"
-//import * as lodash from "lodash"
 import {
     cloneDeep,
-    findLastIndex,
     isArray,
     isEmpty,
     isEqual,
     isNil,
-    merge,
     omitBy,
     pick,
     range,
@@ -43,11 +44,11 @@ import { BaseEditorComponent, HotColumn, HotTable } from "@handsontable/react"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
 
 import Handsontable from "handsontable"
+import { GRAPHER_CHART_TYPES, GRAPHER_MAP_TYPE } from "@ourworldindata/types"
 import {
     Grapher,
     GrapherProgrammaticInterface,
     MapChart,
-    ChartTypeName,
 } from "@ourworldindata/grapher"
 import { BindString, SelectField, Toggle } from "./Forms.js"
 import { from } from "rxjs"
@@ -80,7 +81,6 @@ import {
     initialFilterQueryValue,
     fieldDescriptionToFilterPanelFieldConfig,
     simpleColumnToFilterPanelFieldConfig,
-    renderBuilder,
     GrapherConfigGridEditorProps,
     GrapherConfigGridEditorConfig,
     ColumnDataSource,
@@ -92,6 +92,7 @@ import {
     fetchVariablesParametersToQueryParameters,
     postprocessJsonLogicTree,
 } from "./GrapherConfigGridEditorTypesAndUtils.js"
+import QueryBuilderContainer from "./QueryBuilderContainer.js"
 import {
     Query,
     Utils as QbUtils,
@@ -104,7 +105,10 @@ import codemirror from "codemirror"
 import { UnControlled as CodeMirror } from "react-codemirror2"
 import jsonpointer from "json8-pointer"
 import { EditorColorScaleSection } from "./EditorColorScaleSection.js"
+import { Operation } from "../adminShared/SqlFilterSExpression.js"
 
+// The rule doesn't support class components in the same file.
+// eslint-disable-next-line react-refresh/only-export-components
 function HotColorScaleRenderer() {
     return <div style={{ color: "gray" }}>Color scale</div>
 }
@@ -154,7 +158,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
     static contextType = AdminAppContext
 
     @observable.ref grapher = new Grapher() // the grapher instance we keep around and update
-    @observable.ref grapherElement?: JSX.Element // the JSX Element of the preview IF we want to display it currently
+    @observable.ref grapherElement?: React.ReactElement // the JSX Element of the preview IF we want to display it currently
     numTotalRows: number | undefined = undefined
     @observable selectedRow: number | undefined = undefined
     @observable selectionEndRow: number | undefined = undefined
@@ -298,7 +302,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         // Add the disposer to the list of things we need to clean up on unmount
         this.disposers.push(disposer)
 
-        this.getFieldDefinitions()
+        void this.getFieldDefinitions()
     }
 
     @action.bound private resetViewStateAfterFetch(): void {
@@ -344,7 +348,10 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             selectedRowContent.id
         )
 
-        const mergedConfig = merge(grapherConfig, finalConfigLayer)
+        const mergedConfig = mergeGrapherConfigs(
+            grapherConfig,
+            finalConfigLayer
+        )
         this.loadGrapherJson(mergedConfig)
     }
 
@@ -435,7 +442,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
                     currentColumnFieldDescription.default !== undefined &&
                     currentColumnFieldDescription.default === prevVal,
             }
-            this.doAction({ patches: [patch] })
+            void this.doAction({ patches: [patch] })
         } else {
             setValueRecursiveInplace(grapher, pointer, prevVal)
         }
@@ -448,7 +455,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         this.hasUncommitedRichEditorChanges = true
     }
 
-    @computed get editControl(): JSX.Element | undefined {
+    @computed get editControl(): React.ReactElement | undefined {
         const { currentColumnFieldDescription, grapher, selectedRowContent } =
             this
         if (
@@ -483,7 +490,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
                     return colorScale ? (
                         <EditorColorScaleSection
                             scale={colorScale}
-                            chartType={ChartTypeName.WorldMap}
+                            chartType={GRAPHER_MAP_TYPE}
                             features={{
                                 visualScaling: true,
                                 legendDescription: false,
@@ -507,7 +514,10 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
                         return (
                             <EditorColorScaleSection
                                 scale={colorScale}
-                                chartType={grapher.type}
+                                chartType={
+                                    grapher.chartType ??
+                                    GRAPHER_CHART_TYPES.LineChart
+                                }
                                 features={{
                                     visualScaling: true,
                                     legendDescription: false,
@@ -584,7 +594,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
     @action
     async undoAction(): Promise<void> {
         const { undoStack, redoStack } = this
-        if (undoStack.length == 0) return
+        if (undoStack.length === 0) return
         // TODO: not yet properly implemented - figure out how to update the flat data rows and
         // set them here. Also change the rich data row entries
         const lastStep = undoStack.pop()
@@ -595,7 +605,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
     @action
     async redoAction(): Promise<void> {
         const { redoStack } = this
-        if (redoStack.length == 0) return
+        if (redoStack.length === 0) return
         // TODO: not yet properly implemented - figure out how to update the flat data rows and
         // set them here. Also change the rich data row entries
         const lastStep = redoStack.pop()
@@ -656,7 +666,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
                     (fieldDesc) =>
                         [
                             fieldDesc.pointer,
-                            row.config != undefined
+                            row.config !== undefined
                                 ? cloneDeep(
                                       fieldDesc.getter(
                                           row.config as Record<string, unknown>
@@ -696,7 +706,9 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             .with(EditorOption.primitiveListEditor, () => "text")
             .exhaustive()
     }
-    static fieldDescriptionToColumn(desc: FieldDescription): JSX.Element {
+    static fieldDescriptionToColumn(
+        desc: FieldDescription
+    ): React.ReactElement {
         const name = desc.pointer //.substring(1)
         const type = GrapherConfigGridEditor.decideHotType(desc)
         if (desc.editor === EditorOption.colorEditor) {
@@ -778,7 +790,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         return columns
     }
 
-    @computed get hotColumns(): JSX.Element[] {
+    @computed get hotColumns(): React.ReactElement[] {
         const { columnDataSources } = this
 
         const columns = columnDataSources.map((columnDataSource) =>
@@ -942,7 +954,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             }
         }
 
-        this.doAction({ patches })
+        void this.doAction({ patches })
     }
     validateCellChanges(
         changes: Handsontable.CellChange[] | null,
@@ -1084,12 +1096,12 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         }
         // Perform a do operation that will add this to the undo stack and immediately
         // post this as a PATCH request to the server
-        this.doAction({ patches })
+        void this.doAction({ patches })
     }
 
     async getFieldDefinitions() {
         const json = await fetch(
-            "https://files.ourworldindata.org/schemas/grapher-schema.003.json"
+            "https://files.ourworldindata.org/schemas/grapher-schema.006.json"
         ).then((response) => response.json())
         const fieldDescriptions = extractFieldDescriptionsFromSchema(json)
         runInAction(() => {
@@ -1136,10 +1148,10 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             const tree =
                 jsonLogicTree ?? QbUtils.loadTree(initialFilterQueryValue)
             this.filterState = {
-                tree: QbUtils.checkTree(
+                tree: QbUtils.sanitizeTree(
                     tree,
                     this.FilterPanelConfig ?? filterPanelInitialConfig
-                ),
+                ).fixedTree,
                 config: this.FilterPanelConfig ?? filterPanelInitialConfig,
             }
 
@@ -1294,7 +1306,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             )
     }
 
-    renderEditorTab(): JSX.Element {
+    renderEditorTab(): React.ReactElement {
         const { editControl, hasUncommitedRichEditorChanges } = this
         return (
             <section>
@@ -1331,7 +1343,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             (this.numTotalRows ?? 0) > PAGEING_SIZE &&
             this.desiredPagingOffset >= PAGEING_SIZE
         )
-            this.desiredPagingOffset = this.desiredPagingOffset - PAGEING_SIZE
+            this.desiredPagingOffset -= PAGEING_SIZE
     }
 
     @action.bound
@@ -1340,11 +1352,11 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             (this.numTotalRows ?? 0) > PAGEING_SIZE &&
             this.desiredPagingOffset + PAGEING_SIZE < (this.numTotalRows ?? 0)
         ) {
-            this.desiredPagingOffset = this.desiredPagingOffset + PAGEING_SIZE
+            this.desiredPagingOffset += PAGEING_SIZE
         }
     }
 
-    renderPagination(): JSX.Element {
+    renderPagination(): React.ReactElement {
         const { numTotalRows, currentPagingOffset } = this
         const currentStartLabel = currentPagingOffset + 1
         const currentEndLabel = Math.min(
@@ -1386,7 +1398,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         )
     }
 
-    renderFilterTab(): JSX.Element {
+    renderFilterTab(): React.ReactElement {
         const { FilterPanelConfig, filterState } = this
         return (
             <section>
@@ -1399,7 +1411,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
                             {...FilterPanelConfig}
                             value={filterState.tree}
                             onChange={this.updateFilterState}
-                            renderBuilder={renderBuilder}
+                            renderBuilder={QueryBuilderContainer}
                         />
                     )}
                     <small className="form-text text-muted">
@@ -1441,8 +1453,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
             (item) => item.key === itemKey
         )
         if (itemIndex !== -1) {
-            const lastVisibleIndex = findLastIndex(
-                columnSelection,
+            const lastVisibleIndex = columnSelection.findLastIndex(
                 (item) => item.visible
             )
 
@@ -1523,7 +1534,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         }
     }
 
-    renderColumnsTab(): JSX.Element {
+    renderColumnsTab(): React.ReactElement {
         const { columnSelection, currentColumnSet, columnFilter } = this
         const columnSets = this.config.columnSet
         const filteredColumnSelection = columnFilter
@@ -1630,7 +1641,7 @@ export class GrapherConfigGridEditor extends React.Component<GrapherConfigGridEd
         )
     }
 
-    renderPreviewArea(): JSX.Element {
+    renderPreviewArea(): React.ReactElement {
         const { grapherElement } = this
         return (
             <div className="preview">

@@ -1,217 +1,210 @@
-import {
-    formatWordpressEditLink,
-    LongFormPage,
-    PageOverrides,
-} from "../site/LongFormPage.js"
+import { LongFormPage, PageOverrides } from "../site/LongFormPage.js"
 import { BlogIndexPage } from "../site/BlogIndexPage.js"
-import { FrontPage } from "../site/FrontPage.js"
-import { ChartsIndexPage, ChartIndexItem } from "../site/ChartsIndexPage.js"
+import { DataCatalogPage } from "../site/DataCatalog/DataCatalogPage.js"
+import { DynamicCollectionPage } from "../site/collections/DynamicCollectionPage.js"
+import { StaticCollectionPage } from "../site/collections/StaticCollectionPage.js"
 import { SearchPage } from "../site/search/SearchPage.js"
-import { NotFoundPage } from "../site/NotFoundPage.js"
+import NotFoundPage from "../site/NotFoundPage.js"
 import { DonatePage } from "../site/DonatePage.js"
+import { ExplorerIndexPage } from "../site/ExplorerIndexPage.js"
+import { ThankYouPage } from "../site/ThankYouPage.js"
+import TombstonePage from "../site/TombstonePage.js"
 import OwidGdocPage from "../site/gdocs/OwidGdocPage.js"
-import React from "react"
 import ReactDOMServer from "react-dom/server.js"
-import * as lodash from "lodash"
-import {
-    extractFormattingOptions,
-    formatCountryProfile,
-    isCanonicalInternalUrl,
-} from "./formatting.js"
-import {
-    bakeGrapherUrls,
-    getGrapherExportsByUrl,
-    GrapherExports,
-} from "../baker/GrapherBakingUtils.js"
+import lodash from "lodash"
+import { formatCountryProfile, isCanonicalInternalUrl } from "./formatting.js"
 import cheerio from "cheerio"
 import {
     BAKED_BASE_URL,
     BLOG_POSTS_PER_PAGE,
-    GDOCS_HOMEPAGE_CONFIG_DOCUMENT_ID,
+    GDOCS_DONATE_FAQS_DOCUMENT_ID,
 } from "../settings/serverSettings.js"
 import {
     ADMIN_BASE_URL,
     BAKED_GRAPHER_URL,
-    BAKED_GRAPHER_EXPORTS_BASE_URL,
     RECAPTCHA_SITE_KEY,
+    GRAPHER_DYNAMIC_THUMBNAIL_URL,
 } from "../settings/clientSettings.js"
-import {
-    EntriesByYearPage,
-    EntriesForYearPage,
-} from "../site/EntriesByYearPage.js"
 import { FeedbackPage } from "../site/FeedbackPage.js"
 import {
     getCountryBySlug,
     Country,
+    get,
     memoize,
     FormattedPost,
-    FormattingOptions,
     FullPost,
     JsonError,
-    KeyInsight,
-    OwidGdocInterface,
-    PostRow,
     Url,
     IndexPost,
+    OwidGdocType,
+    OwidGdoc,
+    OwidGdocDataInsightInterface,
+    TombstonePageData,
+    mergeGrapherConfigs,
+    createTagGraph,
 } from "@ourworldindata/utils"
+import { extractFormattingOptions } from "../serverUtils/wordpressUtils.js"
+import {
+    DEFAULT_THUMBNAIL_FILENAME,
+    DbPlainChart,
+    DbRawChartConfig,
+    FormattingOptions,
+    GrapherInterface,
+} from "@ourworldindata/types"
 import { CountryProfileSpec } from "../site/countryProfileProjects.js"
 import { formatPost } from "./formatWordpressPost.js"
 import {
-    getBlogIndex,
-    getEntriesByCategory,
-    getLatestPostRevision,
-    getPostBySlug,
-    isPostCitable,
-    getBlockContent,
-    getPosts,
-    mapGdocsToWordpressPosts,
-    getFullPost,
-} from "../db/wpdb.js"
-import { queryMysql, knexTable } from "../db/db.js"
+    knexRaw,
+    KnexReadonlyTransaction,
+    getHomepageId,
+    getFlatTagGraph,
+    getPublishedExplorersBySlug,
+} from "../db/db.js"
 import { getPageOverrides, isPageOverridesCitable } from "./pageOverrides.js"
 import { ProminentLink } from "../site/blocks/ProminentLink.js"
-import {
-    KeyInsightsThumbs,
-    KeyInsightsSlides,
-    KEY_INSIGHTS_CLASS_NAME,
-} from "../site/blocks/KeyInsights.js"
-import { formatUrls, KEY_INSIGHTS_H2_CLASSNAME } from "../site/formatting.js"
+import { formatUrls } from "../site/formatting.js"
 
+import { GrapherProgrammaticInterface } from "@ourworldindata/grapher"
 import {
-    GrapherInterface,
-    Grapher,
-    GrapherProgrammaticInterface,
-} from "@ourworldindata/grapher"
-import { ExplorerProgram } from "../explorer/ExplorerProgram.js"
-import { ExplorerPageUrlMigrationSpec } from "../explorer/urlMigrations/ExplorerPageUrlMigrationSpec.js"
+    ExplorerProgram,
+    ExplorerPageUrlMigrationSpec,
+    ExplorerFullQueryParams,
+} from "@ourworldindata/explorer"
 import { ExplorerPage } from "../site/ExplorerPage.js"
-import { Chart } from "../db/model/Chart.js"
+import { DataInsightsIndexPage } from "../site/DataInsightsIndexPage.js"
+import {
+    getChartConfigBySlug,
+    getEnrichedChartById,
+} from "../db/model/Chart.js"
 import { ExplorerAdminServer } from "../explorerAdminServer/ExplorerAdminServer.js"
 import { GIT_CMS_DIR } from "../gitCms/GitCmsConstants.js"
-import { ExplorerFullQueryParams } from "../explorer/ExplorerConstants.js"
 import { resolveInternalRedirect } from "./redirects.js"
-import { postsTable } from "../db/model/Post.js"
-import { Gdoc } from "../db/model/Gdoc/Gdoc.js"
-import { logErrorAndMaybeSendToBugsnag } from "../serverUtils/errorLog.js"
+import {
+    getBlockContentFromSnapshot,
+    getBlogIndex,
+    getFullPostByIdFromSnapshot,
+    getFullPostBySlugFromSnapshot,
+    isPostSlugCitable,
+} from "../db/model/Post.js"
+import { GdocPost } from "../db/model/Gdoc/GdocPost.js"
+import { logErrorAndMaybeCaptureInSentry } from "../serverUtils/errorLog.js"
+import {
+    getAndLoadGdocBySlug,
+    getAndLoadGdocById,
+    getAndLoadPublishedDataInsightsPage,
+} from "../db/model/Gdoc/GdocFactory.js"
+import { transformExplorerProgramToResolveCatalogPaths } from "./ExplorerBaker.js"
+import {
+    Attachments,
+    AttachmentsContext,
+} from "../site/gdocs/AttachmentsContext.js"
+import AtomArticleBlocks from "../site/gdocs/components/AtomArticleBlocks.js"
+import { GdocDataInsight } from "../db/model/Gdoc/GdocDataInsight.js"
+
 export const renderToHtmlPage = (element: any) =>
     `<!doctype html>${ReactDOMServer.renderToStaticMarkup(element)}`
 
-export const renderChartsPage = async (
-    explorerAdminServer: ExplorerAdminServer
-) => {
-    const explorers = await explorerAdminServer.getAllPublishedExplorers()
-
-    const chartItems = (await queryMysql(`
-        SELECT
-            id,
-            config->>"$.slug" AS slug,
-            config->>"$.title" AS title,
-            config->>"$.variantName" AS variantName
-        FROM charts
-        WHERE
-            is_indexable IS TRUE
-            AND publishedAt IS NOT NULL
-            AND config->>"$.isPublished" = "true"
-    `)) as ChartIndexItem[]
-
-    const chartTags = await queryMysql(`
-        SELECT ct.chartId, ct.tagId, t.name as tagName, t.parentId as tagParentId FROM chart_tags ct
-        JOIN charts c ON c.id=ct.chartId
-        JOIN tags t ON t.id=ct.tagId
-    `)
-
-    for (const c of chartItems) {
-        c.tags = []
-    }
-
-    const chartsById = lodash.keyBy(chartItems, (c) => c.id)
-
-    for (const ct of chartTags) {
-        const c = chartsById[ct.chartId]
-        if (c) c.tags.push({ id: ct.tagId, name: ct.tagName })
-    }
-
+export const renderDataCatalogPage = async (knex: KnexReadonlyTransaction) => {
+    const { __rootId, ...flatTagGraph } = await getFlatTagGraph(knex)
+    const rootTagGraph = createTagGraph(flatTagGraph, __rootId)
     return renderToHtmlPage(
-        <ChartsIndexPage
-            explorers={explorers}
-            chartItems={chartItems}
+        <DataCatalogPage baseUrl={BAKED_BASE_URL} tagGraph={rootTagGraph} />
+    )
+}
+
+export async function renderTopChartsCollectionPage(
+    knex: KnexReadonlyTransaction
+) {
+    const charts: string[] = await knexRaw<{ slug: string }>(
+        knex,
+        `-- sql
+    SELECT SUBSTRING_INDEX(url, '/', -1) AS slug
+    FROM analytics_pageviews
+    WHERE url LIKE "%https://ourworldindata.org/grapher/%"
+    ORDER BY views_14d DESC
+    LIMIT 50
+    `
+    ).then((rows) => rows.map((row: { slug: string }) => row.slug))
+
+    const props = {
+        baseUrl: BAKED_BASE_URL,
+        title: "Top Charts",
+        introduction:
+            "The 50 most viewed charts from the last 14 days on Our World in Data.",
+        charts,
+    }
+    return renderToHtmlPage(<StaticCollectionPage {...props} />)
+}
+
+export function renderDynamicCollectionPage() {
+    return renderToHtmlPage(<DynamicCollectionPage baseUrl={BAKED_BASE_URL} />)
+}
+
+export const renderGdocsPageBySlug = async (
+    knex: KnexReadonlyTransaction,
+    slug: string,
+    isPreviewing: boolean = false
+): Promise<string | undefined> => {
+    const gdoc = await getAndLoadGdocBySlug(knex, slug)
+    if (!gdoc) {
+        throw new Error(`Failed to render an unknown GDocs post: ${slug}.`)
+    }
+
+    await gdoc.loadState(knex)
+
+    return renderGdoc(gdoc, isPreviewing)
+}
+
+export const renderGdoc = (gdoc: OwidGdoc, isPreviewing: boolean = false) => {
+    return renderToHtmlPage(
+        <OwidGdocPage
             baseUrl={BAKED_BASE_URL}
+            gdoc={gdoc}
+            isPreviewing={isPreviewing}
         />
     )
 }
 
-export const renderGdocsPageBySlug = async (
-    slug: string
-): Promise<string | undefined> => {
-    const gdoc = await Gdoc.findOneBy({ slug })
-    if (!gdoc) {
-        throw new Error(`Failed to render an unknown GDocs post: ${slug}.`)
-    }
-    if (!gdoc.published) {
-        throw new Error(
-            `A Gdoc exists with slug "${slug}" but it is not published.`
-        )
-    }
-    const explorerAdminServer = new ExplorerAdminServer(GIT_CMS_DIR)
-    const publishedExplorersBySlug =
-        await explorerAdminServer.getAllPublishedExplorersBySlug()
-
-    const gdocWithAttachments = await Gdoc.getGdocFromContentSource(
-        gdoc.id,
-        publishedExplorersBySlug
-    )
-
-    return renderGdoc(gdocWithAttachments)
-}
-
-export const renderGdoc = (gdoc: OwidGdocInterface) => {
+export function renderGdocTombstone(
+    tombstone: TombstonePageData,
+    attachments: Attachments
+) {
     return renderToHtmlPage(
-        <OwidGdocPage baseUrl={BAKED_BASE_URL} gdoc={gdoc} />
+        <AttachmentsContext.Provider value={attachments}>
+            <TombstonePage baseUrl={BAKED_BASE_URL} tombstone={tombstone} />
+        </AttachmentsContext.Provider>
     )
 }
 
-export const renderPageBySlug = async (slug: string) => {
-    const post = await getPostBySlug(slug)
-    return renderPost(post)
+export const renderPageBySlug = async (
+    slug: string,
+    knex: KnexReadonlyTransaction
+) => {
+    const post = await getFullPostBySlugFromSnapshot(knex, slug)
+    return renderPost(post, knex)
 }
 
-export const renderPreview = async (postId: number): Promise<string> => {
-    const postApi = await getLatestPostRevision(postId)
-    return renderPost(postApi)
-}
-
-export const renderMenuJson = async () => {
-    const categories = await getEntriesByCategory()
-    return JSON.stringify({ categories: categories })
+export const renderPreview = async (
+    postId: number,
+    knex: KnexReadonlyTransaction
+): Promise<string> => {
+    const postApi = await getFullPostByIdFromSnapshot(knex, postId)
+    return renderPost(postApi, knex)
 }
 
 export const renderPost = async (
     post: FullPost,
-    baseUrl: string = BAKED_BASE_URL,
-    grapherExports?: GrapherExports
+    knex: KnexReadonlyTransaction,
+    baseUrl: string = BAKED_BASE_URL
 ) => {
-    if (!grapherExports) {
-        const $ = cheerio.load(post.content)
-
-        const grapherUrls = $("iframe")
-            .toArray()
-            .filter((el) => (el.attribs["src"] || "").match(/\/grapher\//))
-            .map((el) => el.attribs["src"].trim())
-
-        // This can be slow if uncached!
-        await bakeGrapherUrls(grapherUrls)
-
-        grapherExports = await getGrapherExportsByUrl()
-    }
-
     // Extract formatting options from post HTML comment (if any)
     const formattingOptions = extractFormattingOptions(post.content)
 
-    const formatted = await formatPost(post, formattingOptions, grapherExports)
+    const formatted = await formatPost(post, formattingOptions, knex)
 
-    const pageOverrides = await getPageOverrides(post, formattingOptions)
+    const pageOverrides = await getPageOverrides(knex, post, formattingOptions)
     const citationStatus =
-        (await isPostCitable(post)) || isPageOverridesCitable(pageOverrides)
+        isPostSlugCitable(post.slug) || isPageOverridesCitable(pageOverrides)
 
     return renderToHtmlPage(
         <LongFormPage
@@ -224,100 +217,65 @@ export const renderPost = async (
     )
 }
 
-export const renderFrontPage = async () => {
-    const entries = await getEntriesByCategory()
-    const wpPosts = await Promise.all(
-        (await getPosts()).map((post) => getFullPost(post, true))
-    )
-    const gdocPosts = await Gdoc.getPublishedGdocs()
-    const posts = [...wpPosts, ...mapGdocsToWordpressPosts(gdocPosts)]
+export const renderFrontPage = async (knex: KnexReadonlyTransaction) => {
+    const gdocHomepageId = await getHomepageId(knex)
 
-    const NUM_FEATURED_POSTS = 6
-
-    /**
-     * A frontPageConfig should specify a list of
-     * articles to feature in the featured work block,
-     * and which position they should be placed in.
-     *
-     * Note that this can be underspecified, so some positions
-     * may not be filled in.
-     *
-     */
-
-    let featuredWork: IndexPost[]
-    try {
-        const frontPageConfigGdoc = await Gdoc.getGdocFromContentSource(
-            GDOCS_HOMEPAGE_CONFIG_DOCUMENT_ID,
-            {}
+    if (gdocHomepageId) {
+        const gdocHomepage = await getAndLoadGdocById(knex, gdocHomepageId)
+        await gdocHomepage.loadState(knex)
+        return renderGdoc(gdocHomepage)
+    } else {
+        throw new Error(
+            `Failed to find homepage Gdoc with type "${OwidGdocType.Homepage}"`
         )
-        const frontPageConfig: any = frontPageConfigGdoc.content
-        const featuredPosts: { slug: string; position: number }[] =
-            frontPageConfig["featured-posts"] ?? []
-
-        // Generate the candidate posts to fill in any missing slots
-        const slugs = featuredPosts.map((d) => d.slug)
-        const filteredPosts = posts.filter((post) => {
-            return !slugs.includes(post.slug)
-        })
-
-        /**
-         * Create the final list of featured work by merging the
-         * manually curated list of posts and filling in any empty
-         * positions with the latest available posts, while avoiding
-         * adding any duplicates.
-         */
-        let missingPosts = 0
-        featuredWork = [...new Array(NUM_FEATURED_POSTS)]
-            .map((_, i) => i)
-            .map((idx) => {
-                const manuallySetPost = featuredPosts.find(
-                    (d) => +d.position === idx + 1
-                )
-                if (manuallySetPost) {
-                    const post = posts.find(
-                        (post) => post.slug === manuallySetPost.slug
-                    )
-                    if (post) {
-                        return post
-                    }
-                }
-                return filteredPosts[missingPosts++]
-            })
-    } catch (e) {
-        logErrorAndMaybeSendToBugsnag(e)
-        featuredWork = posts.slice(0, 6)
     }
+}
 
-    const totalCharts = (
-        await queryMysql(
-            `SELECT COUNT(*) AS count
-            FROM charts
-            WHERE
-                is_indexable IS TRUE
-                AND publishedAt IS NOT NULL
-                AND config ->> "$.isPublished" = "true"`
+export const renderDonatePage = async (knex: KnexReadonlyTransaction) => {
+    const faqsGdoc = (await getAndLoadGdocById(
+        knex,
+        GDOCS_DONATE_FAQS_DOCUMENT_ID
+    )) as GdocPost
+    if (!faqsGdoc)
+        throw new Error(
+            `Failed to find donate FAQs Gdoc with id "${GDOCS_DONATE_FAQS_DOCUMENT_ID}"`
         )
-    )[0].count as number
+
     return renderToHtmlPage(
-        <FrontPage
-            entries={entries}
-            featuredWork={featuredWork}
-            totalCharts={totalCharts}
+        <DonatePage
             baseUrl={BAKED_BASE_URL}
+            faqsGdoc={faqsGdoc}
+            recaptchaKey={RECAPTCHA_SITE_KEY}
         />
     )
 }
 
-export const renderDonatePage = () =>
-    renderToHtmlPage(
-        <DonatePage
+export const renderThankYouPage = async () => {
+    return renderToHtmlPage(<ThankYouPage baseUrl={BAKED_BASE_URL} />)
+}
+
+export const renderDataInsightsIndexPage = (
+    dataInsights: OwidGdocDataInsightInterface[],
+    page: number = 0,
+    totalPageCount: number,
+    isPreviewing: boolean = false
+) => {
+    return renderToHtmlPage(
+        <DataInsightsIndexPage
+            dataInsights={dataInsights}
             baseUrl={BAKED_BASE_URL}
-            recaptchaKey={RECAPTCHA_SITE_KEY}
+            pageNumber={page}
+            totalPageCount={totalPageCount}
+            isPreviewing={isPreviewing}
         />
     )
+}
 
-export const renderBlogByPageNum = async (pageNum: number) => {
-    const allPosts = await getBlogIndex()
+export const renderBlogByPageNum = async (
+    pageNum: number,
+    knex: KnexReadonlyTransaction
+) => {
+    const allPosts = await getBlogIndex(knex)
 
     const numPages = Math.ceil(allPosts.length / BLOG_POSTS_PER_PAGE)
     const posts = allPosts.slice(
@@ -341,23 +299,65 @@ export const renderSearchPage = () =>
 export const renderNotFoundPage = () =>
     renderToHtmlPage(<NotFoundPage baseUrl={BAKED_BASE_URL} />)
 
-export async function makeAtomFeed() {
-    const posts = (await getBlogIndex()).slice(0, 10)
+export async function makeAtomFeed(knex: KnexReadonlyTransaction) {
+    const posts = (await getBlogIndex(knex)).slice(0, 10)
+    return makeAtomFeedFromPosts({ posts })
+}
 
+export async function makeDataInsightsAtomFeed(knex: KnexReadonlyTransaction) {
+    const dataInsights = await getAndLoadPublishedDataInsightsPage(knex, 0)
+    return makeAtomFeedFromDataInsights({
+        dataInsights,
+        htmlUrl: `${BAKED_BASE_URL}/data-insights`,
+        feedUrl: `${BAKED_BASE_URL}/atom-data-insights.xml`,
+    })
+}
+
+// We don't want to include topic pages in the atom feed that is being consumed
+// by Mailchimp for sending the "immediate update" newsletter. Instead topic
+// pages announcements are sent out manually.
+export async function makeAtomFeedNoTopicPages(knex: KnexReadonlyTransaction) {
+    const posts = (await getBlogIndex(knex))
+        .filter((post: IndexPost) => post.type !== OwidGdocType.TopicPage)
+        .slice(0, 10)
+    return makeAtomFeedFromPosts({ posts })
+}
+
+export async function makeAtomFeedFromPosts({
+    posts,
+    title = "Our World in Data",
+    subtitle = "Research and data to make progress against the world’s largest problems",
+    htmlUrl = BAKED_BASE_URL,
+    feedUrl = `${BAKED_BASE_URL}/atom.xml`,
+}: {
+    posts: IndexPost[]
+    title?: string
+    subtitle?: string
+    htmlUrl?: string
+    feedUrl?: string
+}) {
     const feed = `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-<title>Our World in Data</title>
-<subtitle>Research and data to make progress against the world’s largest problems</subtitle>
-<id>${BAKED_BASE_URL}/</id>
-<link type="text/html" rel="alternate" href="${BAKED_BASE_URL}"/>
-<link type="application/atom+xml" rel="self" href="${BAKED_BASE_URL}/atom.xml"/>
+<title>${title}</title>
+<subtitle>${subtitle}</subtitle>
+<id>${htmlUrl}/</id>
+<link type="text/html" rel="alternate" href="${htmlUrl}"/>
+<link type="application/atom+xml" rel="self" href="${feedUrl}"/>
 <updated>${posts[0].date.toISOString()}</updated>
 ${posts
     .map((post) => {
-        const postUrl = `${BAKED_BASE_URL}/${post.slug}`
+        const postUrl =
+            post.type === OwidGdocType.DataInsight
+                ? `${BAKED_BASE_URL}/data-insights/${post.slug}`
+                : `${BAKED_BASE_URL}/${post.slug}`
         const image = post.imageUrl
-            ? `<br><br><a href="${postUrl}" target="_blank"><img src="${post.imageUrl}"/></a>`
+            ? `<br><br><a href="${postUrl}" target="_blank"><img src="${encodeURI(
+                  formatUrls(post.imageUrl)
+              )}"/></a>`
             : ""
+        const summary = post.excerpt
+            ? `<summary><![CDATA[${post.excerpt}${image}]]></summary>`
+            : ``
 
         return `<entry>
             <title><![CDATA[${post.title}]]></title>
@@ -371,7 +371,7 @@ ${posts
                         `<author><name>${author}</name></author>`
                 )
                 .join("")}
-            <summary><![CDATA[${post.excerpt}${image}]]></summary>
+            ${summary}
             </entry>`
     })
     .join("\n")}
@@ -381,30 +381,62 @@ ${posts
     return feed
 }
 
-// These pages exist largely just for Google Scholar
-export const entriesByYearPage = async (year?: number) => {
-    const entries = (await knexTable(postsTable)
-        .where({ status: "publish" })
-        .join("post_tags", { "post_tags.post_id": "posts.id" })
-        .join("tags", { "tags.id": "post_tags.tag_id" })
-        .where({ "tags.name": "Entries" })
-        .select("title", "slug", "published_at")) as Pick<
-        PostRow,
-        "title" | "slug" | "published_at"
-    >[]
-
-    if (year !== undefined)
-        return renderToHtmlPage(
-            <EntriesForYearPage
-                entries={entries}
-                year={year}
-                baseUrl={BAKED_BASE_URL}
-            />
+export async function makeAtomFeedFromDataInsights({
+    dataInsights,
+    htmlUrl = BAKED_BASE_URL,
+    feedUrl = `${BAKED_BASE_URL}/atom.xml`,
+}: {
+    dataInsights: GdocDataInsight[]
+    htmlUrl?: string
+    feedUrl?: string
+}) {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Our World in Data - Daily Data Insights</title>
+<subtitle>Bite-sized insights on how the world is changing, written by our team</subtitle>
+<id>${htmlUrl}/</id>
+<link type="text/html" rel="alternate" href="${htmlUrl}"/>
+<link type="application/atom+xml" rel="self" href="${feedUrl}"/>
+<updated>${dataInsights[0].publishedAt?.toISOString()}</updated>
+${dataInsights
+    .map((post) => {
+        const postUrl = `${BAKED_BASE_URL}/data-insights/${post.slug}`
+        const content = ReactDOMServer.renderToStaticMarkup(
+            <AttachmentsContext.Provider
+                value={{
+                    linkedAuthors: get(post, "linkedAuthors", []),
+                    linkedDocuments: get(post, "linkedDocuments", {}),
+                    imageMetadata: get(post, "imageMetadata", {}),
+                    linkedCharts: get(post, "linkedCharts", {}),
+                    linkedIndicators: get(post, "linkedIndicators", {}),
+                    relatedCharts: get(post, "relatedCharts", []),
+                    latestDataInsights: get(post, "latestDataInsights", []),
+                    homepageMetadata: get(post, "homepageMetadata", {}),
+                    latestWorkLinks: get(post, "latestWorkLinks", []),
+                    linkedChartViews: get(post, "linkedChartViews", {}),
+                }}
+            >
+                <AtomArticleBlocks blocks={post.content.body} />
+            </AttachmentsContext.Provider>
         )
 
-    return renderToHtmlPage(
-        <EntriesByYearPage entries={entries} baseUrl={BAKED_BASE_URL} />
-    )
+        return `<entry>
+            <title><![CDATA[${post.content.title}]]></title>
+            <id>${postUrl}</id>
+            <link rel="alternate" href="${postUrl}"/>
+            <published>${post.publishedAt?.toISOString()}</published>
+            <updated>${post.updatedAt?.toISOString()}</updated>
+            ${post.content.authors
+                .map(
+                    (author: string) =>
+                        `<author><name>${author}</name></author>`
+                )
+                .join("")}
+            <content type="html"><![CDATA[${content}]]></content>
+            </entry>`
+    })
+    .join("\n")}
+</feed>`
 }
 
 export const feedbackPage = () =>
@@ -413,10 +445,11 @@ export const feedbackPage = () =>
 const getCountryProfilePost = memoize(
     async (
         profileSpec: CountryProfileSpec,
-        grapherExports?: GrapherExports
+        knex: KnexReadonlyTransaction
     ): Promise<[FormattedPost, FormattingOptions]> => {
         // Get formatted content from generic covid country profile page.
-        const genericCountryProfilePost = await getPostBySlug(
+        const genericCountryProfilePost = await getFullPostBySlugFromSnapshot(
+            knex,
             profileSpec.genericProfileSlug
         )
 
@@ -426,7 +459,7 @@ const getCountryProfilePost = memoize(
         const formattedPost = await formatPost(
             genericCountryProfilePost,
             profileFormattingOptions,
-            grapherExports
+            knex
         )
 
         return [formattedPost, profileFormattingOptions]
@@ -435,24 +468,24 @@ const getCountryProfilePost = memoize(
 
 // todo: we used to flush cache of this thing.
 const getCountryProfileLandingPost = memoize(
-    async (profileSpec: CountryProfileSpec) => {
-        return getPostBySlug(profileSpec.landingPageSlug)
+    async (knex: KnexReadonlyTransaction, profileSpec: CountryProfileSpec) => {
+        return getFullPostBySlugFromSnapshot(knex, profileSpec.landingPageSlug)
     }
 )
 
 export const renderCountryProfile = async (
     profileSpec: CountryProfileSpec,
     country: Country,
-    grapherExports?: GrapherExports
+    knex: KnexReadonlyTransaction
 ) => {
     const [formatted, formattingOptions] = await getCountryProfilePost(
         profileSpec,
-        grapherExports
+        knex
     )
 
     const formattedCountryProfile = formatCountryProfile(formatted, country)
 
-    const landing = await getCountryProfileLandingPost(profileSpec)
+    const landing = await getCountryProfileLandingPost(knex, profileSpec)
 
     const overrides: PageOverrides = {
         pageTitle: `${country.name}: ${profileSpec.pageTitle} Country Profile`,
@@ -477,26 +510,27 @@ export const renderCountryProfile = async (
 
 export const countryProfileCountryPage = async (
     profileSpec: CountryProfileSpec,
-    countrySlug: string
+    countrySlug: string,
+    knex: KnexReadonlyTransaction
 ) => {
     const country = getCountryBySlug(countrySlug)
     if (!country) throw new JsonError(`No such country ${countrySlug}`, 404)
 
-    // Voluntarily not dealing with grapherExports on devServer for simplicity
-    return renderCountryProfile(profileSpec, country)
+    return renderCountryProfile(profileSpec, country, knex)
 }
 
 export const flushCache = () => getCountryProfilePost.cache.clear?.()
 
 const renderPostThumbnailBySlug = async (
+    knex: KnexReadonlyTransaction,
     slug: string | undefined
 ): Promise<string | undefined> => {
     if (!slug) return
 
     let post
     try {
-        post = await getPostBySlug(slug)
-    } catch (err) {
+        post = await getFullPostBySlugFromSnapshot(knex, slug)
+    } catch {
         // if no post is found, then we return early instead of throwing
     }
 
@@ -508,7 +542,8 @@ const renderPostThumbnailBySlug = async (
 
 export const renderProminentLinks = async (
     $: CheerioStatic,
-    containerPostId: number
+    containerPostId: number,
+    knex: KnexReadonlyTransaction
 ) => {
     const blocks = $("block[type='prominent-link']").toArray()
     await Promise.all(
@@ -517,7 +552,10 @@ export const renderProminentLinks = async (
             const formattedUrlString = $block.find("link-url").text() // never empty, see prominent-link.php
             const formattedUrl = Url.fromURL(formattedUrlString)
 
-            const resolvedUrl = await resolveInternalRedirect(formattedUrl)
+            const resolvedUrl = await resolveInternalRedirect(
+                formattedUrl,
+                knex
+            )
             const resolvedUrlString = resolvedUrl.fullUrl
 
             const style = $block.attr("style")
@@ -525,42 +563,53 @@ export const renderProminentLinks = async (
 
             let title
             try {
+                // TODO: consider prefetching the related information instead of inline with 3 awaits here
                 title =
                     $block.find("title").text() ||
                     (!isCanonicalInternalUrl(resolvedUrl)
                         ? null // attempt fallback for internal urls only
                         : resolvedUrl.isExplorer
-                        ? await getExplorerTitleByUrl(resolvedUrl)
-                        : resolvedUrl.isGrapher && resolvedUrl.slug
-                        ? (await Chart.getBySlug(resolvedUrl.slug))?.config
-                              ?.title // optim?
-                        : resolvedUrl.slug &&
-                          (await getPostBySlug(resolvedUrl.slug)).title)
+                          ? await getExplorerTitleByUrl(knex, resolvedUrl)
+                          : resolvedUrl.isGrapher && resolvedUrl.slug
+                            ? (
+                                  await getChartConfigBySlug(
+                                      knex,
+                                      resolvedUrl.slug
+                                  )
+                              )?.config?.title // optim?
+                            : resolvedUrl.slug &&
+                              (
+                                  await getFullPostBySlugFromSnapshot(
+                                      knex,
+                                      resolvedUrl.slug
+                                  )
+                              ).title)
             } finally {
                 if (!title) {
-                    logErrorAndMaybeSendToBugsnag(
-                        new JsonError(
-                            `No fallback title found for prominent link ${resolvedUrlString} in ${formatWordpressEditLink(
-                                containerPostId
-                            )}. Block removed.`
+                    void logErrorAndMaybeCaptureInSentry(
+                        new Error(
+                            `No fallback title found for prominent link ${resolvedUrlString} in wordpress post with id ${containerPostId}. Block removed.`
                         )
                     )
                     $block.remove()
-                    return
                 }
             }
+            if (!title) return
 
             const image =
                 $block.find("figure").html() ||
                 (!isCanonicalInternalUrl(resolvedUrl)
                     ? null
                     : resolvedUrl.isExplorer
-                    ? renderExplorerDefaultThumbnail()
-                    : resolvedUrl.isGrapher && resolvedUrl.slug
-                    ? renderGrapherThumbnailByResolvedChartSlug(
-                          resolvedUrl.slug
-                      )
-                    : await renderPostThumbnailBySlug(resolvedUrl.slug))
+                      ? renderExplorerDefaultThumbnail()
+                      : resolvedUrl.isGrapher && resolvedUrl.slug
+                        ? renderGrapherThumbnailByResolvedChartSlug(
+                              resolvedUrl.slug
+                          )
+                        : await renderPostThumbnailBySlug(
+                              knex,
+                              resolvedUrl.slug
+                          ))
 
             const rendered = ReactDOMServer.renderToStaticMarkup(
                 <div className="block-wrapper">
@@ -581,59 +630,172 @@ export const renderProminentLinks = async (
 
 export const renderReusableBlock = async (
     html: string | undefined,
-    containerPostId: number
+    containerPostId: number,
+    knex: KnexReadonlyTransaction
 ): Promise<string | undefined> => {
     if (!html) return
 
     const cheerioEl = cheerio.load(formatUrls(html))
-    await renderProminentLinks(cheerioEl, containerPostId)
+    await renderProminentLinks(cheerioEl, containerPostId, knex)
 
     return cheerioEl("body").html() ?? undefined
 }
 
+export const renderExplorerIndexPage = async (
+    knex: KnexReadonlyTransaction
+): Promise<string> => {
+    const explorersBySlug = await getPublishedExplorersBySlug(knex)
+    const explorers = Object.values(explorersBySlug).sort((a, b) =>
+        a.title.localeCompare(b.title)
+    )
+
+    return renderToHtmlPage(
+        <ExplorerIndexPage baseUrl={BAKED_BASE_URL} explorers={explorers} />
+    )
+}
+
+interface ExplorerRenderOpts {
+    urlMigrationSpec?: ExplorerPageUrlMigrationSpec
+    isPreviewing?: boolean
+}
+
 export const renderExplorerPage = async (
     program: ExplorerProgram,
-    urlMigrationSpec?: ExplorerPageUrlMigrationSpec
+    knex: KnexReadonlyTransaction,
+    opts?: ExplorerRenderOpts
 ) => {
-    const { requiredGrapherIds } = program.decisionMatrix
-    let grapherConfigRows: any[] = []
+    const transformResult = await transformExplorerProgramToResolveCatalogPaths(
+        program,
+        knex
+    )
+    const { program: transformedProgram, unresolvedCatalogPaths } =
+        transformResult
+    if (unresolvedCatalogPaths?.size) {
+        const errMessage = new Error(
+            `${unresolvedCatalogPaths.size} catalog paths cannot be found for explorer ${transformedProgram.slug}: ${[...unresolvedCatalogPaths].join(", ")}.`
+        )
+        if (opts?.isPreviewing) console.error(errMessage)
+        else void logErrorAndMaybeCaptureInSentry(errMessage)
+    }
+
+    // This needs to run after transformExplorerProgramToResolveCatalogPaths, so that the catalog paths
+    // have already been resolved and all the required grapher and variable IDs are available
+    const { requiredGrapherIds, requiredVariableIds } =
+        transformedProgram.decisionMatrix
+
+    type ChartRow = { id: number; config: string }
+    let grapherConfigRows: ChartRow[] = []
     if (requiredGrapherIds.length)
-        grapherConfigRows = await queryMysql(
-            `SELECT id, config FROM charts WHERE id IN (?)`,
+        grapherConfigRows = await knexRaw<
+            Pick<DbPlainChart, "id"> & { config: DbRawChartConfig["full"] }
+        >(
+            knex,
+            `-- sql
+                SELECT c.id, cc.full as config
+                FROM charts c
+                JOIN chart_configs cc ON c.configId=cc.id
+                WHERE c.id IN (?)
+            `,
             [requiredGrapherIds]
         )
 
-    const wpContent = program.wpBlockId
-        ? await renderReusableBlock(
-              await getBlockContent(program.wpBlockId),
-              program.wpBlockId
-          )
-        : undefined
+    let partialGrapherConfigRows: {
+        id: number
+        grapherConfigAdmin: string | null
+        grapherConfigETL: string | null
+    }[] = []
+    if (requiredVariableIds.length) {
+        partialGrapherConfigRows = await knexRaw(
+            knex,
+            `-- sql
+                SELECT
+                    v.id,
+                    cc_etl.patch AS grapherConfigETL,
+                    cc_admin.patch AS grapherConfigAdmin
+                FROM variables v
+                    LEFT JOIN chart_configs cc_admin ON cc_admin.id=v.grapherConfigIdAdmin
+                    LEFT JOIN chart_configs cc_etl ON cc_etl.id=v.grapherConfigIdETL
+                WHERE v.id IN (?)
+            `,
+            [requiredVariableIds]
+        )
 
-    const grapherConfigs: GrapherInterface[] = grapherConfigRows.map((row) => {
+        // check if all required variable IDs exist in the database
+        const missingIds = requiredVariableIds.filter(
+            (id) => !partialGrapherConfigRows.find((row) => row.id === id)
+        )
+        if (missingIds.length > 0) {
+            void logErrorAndMaybeCaptureInSentry(
+                new Error(
+                    `Referenced variable IDs do not exist in the database for explorer ${transformedProgram.slug}: ${missingIds.join(", ")}.`
+                )
+            )
+        }
+    }
+
+    const parseGrapherConfigFromRow = (row: ChartRow): GrapherInterface => {
         const config: GrapherProgrammaticInterface = JSON.parse(row.config)
         config.id = row.id // Ensure each grapher has an id
-        config.manuallyProvideData = true
         config.adminBaseUrl = ADMIN_BASE_URL
         config.bakedGrapherURL = BAKED_GRAPHER_URL
-        return new Grapher(config).toObject()
-    })
+        return config
+    }
+    const grapherConfigs = grapherConfigRows.map(parseGrapherConfigFromRow)
+    const partialGrapherConfigs = partialGrapherConfigRows
+        .filter((row) => row.grapherConfigAdmin || row.grapherConfigETL)
+        .map((row) => {
+            const adminConfig = row.grapherConfigAdmin
+                ? parseGrapherConfigFromRow({
+                      id: row.id,
+                      config: row.grapherConfigAdmin as string,
+                  })
+                : {}
+            const etlConfig = row.grapherConfigETL
+                ? parseGrapherConfigFromRow({
+                      id: row.id,
+                      config: row.grapherConfigETL as string,
+                  })
+                : {}
+            const mergedConfig = mergeGrapherConfigs(etlConfig, adminConfig)
+            // explorers set their own dimensions, so we don't need to include them here
+            const mergedConfigWithoutDimensions = lodash.omit(
+                mergedConfig,
+                "dimensions"
+            )
+            return mergedConfigWithoutDimensions
+        })
+
+    const wpContent = transformedProgram.wpBlockId
+        ? await renderReusableBlock(
+              await getBlockContentFromSnapshot(
+                  knex,
+                  transformedProgram.wpBlockId
+              ),
+              transformedProgram.wpBlockId,
+              knex
+          )
+        : undefined
 
     return (
         `<!doctype html>` +
         ReactDOMServer.renderToStaticMarkup(
             <ExplorerPage
                 grapherConfigs={grapherConfigs}
-                program={program}
+                partialGrapherConfigs={partialGrapherConfigs}
+                program={transformedProgram}
                 wpContent={wpContent}
                 baseUrl={BAKED_BASE_URL}
-                urlMigrationSpec={urlMigrationSpec}
+                urlMigrationSpec={opts?.urlMigrationSpec}
+                isPreviewing={opts?.isPreviewing}
             />
         )
     )
 }
 
-const getExplorerTitleByUrl = async (url: Url): Promise<string | undefined> => {
+const getExplorerTitleByUrl = async (
+    knex: KnexReadonlyTransaction,
+    url: Url
+): Promise<string | undefined> => {
     if (!url.isExplorer || !url.slug) return
     // todo / optim: ok to instanciate multiple simple-git?
     const explorerAdminServer = new ExplorerAdminServer(GIT_CMS_DIR)
@@ -643,14 +805,20 @@ const getExplorerTitleByUrl = async (url: Url): Promise<string | undefined> => {
     if (url.queryStr) {
         explorer.initDecisionMatrix(url.queryParams as ExplorerFullQueryParams)
         return (
-            explorer.grapherConfig.title ??
-            (explorer.grapherConfig.grapherId
-                ? (await Chart.getById(explorer.grapherConfig.grapherId))
-                      ?.config?.title
+            explorer.explorerGrapherConfig.title ??
+            (explorer.explorerGrapherConfig.grapherId
+                ? (
+                      await getEnrichedChartById(
+                          knex,
+                          explorer.explorerGrapherConfig.grapherId
+                      )
+                  )?.config?.title
                 : undefined)
         )
     }
-    return explorer.explorerTitle
+    // Maintaining old behaviour so that we don't have to redesign WP prominent links
+    // since we're removing WP soon
+    return `${explorer.explorerTitle} Data Explorer`
 }
 
 /**
@@ -661,111 +829,11 @@ const getExplorerTitleByUrl = async (url: Url): Promise<string | undefined> => {
 const renderGrapherThumbnailByResolvedChartSlug = (
     chartSlug: string
 ): string | null => {
-    return `<img src="${BAKED_GRAPHER_EXPORTS_BASE_URL}/${chartSlug}.svg" />`
+    return `<img src="${GRAPHER_DYNAMIC_THUMBNAIL_URL}/${chartSlug}.png" />`
 }
 
 const renderExplorerDefaultThumbnail = (): string => {
     return ReactDOMServer.renderToStaticMarkup(
-        <img src={`${BAKED_BASE_URL}/default-thumbnail.jpg`} />
+        <img src={`${BAKED_BASE_URL}/${DEFAULT_THUMBNAIL_FILENAME}`} />
     )
-}
-
-export const renderKeyInsights = async (
-    html: string,
-    containerPostId: number
-): Promise<string> => {
-    const $ = cheerio.load(html)
-
-    for (const block of Array.from($("block[type='key-insights']"))) {
-        const $block = $(block)
-        // only selecting <title> and <slug> from direct children, to not match
-        // titles and slugs from individual key insights slides.
-        const title = $block.find("> title").text()
-        const slug = $block.find("> slug").text()
-        if (!title || !slug) {
-            logErrorAndMaybeSendToBugsnag(
-                new JsonError(
-                    `Title or anchor missing for key insights block, content removed in ${formatWordpressEditLink(
-                        containerPostId
-                    )}.`
-                )
-            )
-            $block.remove()
-            continue
-        }
-
-        const keyInsights = extractKeyInsights($, $block, containerPostId)
-        if (!keyInsights.length) {
-            logErrorAndMaybeSendToBugsnag(
-                new JsonError(
-                    `No valid key insights found within block, content removed in ${formatWordpressEditLink(
-                        containerPostId
-                    )}`
-                )
-            )
-            $block.remove()
-            continue
-        }
-        const titles = keyInsights.map((keyInsight) => keyInsight.title)
-
-        const rendered = ReactDOMServer.renderToString(
-            <>
-                <h2 id={slug} className={KEY_INSIGHTS_H2_CLASSNAME}>
-                    {title}
-                </h2>
-                <div className={`${KEY_INSIGHTS_CLASS_NAME}`}>
-                    <div className="block-wrapper">
-                        <KeyInsightsThumbs titles={titles} />
-                    </div>
-                    <KeyInsightsSlides insights={keyInsights} />
-                </div>
-            </>
-        )
-
-        $block.replaceWith(rendered)
-    }
-    return $.html()
-}
-
-export const extractKeyInsights = (
-    $: CheerioStatic,
-    $wrapper: Cheerio,
-    containerPostId: number
-): KeyInsight[] => {
-    const keyInsights: KeyInsight[] = []
-
-    for (const block of Array.from(
-        $wrapper.find("block[type='key-insight']")
-    )) {
-        const $block = $(block)
-        // restrictive children selector not strictly necessary here for now but
-        // kept for consistency and evolutions of the block. In the future, key
-        // insights could host other blocks with <title> tags
-        const $title = $block.find("> title")
-        const title = $title.text()
-        const isTitleHidden = $title.attr("is-hidden") === "1"
-        const slug = $block.find("> slug").text()
-        const content = $block.find("> content").html()
-
-        // "!content" is taken literally here. An empty paragraph will return
-        // "\n\n<p></p>\n\n" and will not trigger an error. This can be seen
-        // both as an unexpected behaviour or a feature, depending on the stage
-        // of work (published or WIP).
-        if (!title || !slug || !content) {
-            logErrorAndMaybeSendToBugsnag(
-                new JsonError(
-                    `Missing title, slug or content for key insight ${
-                        title || slug
-                    }, content removed in ${formatWordpressEditLink(
-                        containerPostId
-                    )}.`
-                )
-            )
-            continue
-        }
-
-        keyInsights.push({ title, isTitleHidden, content, slug })
-    }
-
-    return keyInsights
 }

@@ -1,6 +1,6 @@
 import { Parser, Expression } from "expr-eval"
 import { scaleLinear, scaleLog } from "d3-scale"
-import { ScaleType } from "../core/GrapherConstants"
+import { ScaleType } from "@ourworldindata/types"
 
 export function generateComparisonLinePoints(
     lineFunction: string = "x",
@@ -45,7 +45,7 @@ function evalExpression<D>(
     if (expr === undefined) return defaultOnError
     try {
         return expr.evaluate(context) as number
-    } catch (e) {
+    } catch {
         return defaultOnError
     }
 }

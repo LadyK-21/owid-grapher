@@ -6,8 +6,8 @@ This local environment requires some manual setup. For a faster way to get start
 
 You need the following to be able to compile the grapher project and run the tests or use our Storybook:
 
--   [Node 18](https://nodejs.org/en/)
--   [Yarn](https://yarnpkg.com/)
+- [Node 22](https://nodejs.org/en/)
+- [Yarn](https://yarnpkg.com/)
 
 All further dependencies will be automatically installed by the yarn package manager.
 
@@ -50,10 +50,10 @@ Note: on Windows we strongly recommend using the [Windows Subsystem for Linux](h
 
     (this will pick up the right version from `.nvmrc`)
 
-5. Install yarn:
+5. Enable [Corepack](https://nodejs.org/docs/latest-v22.x/api/corepack.html), which provides `yarn` versions:
 
     ```sh
-    npm install -g yarn
+    corepack enable
     ```
 
 6. Run yarn inside the repo folder to install dependencies:
@@ -66,10 +66,10 @@ Note: on Windows we strongly recommend using the [Windows Subsystem for Linux](h
 
 To run our test suite you first need to build the TypeScript files into JavaScript and then run jest:
 
-1. Run buildTsc
+1. Build JavaScript
 
     ```sh
-    yarn buildTsc
+    yarn lerna run build && yarn buildTsc
     ```
 
 2. Run jest
@@ -77,21 +77,3 @@ To run our test suite you first need to build the TypeScript files into JavaScri
     ```sh
     yarn testJest
     ```
-
-## Using storybook
-
-Storybook allows you to interact with our Grapher and Explorer components visually in a browser and can be a great way to debug or to test new features.
-
-1. Run buildTsc
-
-    ```sh
-    yarn buildTsc
-    ```
-
-2. Run Storybook Server
-
-    ```sh
-    yarn startStorybookServer
-    ```
-
-![Storybook](screenshots/storybook.png)

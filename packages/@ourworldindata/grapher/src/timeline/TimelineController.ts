@@ -1,4 +1,4 @@
-import { Time } from "@ourworldindata/core-table"
+import { Time } from "@ourworldindata/types"
 import {
     TimeBound,
     TimeBoundValue,
@@ -10,12 +10,15 @@ export interface TimelineManager {
     disablePlay?: boolean
     formatTimeFn?: (time: Time) => string
     isPlaying?: boolean
-    userHasSetTimeline?: boolean
+    isTimelineAnimationActive?: boolean
+    animationStartTime?: Time
     times: Time[]
     startHandleTimeBound: TimeBound
     endHandleTimeBound: TimeBound
+    areHandlesOnSameTimeBeforeAnimation?: boolean
     msPerTick?: number
     onPlay?: () => void
+    onTimelineClick?: () => void
 }
 
 const delay = (ms: number): Promise<void> =>
@@ -33,14 +36,14 @@ export class TimelineController {
         return this.manager.times
     }
 
-    private get startTime(): number {
+    get startTime(): number {
         return findClosestTime(
             this.timesAsc,
             this.manager.startHandleTimeBound
         )!
     }
 
-    private get endTime(): number {
+    get endTime(): number {
         return findClosestTime(this.timesAsc, this.manager.endHandleTimeBound)!
     }
 
@@ -65,6 +68,10 @@ export class TimelineController {
         return this.timesAsc[this.timesAsc.indexOf(time) + 1] ?? this.maxTime
     }
 
+    getPrevTime(time: number): number {
+        return this.timesAsc[this.timesAsc.indexOf(time) - 1] ?? this.minTime
+    }
+
     // By default, play means extend the endTime to the right. Toggle this to play one time unit at a time.
     private rangeMode = true
     toggleRangeMode(): this {
@@ -76,19 +83,24 @@ export class TimelineController {
         return this.endTime === this.maxTime
     }
 
-    private resetToBeginning(): void {
+    private get beginning(): number {
         const { manager } = this
-        const beginning =
-            manager.endHandleTimeBound !== manager.startHandleTimeBound
-                ? manager.startHandleTimeBound
-                : this.minTime
-        manager.endHandleTimeBound = beginning
-        manager.startHandleTimeBound = beginning
+        return manager.endHandleTimeBound !== manager.startHandleTimeBound
+            ? manager.startHandleTimeBound
+            : this.minTime
+    }
+
+    private resetToBeginning(): void {
+        const { beginning } = this
+        this.manager.endHandleTimeBound = beginning
+        this.manager.startHandleTimeBound = beginning
     }
 
     async play(numberOfTicks?: number): Promise<number> {
         const { manager } = this
+
         manager.isPlaying = true
+        manager.isTimelineAnimationActive = true
 
         if (this.isAtEnd()) this.resetToBeginning()
 
@@ -111,15 +123,51 @@ export class TimelineController {
         return tickCount
     }
 
+    increaseStartTime(): void {
+        const nextTime = this.getNextTime(this.startTime)
+        this.updateStartTime(nextTime)
+    }
+
+    decreaseStartTime(): void {
+        const prevTime = this.getPrevTime(this.startTime)
+        this.updateStartTime(prevTime)
+    }
+
+    increaseEndTime(): void {
+        const nextTime = this.getNextTime(this.endTime)
+        this.updateEndTime(nextTime)
+    }
+
+    decreaseEndTime(): void {
+        const prevTime = this.getPrevTime(this.endTime)
+        this.updateEndTime(prevTime)
+    }
+
     private stop(): void {
         this.manager.isPlaying = false
+        this.manager.isTimelineAnimationActive = false
+        this.manager.animationStartTime = undefined
+        this.manager.areHandlesOnSameTimeBeforeAnimation = undefined
     }
 
     private pause(): void {
         this.manager.isPlaying = false
     }
 
+    onDrag(): void {
+        this.stop()
+    }
+
     async togglePlay(): Promise<void> {
+        if (!this.manager.isTimelineAnimationActive) {
+            this.manager.areHandlesOnSameTimeBeforeAnimation =
+                this.manager.startHandleTimeBound ===
+                this.manager.endHandleTimeBound
+            this.manager.animationStartTime = this.isAtEnd()
+                ? findClosestTime(this.timesAsc, this.beginning)!
+                : this.startTime
+        }
+
         if (this.manager.isPlaying) this.pause()
         else await this.play()
     }
@@ -181,8 +229,8 @@ export class TimelineController {
             handle === "start" && time > this.endTime
                 ? "end"
                 : handle === "end" && time < this.startTime
-                ? "start"
-                : handle
+                  ? "start"
+                  : handle
 
         if (constrainedHandle !== handle) {
             if (handle === "start")
@@ -214,5 +262,13 @@ export class TimelineController {
 
     resetEndToMax(): void {
         this.updateEndTime(TimeBoundValue.positiveInfinity)
+    }
+
+    setStartToMax(): void {
+        this.updateStartTime(TimeBoundValue.positiveInfinity)
+    }
+
+    setEndToMin(): void {
+        this.updateEndTime(TimeBoundValue.negativeInfinity)
     }
 }

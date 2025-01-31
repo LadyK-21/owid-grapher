@@ -1,39 +1,23 @@
+import e from "express"
 import { FunctionalRouter } from "./FunctionalRouter.js"
 import { Request, Response } from "./authentication.js"
-import { writeVariableCSV } from "../db/model/Variable.js"
-import { expectInt } from "../serverUtils/serverUtil.js"
 import * as db from "../db/db.js"
-import { stringifyUnknownError } from "@ourworldindata/utils"
-import { Writable } from "stream"
+import { getChartViewNameConfigMap } from "../db/model/ChartView.js"
+import { getRouteWithROTransaction } from "./functionalRouterHelpers.js"
 
 export const publicApiRouter = new FunctionalRouter()
 
 function rejectAfterDelay(ms: number) {
     return new Promise((resolve, reject) => setTimeout(reject, ms))
 }
-publicApiRouter.router.get(
-    "/variables/:variableIds.csv",
-    async (req: Request, res: Response) => {
-        const variableIds = req.params.variableIds.split("+").map(expectInt)
-        try {
-            const writeStream = new Writable({
-                write(chunk, encoding, callback) {
-                    res.write(chunk.toString())
-                    callback(null)
-                },
-            })
-            await writeVariableCSV(variableIds, writeStream)
-            res.end()
-        } catch (error) {
-            res.send(`Error: ${stringifyUnknownError(error)}`)
-        }
-    }
-)
 
 publicApiRouter.router.get("/health", async (req: Request, res: Response) => {
-    const sqlPromise = db.mysqlFirst(`SELECT id FROM charts LIMIT 1`)
-    const timeoutPromise = rejectAfterDelay(1500) // Wait 1.5 seconds at most
     try {
+        const sqlPromise = db.knexRaw(
+            db.knexInstance() as db.KnexReadonlyTransaction,
+            `SELECT id FROM charts LIMIT 1`
+        )
+        const timeoutPromise = rejectAfterDelay(1500) // Wait 1.5 seconds at most
         await Promise.race([sqlPromise, timeoutPromise])
         res.status(200).end("OK")
     } catch (e) {
@@ -41,3 +25,16 @@ publicApiRouter.router.get("/health", async (req: Request, res: Response) => {
         console.error("Error at health endpoint", e)
     }
 })
+
+getRouteWithROTransaction(
+    publicApiRouter,
+    "/chartViewMap",
+    async (
+        _req: Request,
+        _res: e.Response<any, Record<string, any>>,
+        trx: db.KnexReadonlyTransaction
+    ) => {
+        const chartViewMap = await getChartViewNameConfigMap(trx)
+        return chartViewMap
+    }
+)

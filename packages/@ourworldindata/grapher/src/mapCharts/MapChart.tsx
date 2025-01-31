@@ -1,14 +1,10 @@
 import React from "react"
 import {
-    anyToString,
-    isNumber,
     Bounds,
     DEFAULT_BOUNDS,
-    flatten,
     getRelativeMouse,
     sortBy,
     guid,
-    minBy,
     difference,
     exposeInstanceOnWindow,
     isPresent,
@@ -16,6 +12,7 @@ import {
     Color,
     HorizontalAlign,
     PrimitiveType,
+    makeIdForHumanConsumption,
 } from "@ourworldindata/utils"
 import { observable, computed, action } from "mobx"
 import { observer } from "mobx-react"
@@ -24,14 +21,15 @@ import {
     HorizontalColorLegendManager,
     HorizontalNumericColorLegend,
 } from "../horizontalColorLegend/HorizontalColorLegends"
-import { MapProjectionName, MapProjectionGeos } from "./MapProjections"
+import { MapProjectionGeos } from "./MapProjections"
 import { GeoPathRoundingContext } from "./GeoPathRoundingContext"
 import { select } from "d3-selection"
 import { easeCubic } from "d3-ease"
+import { Quadtree, quadtree } from "d3-quadtree"
 import { MapTooltip } from "./MapTooltip"
-import { ProjectionChooser } from "./ProjectionChooser"
+import { TooltipState } from "../tooltip/Tooltip.js"
 import { isOnTheMap } from "./EntitiesOnTheMap"
-import { EntityName, OwidTable, CoreColumn } from "@ourworldindata/core-table"
+import { OwidTable, CoreColumn } from "@ourworldindata/core-table"
 import {
     GeoFeature,
     MapBracket,
@@ -40,13 +38,13 @@ import {
     ChoroplethMapManager,
     RenderFeature,
     ChoroplethSeries,
+    MAP_HOVER_TARGET_RANGE,
 } from "./MapChartConstants"
 import { MapConfig } from "./MapConfig"
 import { ColorScale, ColorScaleManager } from "../color/ColorScale"
 import {
     BASE_FONT_SIZE,
-    GrapherTabOption,
-    SeriesName,
+    GRAPHER_FRAME_PADDING_HORIZONTAL,
     Patterns,
 } from "../core/GrapherConstants"
 import { ChartInterface } from "../chart/ChartInterface"
@@ -57,11 +55,14 @@ import {
 } from "../color/ColorScaleBin"
 import * as topojson from "topojson-client"
 import { MapTopology } from "./MapTopology"
+import { getCountriesByProjection } from "./WorldRegionsToProjection"
 import {
-    WorldRegionName,
-    WorldRegionToProjection,
-} from "./WorldRegionsToProjection"
-import { ColorSchemeName } from "../color/ColorConstants"
+    ColorSchemeName,
+    MapProjectionName,
+    GRAPHER_TAB_OPTIONS,
+    SeriesName,
+    EntityName,
+} from "@ourworldindata/types"
 import {
     autoDetectYColumnSlugs,
     makeClipPath,
@@ -70,9 +71,6 @@ import {
 import { NoDataModal } from "../noDataModal/NoDataModal"
 import { ColorScaleConfig } from "../color/ColorScaleConfig"
 import { SelectionArray } from "../selection/SelectionArray"
-
-const PROJECTION_CHOOSER_WIDTH = 110
-const PROJECTION_CHOOSER_HEIGHT = 22
 
 const DEFAULT_STROKE_COLOR = "#333"
 const CHOROPLETH_MAP_CLASSNAME = "ChoroplethMap"
@@ -167,21 +165,23 @@ export class MapChart
     extends React.Component<MapChartProps>
     implements ChartInterface, HorizontalColorLegendManager, ColorScaleManager
 {
-    @observable.ref tooltip: React.ReactNode | null = null
-    @observable tooltipTarget?: { x: number; y: number; featureId: string }
-
     @observable focusEntity?: MapEntity
     @observable focusBracket?: MapBracket
+    @observable tooltipState = new TooltipState<{
+        featureId: string
+        clickable: boolean
+    }>()
 
     transformTable(table: OwidTable): OwidTable {
         if (!table.has(this.mapColumnSlug)) return table
-        return this.dropNonMapEntities(table)
+        const transformedTable = this.dropNonMapEntities(table)
             .dropRowsWithErrorValuesForColumn(this.mapColumnSlug)
             .interpolateColumnWithTolerance(
                 this.mapColumnSlug,
                 this.mapConfig.timeTolerance,
                 this.mapConfig.toleranceStrategy
             )
+        return transformedTable
     }
 
     private dropNonMapEntities(table: OwidTable): OwidTable {
@@ -235,10 +235,7 @@ export class MapChart
     }
 
     base: React.RefObject<SVGGElement> = React.createRef()
-    @action.bound onMapMouseOver(
-        feature: GeoFeature,
-        ev: React.MouseEvent
-    ): void {
+    @action.bound onMapMouseOver(feature: GeoFeature): void {
         const series =
             feature.id === undefined
                 ? undefined
@@ -248,21 +245,23 @@ export class MapChart
             series: series || { value: "No data" },
         }
 
-        const { containerElement } = this.props
-        if (!containerElement) return
+        if (feature.id !== undefined) {
+            const featureId = feature.id as string,
+                clickable = this.isEntityClickable(featureId)
+            this.tooltipState.target = { featureId, clickable }
+        }
+    }
 
-        const mouse = getRelativeMouse(containerElement, ev)
-        if (feature.id !== undefined)
-            this.tooltipTarget = {
-                x: mouse.x,
-                y: mouse.y,
-                featureId: feature.id as string,
-            }
+    @action.bound onMapMouseMove(ev: React.MouseEvent): void {
+        const ref = this.manager?.base?.current
+        if (ref) {
+            this.tooltipState.position = getRelativeMouse(ref, ev)
+        }
     }
 
     @action.bound onMapMouseLeave(): void {
         this.focusEntity = undefined
-        this.tooltipTarget = undefined
+        this.tooltipState.target = null
     }
 
     @computed get manager(): MapChartManager {
@@ -282,7 +281,7 @@ export class MapChart
     }
 
     @computed private get selectionArray(): SelectionArray {
-        return makeSelectionArray(this.manager)
+        return makeSelectionArray(this.manager.selection)
     }
 
     @action.bound onClick(
@@ -294,7 +293,13 @@ export class MapChart
 
         if (!ev.shiftKey) {
             this.selectionArray.setSelectedEntities([entityName])
-            this.manager.currentTab = GrapherTabOption.chart
+            this.manager.tab = GRAPHER_TAB_OPTIONS.chart
+            if (
+                this.manager.isLineChartThatTurnedIntoDiscreteBar &&
+                this.manager.hasTimeline
+            ) {
+                this.manager.resetHandleTimeBounds?.()
+            }
         } else this.selectionArray.toggleSelection(entityName)
     }
 
@@ -319,19 +324,18 @@ export class MapChart
         this.mapConfig.projection = value
     }
 
-    @computed private get formatTooltipValue(): (d: number | string) => string {
-        const { mapConfig, mapColumn, colorScale } = this
+    @computed private get formatTooltipValueIfCustom(): (
+        d: PrimitiveType
+    ) => string | undefined {
+        const { mapConfig, colorScale } = this
 
-        return (d: PrimitiveType): string => {
-            if (mapConfig.tooltipUseCustomLabels) {
-                // Find the bin (and its label) that this value belongs to
-                const bin = colorScale.getBinForValue(d)
-                const label = bin?.label
-                if (label !== undefined && label !== "") return label
-            }
-            return isNumber(d)
-                ? mapColumn?.formatValueLong(d) ?? ""
-                : anyToString(d)
+        return (d: PrimitiveType): string | undefined => {
+            if (!mapConfig.tooltipUseCustomLabels) return undefined
+            // Find the bin (and its label) that this value belongs to
+            const bin = colorScale.getBinForValue(d)
+            const label = bin?.label
+            if (label !== undefined && label !== "") return label
+            else return undefined
         }
     }
 
@@ -342,12 +346,12 @@ export class MapChart
 
         return mapColumn.owidRows
             .map((row) => {
-                const { entityName, value, time } = row
+                const { entityName, value, originalTime } = row
                 const color = this.colorScale.getColor(value) || "red" // todo: color fix
                 if (!color) return undefined
                 return {
                     seriesName: entityName,
-                    time,
+                    time: originalTime,
                     value,
                     isSelected: selectionArray.selectedSet.has(entityName),
                     color,
@@ -404,16 +408,6 @@ export class MapChart
         exposeInstanceOnWindow(this)
     }
 
-    @computed get projectionChooserBounds(): Bounds {
-        const { bounds } = this
-        return new Bounds(
-            bounds.width - PROJECTION_CHOOSER_WIDTH + 15 - 3,
-            5,
-            PROJECTION_CHOOSER_WIDTH,
-            PROJECTION_CHOOSER_HEIGHT
-        )
-    }
-
     @computed get legendData(): ColorScaleBin[] {
         return this.colorScale.legendBins
     }
@@ -427,7 +421,7 @@ export class MapChart
     }
 
     @computed get fontSize(): number {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+        return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
     @computed get noDataColor(): Color {
@@ -435,7 +429,7 @@ export class MapChart
     }
 
     @computed get choroplethMapBounds(): Bounds {
-        return this.bounds.padBottom(this.legendHeight + 15)
+        return this.bounds.padBottom(this.legendHeight + 4)
     }
 
     @computed get projection(): MapProjectionName {
@@ -466,7 +460,7 @@ export class MapChart
                     patternRef: Patterns.noDataPattern,
                 }
 
-        return flatten([bins[bins.length - 1], bins.slice(0, -1)])
+        return [bins[bins.length - 1], ...bins.slice(0, -1)]
     }
 
     @computed get hasNumeric(): boolean {
@@ -581,22 +575,88 @@ export class MapChart
         return 0
     }
 
-    renderMapLegend(): JSX.Element {
+    @computed get isStatic(): boolean {
+        return this.manager.isStatic ?? false
+    }
+
+    @computed get renderUid(): number {
+        return guid()
+    }
+
+    @computed get clipPath(): { id: string; element: React.ReactElement } {
+        return makeClipPath(this.renderUid, this.choroplethMapBounds)
+    }
+
+    renderMapLegend(): React.ReactElement {
         const { numericLegend, categoryLegend } = this
 
         return (
-            <g>
+            <>
                 {numericLegend && (
                     <HorizontalNumericColorLegend manager={this} />
                 )}
                 {categoryLegend && (
                     <HorizontalCategoricalColorLegend manager={this} />
                 )}
+            </>
+        )
+    }
+
+    renderStatic(): React.ReactElement {
+        return (
+            <>
+                {/* Clipping the chart area is only necessary when the map is
+                    zoomed in. If it isn't, then we don't add a clipping element
+                    since it introduces noise in SVG editing programs like Figma. */}
+                {this.projection === MapProjectionName.World ? (
+                    <ChoroplethMap manager={this} />
+                ) : (
+                    <>
+                        {this.clipPath.element}
+                        <g clipPath={this.clipPath.id}>
+                            <ChoroplethMap manager={this} />
+                        </g>
+                    </>
+                )}
+                {this.renderMapLegend()}
+            </>
+        )
+    }
+
+    renderInteractive(): React.ReactElement {
+        const { tooltipState } = this
+
+        const sparklineWidth = this.manager.shouldPinTooltipToBottom
+            ? this.bounds.width + (GRAPHER_FRAME_PADDING_HORIZONTAL - 1) * 2
+            : undefined
+
+        return (
+            <g
+                ref={this.base}
+                className="mapTab"
+                onMouseMove={this.onMapMouseMove}
+            >
+                {this.clipPath.element}
+                <g clipPath={this.clipPath.id}>
+                    <ChoroplethMap manager={this} />
+                </g>
+                {this.renderMapLegend()}
+                {tooltipState.target && (
+                    <MapTooltip
+                        tooltipState={tooltipState}
+                        timeSeriesTable={this.inputTable}
+                        formatValueIfCustom={this.formatTooltipValueIfCustom}
+                        manager={this.manager}
+                        colorScaleManager={this}
+                        targetTime={this.targetTime}
+                        sparklineWidth={sparklineWidth}
+                    />
+                )}
             </g>
         )
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         if (this.failMessage)
             return (
                 <NoDataModal
@@ -606,59 +666,27 @@ export class MapChart
                 />
             )
 
-        const { tooltipTarget, projectionChooserBounds, projection } = this
-
-        return (
-            <g ref={this.base} className="mapTab">
-                <ChoroplethMap manager={this} />
-                {this.renderMapLegend()}
-                {this.manager.isExportingtoSvgOrPng ? null : ( // only use projection chooser if we are not exporting
-                    <foreignObject
-                        id="projection-chooser"
-                        x={projectionChooserBounds.left}
-                        y={projectionChooserBounds.top}
-                        width={projectionChooserBounds.width}
-                        height={projectionChooserBounds.height}
-                        style={{
-                            overflow: "visible",
-                            height: "100%",
-                            pointerEvents: "none",
-                        }}
-                    >
-                        <ProjectionChooser
-                            value={projection}
-                            onChange={this.onProjectionChange}
-                        />
-                    </foreignObject>
-                )}
-                {tooltipTarget && (
-                    <MapTooltip
-                        entityName={tooltipTarget?.featureId}
-                        timeSeriesTable={this.inputTable}
-                        formatValue={this.formatTooltipValue}
-                        isEntityClickable={this.isEntityClickable(
-                            tooltipTarget?.featureId
-                        )}
-                        tooltipTarget={tooltipTarget}
-                        manager={this.manager}
-                        colorScaleManager={this}
-                        targetTime={this.targetTime}
-                    />
-                )}
-            </g>
-        )
+        return this.isStatic ? this.renderStatic() : this.renderInteractive()
     }
 }
 
 declare type SVGMouseEvent = React.MouseEvent<SVGElement>
 
 @observer
-class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
+class ChoroplethMap extends React.Component<{
+    manager: ChoroplethMapManager
+}> {
     base: React.RefObject<SVGGElement> = React.createRef()
 
-    @computed private get uid(): number {
-        return guid()
-    }
+    private focusStrokeColor = "#111"
+
+    private defaultStrokeWidth = 0.3
+    private focusStrokeWidth = 1.5
+    private selectedStrokeWidth = 1
+    private patternStrokeWidth = 0.7
+
+    private blurFillOpacity = 0.2
+    private blurStrokeOpacity = 0.5
 
     @computed private get manager(): ChoroplethMapManager {
         return this.props.manager
@@ -720,7 +748,7 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
             Africa: { x: 0.49, y: 0.7, width: 0.21, height: 0.38 },
             NorthAmerica: { x: 0.49, y: 0.4, width: 0.19, height: 0.32 },
             SouthAmerica: { x: 0.52, y: 0.815, width: 0.1, height: 0.26 },
-            Asia: { x: 0.75, y: 0.45, width: 0.3, height: 0.5 },
+            Asia: { x: 0.74, y: 0.45, width: 0.36, height: 0.5 },
             Oceania: { x: 0.51, y: 0.75, width: 0.1, height: 0.2 },
         }
 
@@ -775,12 +803,11 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
         const features = renderFeaturesFor(projection)
         if (projection === MapProjectionName.World) return features
 
-        return features.filter(
-            (feature) =>
-                projection ===
-                (WorldRegionToProjection[
-                    feature.id as WorldRegionName
-                ] as any as MapProjectionName)
+        const countriesByProjection = getCountriesByProjection(projection)
+        if (countriesByProjection === undefined) return []
+
+        return features.filter((feature) =>
+            countriesByProjection.has(feature.id)
         )
     }
 
@@ -796,8 +823,15 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
 
     // Map uses a hybrid approach to mouseover
     // If mouse is inside an element, that is prioritized
-    // Otherwise we look for the closest center point of a feature bounds, so that we can hover
-    // very small countries without trouble
+    // Otherwise we do a quadtree search for the closest center point of a feature bounds,
+    // so that we can hover very small countries without trouble
+
+    @computed private get quadtree(): Quadtree<RenderFeature> {
+        return quadtree<RenderFeature>()
+            .x(({ center }) => center.x)
+            .y(({ center }) => center.y)
+            .addAll(this.featuresInProjection)
+    }
 
     @observable private hoverEnterFeature?: RenderFeature
     @observable private hoverNearbyFeature?: RenderFeature
@@ -805,38 +839,27 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
         if (ev.shiftKey) this.showSelectedStyle = true // Turn on highlight selection. To turn off, user can switch tabs.
         if (this.hoverEnterFeature) return
 
-        const { featuresInProjection } = this
         const subunits = this.base.current?.querySelector(".subunits")
         if (subunits) {
-            const mouse = getRelativeMouse(subunits, ev)
+            const { x, y } = getRelativeMouse(subunits, ev)
+            const distance = MAP_HOVER_TARGET_RANGE
+            const feature = this.quadtree.find(x, y, distance)
 
-            const featuresWithDistance = featuresInProjection.map((feature) => {
-                return {
-                    feature,
-                    distance: PointVector.distance(feature.center, mouse),
+            if (feature) {
+                if (feature.id !== this.hoverNearbyFeature?.id) {
+                    this.hoverNearbyFeature = feature
+                    this.manager.onMapMouseOver(feature.geo)
                 }
-            })
-
-            const feature = minBy(featuresWithDistance, (d) => d.distance)
-
-            if (feature && feature.distance < 20) {
-                if (feature.feature !== this.hoverNearbyFeature) {
-                    this.hoverNearbyFeature = feature.feature
-                    this.manager.onMapMouseOver(feature.feature.geo, ev)
-                }
-            } else {
+            } else if (this.hoverNearbyFeature) {
                 this.hoverNearbyFeature = undefined
                 this.manager.onMapMouseLeave()
             }
         } else console.error("subunits was falsy")
     }
 
-    @action.bound private onMouseEnter(
-        feature: RenderFeature,
-        ev: SVGMouseEvent
-    ): void {
+    @action.bound private onMouseEnter(feature: RenderFeature): void {
         this.hoverEnterFeature = feature
-        this.manager.onMapMouseOver(feature.geo, ev)
+        this.manager.onMapMouseOver(feature.geo)
     }
 
     @action.bound private onMouseLeave(): void {
@@ -856,33 +879,186 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
     // If true selected countries will have an outline
     @observable private showSelectedStyle = false
 
-    // SVG layering is based on order of appearance in the element tree (later elements rendered on top)
-    // The ordering here is quite careful
-    render(): JSX.Element {
-        const {
-            uid,
-            bounds,
-            choroplethData,
-            defaultFill,
-            matrixTransform,
-            viewportScale,
-            featuresOutsideProjection,
-            featuresWithNoData,
-            featuresWithData,
-        } = this
-        const focusStrokeColor = "#111"
-        const focusStrokeWidth = 1.5
-        const selectedStrokeWidth = 1
-        const blurFillOpacity = 0.2
-        const blurStrokeOpacity = 0.5
+    renderFeaturesOutsideProjection(): React.ReactElement | void {
+        if (this.featuresOutsideProjection.length === 0) return
 
-        const clipPath = makeClipPath(uid, bounds)
+        const strokeWidth = this.defaultStrokeWidth / this.viewportScale
 
+        return (
+            <g
+                id={makeIdForHumanConsumption("countries-outside-selection")}
+                className="nonProjectionFeatures"
+            >
+                {this.featuresOutsideProjection.map((feature) => (
+                    <path
+                        key={feature.id}
+                        id={makeIdForHumanConsumption(feature.id)}
+                        d={feature.path}
+                        strokeWidth={strokeWidth}
+                        stroke="#aaa"
+                        fill="#fff"
+                    />
+                ))}
+            </g>
+        )
+    }
+
+    renderFeaturesWithoutData(): React.ReactElement | void {
+        if (this.featuresWithNoData.length === 0) return
+        return (
+            <g
+                id={makeIdForHumanConsumption("countries-without-data")}
+                className="noDataFeatures"
+            >
+                <defs>
+                    <pattern
+                        // Ids should be unique per document (!) not just a grapher instance -
+                        // we disregard this for other patterns that are defined the same everywhere
+                        // because id collisions there are benign but here the pattern will be different
+                        // depending on the projection so we include this in the id
+                        id={`${Patterns.noDataPatternForMapChart}-${this.manager.projection}`}
+                        key={Patterns.noDataPatternForMapChart}
+                        patternUnits="userSpaceOnUse"
+                        width="4"
+                        height="4"
+                        patternTransform={`rotate(-45 2 2) scale(${
+                            1 / this.viewportScale
+                        })`} // <-- This scale here is crucial and map specific
+                    >
+                        <path
+                            d="M -1,2 l 6,0"
+                            stroke="#ccc"
+                            strokeWidth={this.patternStrokeWidth}
+                        />
+                    </pattern>
+                </defs>
+
+                {this.featuresWithNoData.map((feature) => {
+                    const isFocus = this.hasFocus(feature.id)
+                    const outOfFocusBracket = !!this.focusBracket && !isFocus
+                    const stroke = isFocus ? this.focusStrokeColor : "#aaa"
+                    const fillOpacity = outOfFocusBracket
+                        ? this.blurFillOpacity
+                        : 1
+                    const strokeOpacity = outOfFocusBracket
+                        ? this.blurStrokeOpacity
+                        : 1
+                    const strokeWidth =
+                        (isFocus
+                            ? this.focusStrokeWidth
+                            : this.defaultStrokeWidth) / this.viewportScale
+                    return (
+                        <path
+                            key={feature.id}
+                            id={makeIdForHumanConsumption(feature.id)}
+                            d={feature.path}
+                            strokeWidth={strokeWidth}
+                            stroke={stroke}
+                            strokeOpacity={strokeOpacity}
+                            cursor="pointer"
+                            fill={`url(#${Patterns.noDataPatternForMapChart}-${this.manager.projection})`}
+                            fillOpacity={fillOpacity}
+                            onClick={(ev: SVGMouseEvent): void =>
+                                this.manager.onClick(feature.geo, ev)
+                            }
+                            onMouseEnter={(): void =>
+                                this.onMouseEnter(feature)
+                            }
+                            onMouseLeave={this.onMouseLeave}
+                        />
+                    )
+                })}
+            </g>
+        )
+    }
+
+    renderFeaturesWithData(): React.ReactElement | void {
+        if (this.featuresWithData.length === 0) return
+
+        return (
+            <g id={makeIdForHumanConsumption("countries-with-data")}>
+                {sortBy(
+                    this.featuresWithData.map((feature) => {
+                        const isFocus = this.hasFocus(feature.id)
+                        const showSelectedStyle =
+                            this.showSelectedStyle &&
+                            this.isSelected(feature.id)
+                        const outOfFocusBracket =
+                            !!this.focusBracket && !isFocus
+                        const series = this.choroplethData.get(
+                            feature.id as string
+                        )
+                        const stroke =
+                            isFocus || showSelectedStyle
+                                ? this.focusStrokeColor
+                                : DEFAULT_STROKE_COLOR
+                        const fill = series ? series.color : this.defaultFill
+                        const fillOpacity = outOfFocusBracket
+                            ? this.blurFillOpacity
+                            : 1
+                        const strokeOpacity = outOfFocusBracket
+                            ? this.blurStrokeOpacity
+                            : 1
+                        const strokeWidth =
+                            (isFocus
+                                ? this.focusStrokeWidth
+                                : showSelectedStyle
+                                  ? this.selectedStrokeWidth
+                                  : this.defaultStrokeWidth) /
+                            this.viewportScale
+
+                        return (
+                            <path
+                                key={feature.id}
+                                id={makeIdForHumanConsumption(feature.id)}
+                                d={feature.path}
+                                strokeWidth={strokeWidth}
+                                stroke={stroke}
+                                strokeOpacity={strokeOpacity}
+                                cursor="pointer"
+                                fill={fill}
+                                fillOpacity={fillOpacity}
+                                onClick={(ev: SVGMouseEvent): void =>
+                                    this.manager.onClick(feature.geo, ev)
+                                }
+                                onMouseEnter={(): void =>
+                                    this.onMouseEnter(feature)
+                                }
+                                onMouseLeave={this.onMouseLeave}
+                            />
+                        )
+                    }),
+                    (p) => p.props["strokeWidth"]
+                )}
+            </g>
+        )
+    }
+
+    renderStatic(): React.ReactElement {
+        return (
+            <g
+                id={makeIdForHumanConsumption("map")}
+                transform={this.matrixTransform}
+            >
+                {this.renderFeaturesOutsideProjection()}
+                {this.renderFeaturesWithoutData()}
+                {this.renderFeaturesWithData()}
+            </g>
+        )
+    }
+
+    renderInteractive(): React.ReactElement {
+        const { bounds, matrixTransform } = this
+
+        // this needs to be referenced here or it will be recomputed on every mousemove
+        const _cachedCentroids = this.quadtree
+
+        // SVG layering is based on order of appearance in the element tree (later elements rendered on top)
+        // The ordering here is quite careful
         return (
             <g
                 ref={this.base}
                 className={CHOROPLETH_MAP_CLASSNAME}
-                clipPath={clipPath.id}
                 onMouseDown={
                     (ev: SVGMouseEvent): void =>
                         ev.preventDefault() /* Without this, title may get selected while shift clicking */
@@ -899,144 +1075,18 @@ class ChoroplethMap extends React.Component<{ manager: ChoroplethMapManager }> {
                     fill="rgba(255,255,255,0)"
                     opacity={0}
                 />
-                {clipPath.element}
                 <g className="subunits" transform={matrixTransform}>
-                    {featuresOutsideProjection.length && (
-                        <g className="nonProjectionFeatures">
-                            {featuresOutsideProjection.map((feature) => {
-                                return (
-                                    <path
-                                        key={feature.id}
-                                        d={feature.path}
-                                        strokeWidth={0.3 / viewportScale}
-                                        stroke={"#aaa"}
-                                        fill={"#fff"}
-                                    />
-                                )
-                            })}
-                        </g>
-                    )}
-
-                    {featuresWithNoData.length && (
-                        <g className="noDataFeatures">
-                            <defs>
-                                <pattern
-                                    // Ids should be unique per document (!) not just a grapher instance -
-                                    // we disregard this for other patterns that are defined the same everywhere
-                                    // because id collisions there are benign but here the pattern will be different
-                                    // depending on the projection so we include this in the id
-                                    id={`${Patterns.noDataPatternForMapChart}-${this.manager.projection}`}
-                                    key={Patterns.noDataPatternForMapChart}
-                                    patternUnits="userSpaceOnUse"
-                                    width="4"
-                                    height="4"
-                                    patternTransform={`rotate(-45 2 2) scale(${
-                                        1 / this.viewportScale
-                                    })`} // <-- This scale here is crucial and map specific
-                                >
-                                    <path
-                                        d="M -1,2 l 6,0"
-                                        stroke="#ccc"
-                                        strokeWidth="0.7"
-                                    />
-                                </pattern>
-                            </defs>
-
-                            {featuresWithNoData.map((feature) => {
-                                const isFocus = this.hasFocus(feature.id)
-                                const outOfFocusBracket =
-                                    !!this.focusBracket && !isFocus
-                                const stroke = isFocus
-                                    ? focusStrokeColor
-                                    : "#aaa"
-                                const fillOpacity = outOfFocusBracket
-                                    ? blurFillOpacity
-                                    : 1
-                                const strokeOpacity = outOfFocusBracket
-                                    ? blurStrokeOpacity
-                                    : 1
-                                return (
-                                    <path
-                                        key={feature.id}
-                                        d={feature.path}
-                                        strokeWidth={
-                                            (isFocus ? focusStrokeWidth : 0.3) /
-                                            viewportScale
-                                        }
-                                        stroke={stroke}
-                                        strokeOpacity={strokeOpacity}
-                                        cursor="pointer"
-                                        fill={`url(#${Patterns.noDataPatternForMapChart}-${this.manager.projection})`}
-                                        fillOpacity={fillOpacity}
-                                        onClick={(ev: SVGMouseEvent): void =>
-                                            this.manager.onClick(
-                                                feature.geo,
-                                                ev
-                                            )
-                                        }
-                                        onMouseEnter={(ev): void =>
-                                            this.onMouseEnter(feature, ev)
-                                        }
-                                        onMouseLeave={this.onMouseLeave}
-                                    />
-                                )
-                            })}
-                        </g>
-                    )}
-
-                    {sortBy(
-                        featuresWithData.map((feature) => {
-                            const isFocus = this.hasFocus(feature.id)
-                            const showSelectedStyle =
-                                this.showSelectedStyle &&
-                                this.isSelected(feature.id)
-                            const outOfFocusBracket =
-                                !!this.focusBracket && !isFocus
-                            const series = choroplethData.get(
-                                feature.id as string
-                            )
-                            const stroke =
-                                isFocus || showSelectedStyle
-                                    ? focusStrokeColor
-                                    : DEFAULT_STROKE_COLOR
-                            const fill = series ? series.color : defaultFill
-                            const fillOpacity = outOfFocusBracket
-                                ? blurFillOpacity
-                                : 1
-                            const strokeOpacity = outOfFocusBracket
-                                ? blurStrokeOpacity
-                                : 1
-
-                            return (
-                                <path
-                                    key={feature.id}
-                                    d={feature.path}
-                                    strokeWidth={
-                                        (isFocus
-                                            ? focusStrokeWidth
-                                            : showSelectedStyle
-                                            ? selectedStrokeWidth
-                                            : 0.3) / viewportScale
-                                    }
-                                    stroke={stroke}
-                                    strokeOpacity={strokeOpacity}
-                                    cursor="pointer"
-                                    fill={fill}
-                                    fillOpacity={fillOpacity}
-                                    onClick={(ev: SVGMouseEvent): void =>
-                                        this.manager.onClick(feature.geo, ev)
-                                    }
-                                    onMouseEnter={(ev): void =>
-                                        this.onMouseEnter(feature, ev)
-                                    }
-                                    onMouseLeave={this.onMouseLeave}
-                                />
-                            )
-                        }),
-                        (p) => p.props["strokeWidth"]
-                    )}
+                    {this.renderFeaturesOutsideProjection()}
+                    {this.renderFeaturesWithoutData()}
+                    {this.renderFeaturesWithData()}
                 </g>
             </g>
         )
+    }
+
+    render(): React.ReactElement {
+        return this.manager.isStatic
+            ? this.renderStatic()
+            : this.renderInteractive()
     }
 }

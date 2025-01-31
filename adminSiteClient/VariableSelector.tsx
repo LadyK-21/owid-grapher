@@ -1,17 +1,19 @@
-import React from "react"
+import * as React from "react"
 import * as lodash from "lodash"
 import {
     groupBy,
-    isString,
     sortBy,
+    OwidVariableId,
+    excludeUndefined,
+    uniq,
+    isNumber,
+} from "@ourworldindata/utils"
+import {
     buildSearchWordsFromSearchString,
     filterFunctionForSearchWords,
     highlightFunctionForSearchWords,
     SearchWord,
-    OwidVariableId,
-    excludeUndefined,
-    uniq,
-} from "@ourworldindata/utils"
+} from "../adminShared/search.js"
 import { computed, action, observable, IReactionDisposer } from "mobx"
 import { observer } from "mobx-react"
 import Select, { MultiValue } from "react-select"
@@ -20,17 +22,18 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faArchive } from "@fortawesome/free-solid-svg-icons"
 
 import {
-    ChartEditor,
     Dataset,
     EditorDatabase,
     Namespace,
     NamespaceData,
-} from "./ChartEditor.js"
+} from "./ChartEditorView.js"
 import { TextField, Toggle, Modal } from "./Forms.js"
 import { DimensionSlot } from "@ourworldindata/grapher"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
 
-interface VariableSelectorProps {
-    editor: ChartEditor
+interface VariableSelectorProps<Editor> {
+    database: EditorDatabase
+    editor: Editor
     slot: DimensionSlot
     onDismiss: () => void
     onComplete: (variableIds: OwidVariableId[]) => void
@@ -39,13 +42,17 @@ interface VariableSelectorProps {
 interface Variable {
     id: number
     name: string
+    datasetId: number
     datasetName: string
+    datasetVersion?: string
     namespaceName: string
     usageCount: number
 }
 
 @observer
-export class VariableSelector extends React.Component<VariableSelectorProps> {
+export class VariableSelector<
+    Editor extends AbstractChartEditor,
+> extends React.Component<VariableSelectorProps<Editor>> {
     @observable.ref chosenNamespaces: Namespace[] = []
     @observable.ref searchInput?: string
     @observable.ref isProjection?: boolean
@@ -59,7 +66,7 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
     @observable rowHeight: number = 32
 
     @computed get database(): EditorDatabase {
-        return this.props.editor.database
+        return this.props.database
     }
 
     @computed get searchWords(): SearchWord[] {
@@ -86,8 +93,8 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
         return sortBy(datasets, (d) => d.name)
     }
 
-    @computed get datasetsByName(): lodash.Dictionary<Dataset> {
-        return lodash.keyBy(this.datasets, (d) => d.name)
+    @computed get datasetsById(): Record<number, Dataset> {
+        return lodash.keyBy(this.datasets, (d) => d.id)
     }
 
     @computed get availableVariables(): Variable[] {
@@ -102,7 +109,9 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
                 variables.push({
                     id: variable.id,
                     name: variable.name,
+                    datasetId: dataset.id,
                     datasetName: dataset.name,
+                    datasetVersion: dataset.version,
                     namespaceName: dataset.namespace,
                     usageCount: variableUsageCounts.get(variable.id) ?? 0,
                     //name: variable.name.includes(dataset.name) ? variable.name : dataset.name + " - " + variable.name
@@ -127,19 +136,19 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
             : []
     }
 
-    @computed get resultsByDataset(): { [datasetName: string]: Variable[] } {
+    @computed get resultsByDataset(): { [datasetId: number]: Variable[] } {
         const { searchResults, searchWords, availableVariables } = this
         let datasetListToUse = searchResults
-        if (searchWords.length == 0) {
+        if (searchWords.length === 0) {
             datasetListToUse = availableVariables
         }
-        return groupBy(datasetListToUse, (d) => d.datasetName)
+        return groupBy(datasetListToUse, (d) => d.datasetId)
     }
 
     @computed get searchResultRows() {
         const { resultsByDataset } = this
 
-        const rows: Array<string | Variable[]> = []
+        const rows: Array<number | Variable[]> = []
         const unsorted = Object.entries(resultsByDataset)
         const sorted = lodash.sortBy(unsorted, ([_, variables]) => {
             const sizes = lodash.map(
@@ -148,8 +157,8 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
             )
             return Math.max(...sizes) * -1
         })
-        sorted.forEach(([datasetName, variables]) => {
-            rows.push(datasetName)
+        sorted.forEach(([datasetId, variables]) => {
+            rows.push(parseInt(datasetId))
 
             for (let i = 0; i < variables.length; i += 2) {
                 rows.push(variables.slice(i, i + 2))
@@ -194,11 +203,11 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
 
     render() {
         const { slot } = this.props
-        const { database } = this.props.editor
+        const { database } = this.props
         const {
             searchInput,
             chosenVariables,
-            datasetsByName,
+            datasetsById,
             rowHeight,
             rowOffset,
             numVisibleRows,
@@ -279,12 +288,12 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
                                                 rowOffset + numVisibleRows
                                             )
                                             .map((d) => {
-                                                if (isString(d)) {
+                                                if (isNumber(d)) {
                                                     const dataset =
-                                                        datasetsByName[d]
+                                                        datasetsById[d]
                                                     return (
                                                         <li
-                                                            key={dataset.name}
+                                                            key={dataset.id}
                                                             style={{
                                                                 minWidth:
                                                                     "100%",
@@ -316,6 +325,17 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
                                                                     </span>
                                                                 ) : (
                                                                     ""
+                                                                )}
+                                                                {dataset.version && (
+                                                                    <small
+                                                                        style={{
+                                                                            marginLeft: 10,
+                                                                        }}
+                                                                    >
+                                                                        {
+                                                                            dataset.version
+                                                                        }
+                                                                    </small>
                                                                 )}
                                                             </h5>
                                                         </li>
@@ -385,7 +405,10 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
                                             {d.name}{" "}
                                             <span style={{ color: "#999" }}>
                                                 [{d.namespaceName}:{" "}
-                                                {d.datasetName}]
+                                                {d.datasetName}
+                                                {d.datasetVersion &&
+                                                    ` (${d.datasetVersion})`}
+                                                ]
                                             </span>
                                         </React.Fragment>
                                     )
@@ -478,27 +501,28 @@ export class VariableSelector extends React.Component<VariableSelectorProps> {
     dispose!: IReactionDisposer
     base: React.RefObject<HTMLDivElement> = React.createRef()
     componentDidMount() {
-        this.props.editor.loadVariableUsageCounts()
         this.initChosenVariablesAndNamespaces()
     }
 
     @action.bound private initChosenVariablesAndNamespaces() {
-        const { datasetsByName } = this
+        const { datasetsById } = this
         const { variableUsageCounts } = this.database
         const { dimensions } = this.props.slot
 
         this.chosenVariables = dimensions.map((d) => {
-            const { datasetName } = d.column
+            const { datasetName, datasetId } = d.column
+            const dataset =
+                datasetId !== undefined ? datasetsById[datasetId] : undefined
 
             return {
                 name: d.column.name,
                 id: d.variableId,
                 usageCount: variableUsageCounts.get(d.variableId) ?? 0,
+                datasetId: datasetId ?? 0,
                 datasetName: datasetName || "",
-                namespaceName:
-                    datasetName != undefined && datasetName in datasetsByName
-                        ? datasetsByName[datasetName].namespace
-                        : "",
+                catalogPath: undefined,
+                namespaceName: dataset?.namespace ?? "",
+                datasetVersion: dataset?.version,
             }
         })
 

@@ -1,9 +1,5 @@
-import React from "react"
-import {
-    variableAnnotationAllowedColumnNamesAndTypes,
-    WHITELISTED_SQL_COLUMN_NAMES,
-    DimensionProperty,
-} from "@ourworldindata/utils"
+import { Component } from "react"
+import { DimensionProperty } from "@ourworldindata/utils"
 import { AdminLayout } from "./AdminLayout.js"
 import { GrapherConfigGridEditor } from "./GrapherConfigGridEditor.js"
 import {
@@ -12,6 +8,10 @@ import {
     GrapherConfigGridEditorSource,
     ReadOnlyColumn,
 } from "./GrapherConfigGridEditorTypesAndUtils.js"
+import {
+    variableAnnotationAllowedColumnNamesAndTypes,
+    WHITELISTED_SQL_COLUMN_NAMES,
+} from "../adminShared/AdminSessionTypes.js"
 
 const readOnlyVariableAnnotationColumnNamesFields: Map<string, ReadOnlyColumn> =
     new Map(
@@ -93,7 +93,7 @@ const variableAnnotationsColumnSets: ColumnSet[] = [
         columns: [
             "name",
             "datasetname",
-            "/type",
+            "/chartTypes",
             "/hasMapTab",
             "/title",
             "/subtitle",
@@ -126,16 +126,15 @@ const variableAnnotationsColumnSets: ColumnSet[] = [
             "/baseColorScheme",
             "/map/colorScale",
             "/colorScale",
-            "/hasChartTab",
             "/hasMapTab",
-            "/type",
+            "/chartTypes",
         ],
     },
 ]
 const config: GrapherConfigGridEditorConfig = {
     source: GrapherConfigGridEditorSource.SourceVariableAnnotation,
     sExpressionContext: {
-        grapherConfigFieldName: "grapherConfig",
+        grapherConfigFieldName: "grapherConfigAdmin",
         whitelistedColumnNamesAndTypes:
             variableAnnotationAllowedColumnNamesAndTypes,
     },
@@ -146,13 +145,10 @@ const config: GrapherConfigGridEditorConfig = {
     finalVariableLayerModificationFn: (id: number) => ({
         version: 1,
         dimensions: [{ property: DimensionProperty.y, variableId: id }],
-        map: {
-            variableId: id,
-        },
     }),
 }
 
-export class VariablesAnnotationPage extends React.Component {
+export class VariablesAnnotationPage extends Component {
     render() {
         return (
             <AdminLayout title="Indicators">

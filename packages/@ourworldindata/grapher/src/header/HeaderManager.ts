@@ -1,14 +1,28 @@
 import { Bounds } from "@ourworldindata/utils"
+import { DetailsMarker } from "@ourworldindata/types"
 
 export interface HeaderManager {
-    fontSize?: number
     currentTitle?: string
-    subtitle?: string
+    currentSubtitle?: string
     hideLogo?: boolean
     shouldLinkToOwid?: boolean
     logo?: string
     canonicalUrl?: string
-    tabBounds?: Bounds
-    detailsOrderedByReference?: Set<string>
+    captionedChartBounds?: Bounds
+    detailsOrderedByReference?: string[]
     shouldIncludeDetailsInStaticExport?: boolean
+    isExportingToSvgOrPng?: boolean
+    isNarrow?: boolean
+    isSmall?: boolean
+    isMedium?: boolean
+    isSemiNarrow?: boolean
+    isOnCanonicalUrl?: boolean
+    isInIFrame?: boolean
+    useBaseFontSize?: boolean
+    fontSize?: number
+    hideTitle?: boolean
+    hideSubtitle?: boolean
+    secondaryColorInStaticCharts?: string
+    isStaticAndSmall?: boolean
+    detailsMarkerInSvg?: DetailsMarker
 }

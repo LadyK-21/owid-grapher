@@ -1,9 +1,7 @@
-import { dsvFormat, DSVParsedArray } from "d3-dsv"
-import fastCartesian from "fast-cartesian"
+import * as Papa from "papaparse"
 import {
     findIndexFast,
     first,
-    flatten,
     max,
     range,
     sampleFrom,
@@ -17,20 +15,19 @@ import {
     CoreMatrix,
     Time,
     CoreValueType,
-} from "./CoreTableConstants.js"
-import { ColumnTypeNames, CoreColumnDef } from "./CoreColumnDef.js"
-import {
+    ColumnTypeNames,
+    CoreColumnDef,
     ErrorValue,
-    ErrorValueTypes,
-    isNotErrorValueOrEmptyCell,
-    DroppedForTesting,
-} from "./ErrorValues.js"
-import {
     OwidEntityCodeColumnDef,
     OwidEntityIdColumnDef,
     OwidEntityNameColumnDef,
     OwidTableSlugs,
-} from "./OwidTableConstants.js"
+} from "@ourworldindata/types"
+import {
+    ErrorValueTypes,
+    isNotErrorValueOrEmptyCell,
+    DroppedForTesting,
+} from "./ErrorValues.js"
 
 export const columnStoreToRows = (
     columnStore: CoreColumnStore
@@ -54,14 +51,16 @@ export const truncate = (str: string, maxLength: number): string =>
 // Picks a type for each column from the first row then autotypes all rows after that so all values in
 // a column will have the same type. Only chooses between strings and numbers.
 const numberOnly = /^-?\d+\.?\d*$/
+type RawRow = Record<string, unknown> | undefined
+type ParsedRow = Record<string, string | number | ErrorValue> | undefined | null
 export const makeAutoTypeFn = (
     numericSlugs?: ColumnSlug[]
-): ((object: any) => any) => {
+): ((object?: RawRow) => ParsedRow) => {
     const slugToType: any = {}
     numericSlugs?.forEach((slug) => {
         slugToType[slug] = "number"
     })
-    return (object: any): any => {
+    return (object: RawRow): ParsedRow => {
         for (const columnSlug in object) {
             const value = object[columnSlug]
             const type = slugToType[columnSlug]
@@ -70,7 +69,7 @@ export const makeAutoTypeFn = (
                 continue
             }
 
-            const number = parseFloat(value) // The "+" type casting that d3 does for perf converts "" to 0, so use parseFloat.
+            const number = parseFloat(value as string) // The "+" type casting that d3 does for perf converts "" to 0, so use parseFloat.
             if (type === "number") {
                 object[columnSlug] = isNaN(number)
                     ? ErrorValueTypes.NaNButShouldBeNumber
@@ -78,7 +77,7 @@ export const makeAutoTypeFn = (
                 continue
             }
 
-            if (isNaN(number) || !numberOnly.test(value)) {
+            if (isNaN(number) || !numberOnly.test(value as string)) {
                 object[columnSlug] = value
                 slugToType[columnSlug] = "string"
                 continue
@@ -87,7 +86,7 @@ export const makeAutoTypeFn = (
             object[columnSlug] = number
             slugToType[columnSlug] = "number"
         }
-        return object
+        return object as ParsedRow
     }
 }
 
@@ -188,7 +187,7 @@ export const makeRowFromColumnStore = (
     return row
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
+// eslint-disable-next-line @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type
 export interface InterpolationContext {}
 
 export interface LinearInterpolationContext extends InterpolationContext {
@@ -337,52 +336,15 @@ export function toleranceInterpolation(
     }
 }
 
-export function interpolateRowValuesWithTolerance<
-    ValueSlug extends ColumnSlug,
-    TimeSlug extends ColumnSlug,
-    Row extends { [key in TimeSlug]?: Time } & { [key in ValueSlug]?: any }
->(
-    rowsSortedByTimeAsc: Row[],
-    valueSlug: ValueSlug,
-    timeSlug: TimeSlug,
-    timeTolerance: number
-): Row[] {
-    const values = rowsSortedByTimeAsc.map((row) => row[valueSlug])
-    const times = rowsSortedByTimeAsc.map((row) => row[timeSlug])
-    toleranceInterpolation(values, times, {
-        timeToleranceForwards: timeTolerance,
-        timeToleranceBackwards: timeTolerance,
-    })
-    return rowsSortedByTimeAsc.map((row, index) => {
-        return {
-            ...row,
-            [valueSlug]: values[index],
-            [timeSlug]: times[index],
-        }
-    })
-}
-
 // A dumb function for making a function that makes a key for a row given certain columns.
-export const makeKeyFn =
-    (columnStore: CoreColumnStore, columnSlugs: ColumnSlug[]) =>
-    (rowIndex: number): string =>
-        // toString() handles `undefined` and `null` values, which can be in the table.
-        columnSlugs
-            .map((slug) => toString(columnStore[slug][rowIndex]))
-            .join(" ")
-
-export const appendRowsToColumnStore = (
+export const makeKeyFn = (
     columnStore: CoreColumnStore,
-    rows: CoreRow[]
-): CoreColumnStore => {
-    const slugs = Object.keys(columnStore)
-    const newColumnStore = columnStore
-    slugs.forEach((slug) => {
-        newColumnStore[slug] = columnStore[slug].concat(
-            rows.map((row) => row[slug])
-        )
-    })
-    return newColumnStore
+    columnSlugs: ColumnSlug[]
+): ((rowIndex: number) => string) => {
+    const cols = columnSlugs.map((slug) => columnStore[slug])
+    return (rowIndex: number): string =>
+        // toString() handles `undefined` and `null` values, which can be in the table.
+        cols.map((col) => toString(col[rowIndex])).join(" ")
 }
 
 const getColumnStoreLength = (store: CoreColumnStore): number => {
@@ -399,22 +361,26 @@ export const concatColumnStores = (
     const slugs = slugsToKeep ?? Object.keys(first(stores)!)
 
     const newColumnStore: CoreColumnStore = {}
+
+    // The below code is performance-critical.
+    // That's why it's written using for loops and mutable arrays rather than using map or flatMap:
+    // To this day, that's still faster in JS.
     slugs.forEach((slug) => {
-        newColumnStore[slug] = flatten(
-            stores.map((store, i) => {
-                const values = store[slug] ?? []
-                const toFill = Math.max(0, lengths[i] - values.length)
-                if (toFill === 0) {
-                    return values
-                } else {
-                    return values.concat(
-                        new Array(lengths[i] - values.length).fill(
-                            ErrorValueTypes.MissingValuePlaceholder
-                        )
+        let newColumnValues: CoreValueType[] = []
+        for (const [i, store] of stores.entries()) {
+            const values = store[slug] ?? []
+            const toFill = Math.max(0, lengths[i] - values.length)
+
+            newColumnValues = newColumnValues.concat(values)
+            if (toFill > 0) {
+                newColumnValues = newColumnValues.concat(
+                    new Array(toFill).fill(
+                        ErrorValueTypes.MissingValuePlaceholder
                     )
-                }
-            })
-        )
+                )
+            }
+        }
+        newColumnStore[slug] = newColumnValues
     })
     return newColumnStore
 }
@@ -584,16 +550,55 @@ export const matrixToDelimited = (
         .join("\n")
 }
 
+/**
+ * An array object representing all parsed rows. The array is enhanced with a property listing
+ * the names of the parsed columns.
+ */
+export interface DSVParsedArray<T> extends Array<T> {
+    /**
+     * List of column names.
+     */
+    columns: Array<keyof T>
+}
+
 export const parseDelimited = (
     str: string,
     delimiter?: string,
-    parseFn?: (
-        rawRow: Record<string, string | undefined> | undefined,
-        index: number,
-        columns: unknown[]
-    ) => Record<string, unknown> | undefined | null
-): DSVParsedArray<Record<string, unknown>> =>
-    dsvFormat(delimiter ?? detectDelimiter(str)).parse(str, parseFn as any)
+    parseFn?: (rawRow: RawRow) => ParsedRow
+): DSVParsedArray<Record<string, any>> => {
+    // Convert PapaParse result to D3 format for backwards compatibility
+    const papaParseToD3 = ({
+        data,
+        meta,
+    }: Papa.ParseResult<any>): DSVParsedArray<Record<string, any>> => {
+        const dsvParsed = data as DSVParsedArray<Record<string, any>>
+        dsvParsed.columns = meta.fields || []
+
+        // Some downstream methods expect all rows to have fields for all columns,
+        // even if they are missing in that row. This loop ensures that.
+        for (const row of dsvParsed) {
+            for (const col of dsvParsed.columns) {
+                if (!(col in row)) row[col] = ""
+            }
+        }
+
+        return dsvParsed
+    }
+
+    const result = Papa.parse(str, {
+        delimiter: delimiter ?? detectDelimiter(str),
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header: string) => header.trim(),
+        transform: (value: string) => value.trim(),
+    })
+
+    if (parseFn) {
+        result.data = result.data.map((rawRow) => parseFn(rawRow as RawRow))
+    }
+
+    return papaParseToD3(result)
+}
 
 export const detectDelimiter = (str: string): "\t" | "," | " " =>
     str.includes("\t") ? "\t" : str.includes(",") ? "," : " "
@@ -625,10 +630,6 @@ export const trimArray = (arr: any[]): any[] => {
     return arr.slice(0, rightIndex + 1)
 }
 
-export function cartesianProduct<T>(...allEntries: T[][]): T[][] {
-    return fastCartesian(allEntries)
-}
-
 const applyNewSortOrder = (arr: any[], newOrder: number[]): any[] =>
     newOrder.map((index) => arr[index])
 
@@ -640,9 +641,22 @@ export const sortColumnStore = (
     if (!firstCol) return {}
     const len = firstCol.length
     const newOrder = range(0, len).sort(makeSortByFn(columnStore, slugs))
+
+    // Check if column store is already sorted (which is the case if newOrder is equal to range(0, startLen)).
+    // If it's not sorted, we will detect that within the first few iterations usually.
+    let isSorted = true
+    for (let i = 0; i < len; i++) {
+        if (newOrder[i] !== i) {
+            isSorted = false
+            break
+        }
+    }
+    // Column store is already sorted; return existing store unchanged
+    if (isSorted) return columnStore
+
     const newStore: CoreColumnStore = {}
-    Object.keys(columnStore).forEach((slug) => {
-        newStore[slug] = applyNewSortOrder(columnStore[slug], newOrder)
+    Object.entries(columnStore).forEach(([slug, colValues]) => {
+        newStore[slug] = applyNewSortOrder(colValues, newOrder)
     })
     return newStore
 }
@@ -651,14 +665,15 @@ const makeSortByFn = (
     columnStore: CoreColumnStore,
     columnSlugs: ColumnSlug[]
 ): ((indexA: number, indexB: number) => 1 | 0 | -1) => {
-    const numSlugs = columnSlugs.length
+    const cols = columnSlugs.map((slug) => columnStore[slug])
+
     return (indexA: number, indexB: number): 1 | 0 | -1 => {
         const nodeAFirst = -1
         const nodeBFirst = 1
 
-        for (let slugIndex = 0; slugIndex < numSlugs; slugIndex++) {
-            const slug = columnSlugs[slugIndex]
-            const col = columnStore[slug]
+        // eslint-disable-next-line @typescript-eslint/prefer-for-of
+        for (let colIndex = 0; colIndex < cols.length; colIndex++) {
+            const col = cols[colIndex]
             const av = col[indexA]
             const bv = col[indexB]
             if (av < bv) return nodeAFirst

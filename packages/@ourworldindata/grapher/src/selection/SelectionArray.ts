@@ -1,5 +1,5 @@
-import { EntityCode, EntityId, EntityName } from "@ourworldindata/core-table"
-import { difference, mapBy } from "@ourworldindata/utils"
+import { EntityCode, EntityId, EntityName } from "@ourworldindata/types"
+import { difference } from "@ourworldindata/utils"
 import { action, computed, observable } from "mobx"
 
 export interface Entity {
@@ -11,15 +11,12 @@ export interface Entity {
 export class SelectionArray {
     constructor(
         selectedEntityNames: EntityName[] = [],
-        availableEntities: Entity[] = [],
-        entityType = "country or region"
+        availableEntities: Entity[] = []
     ) {
         this.selectedEntityNames = selectedEntityNames.slice()
         this.availableEntities = availableEntities.slice()
-        this.entityType = entityType
     }
 
-    @observable entityType: string
     @observable selectedEntityNames: EntityName[]
     @observable private availableEntities: Entity[]
 
@@ -29,30 +26,6 @@ export class SelectionArray {
 
     @computed get availableEntityNameSet(): Set<string> {
         return new Set(this.availableEntityNames)
-    }
-
-    @computed get entityNameToIdMap(): Map<string, number | undefined> {
-        return mapBy(
-            this.availableEntities,
-            (e) => e.entityName,
-            (e) => e.entityId
-        )
-    }
-
-    @computed get entityCodeToNameMap(): Map<string | undefined, string> {
-        return mapBy(
-            this.availableEntities,
-            (e) => e.entityCode,
-            (e) => e.entityName
-        )
-    }
-
-    @computed get entityIdToNameMap(): Map<number | undefined, string> {
-        return mapBy(
-            this.availableEntities,
-            (e) => e.entityId,
-            (e) => e.entityName
-        )
     }
 
     @computed get hasSelection(): boolean {
@@ -87,19 +60,6 @@ export class SelectionArray {
         return this
     }
 
-    @action.bound setSelectedEntitiesByCode(entityCodes: EntityCode[]): this {
-        const map = this.entityCodeToNameMap
-        const codesInData = entityCodes.filter((code) => map.has(code))
-        return this.setSelectedEntities(
-            codesInData.map((code) => map.get(code)!)
-        )
-    }
-
-    @action.bound setSelectedEntitiesByEntityId(entityIds: EntityId[]): this {
-        const map = this.entityIdToNameMap
-        return this.setSelectedEntities(entityIds.map((id) => map.get(id)!))
-    }
-
     @action.bound selectAll(): this {
         return this.addToSelection(this.unselectedEntityNames)
     }
@@ -124,17 +84,29 @@ export class SelectionArray {
         return this
     }
 
-    // Mainly for testing
-    @action.bound selectSample(howMany = 1): this {
-        return this.setSelectedEntities(
-            this.availableEntityNames.slice(0, howMany)
-        )
-    }
-
     @action.bound deselectEntity(entityName: EntityName): this {
         this.selectedEntityNames = this.selectedEntityNames.filter(
             (name) => name !== entityName
         )
         return this
+    }
+
+    @action.bound selectEntities(entityNames: EntityName[]): this {
+        entityNames.forEach((entityName) => this.selectEntity(entityName))
+        return this
+    }
+
+    @action.bound deselectEntities(entityNames: EntityName[]): this {
+        this.selectedEntityNames = this.selectedEntityNames.filter(
+            (name) => !entityNames.includes(name)
+        )
+        return this
+    }
+
+    // Mainly for testing
+    @action.bound selectSample(howMany = 1): this {
+        return this.setSelectedEntities(
+            this.availableEntityNames.slice(0, howMany)
+        )
     }
 }

@@ -1,11 +1,11 @@
 import { computed } from "mobx"
-import { ChartEditor } from "./ChartEditor.js"
+import { AbstractChartEditor } from "./AbstractChartEditor.js"
 
 // Responsible for determining what parts of the editor should be shown, based on the
 // type of chart being edited
 export class EditorFeatures {
-    editor: ChartEditor
-    constructor(editor: ChartEditor) {
+    editor: AbstractChartEditor
+    constructor(editor: AbstractChartEditor) {
         this.editor = editor
     }
 
@@ -26,7 +26,13 @@ export class EditorFeatures {
     }
 
     @computed get canCustomizeXAxisLabel() {
-        return true
+        return (
+            this.grapher.isLineChart ||
+            this.grapher.isScatter ||
+            this.grapher.isMarimekko ||
+            this.grapher.isStackedArea ||
+            this.grapher.isStackedBar
+        )
     }
 
     @computed get canCustomizeYAxis() {
@@ -39,6 +45,10 @@ export class EditorFeatures {
 
     @computed get canRemovePointsOutsideAxisDomain() {
         return this.grapher.isScatter
+    }
+
+    @computed get canEnableLogLinearToggle() {
+        return !this.grapher.isDiscreteBar && !this.grapher.isStackedDiscreteBar
     }
 
     @computed get timeDomain() {
@@ -56,6 +66,7 @@ export class EditorFeatures {
     @computed get hideLegend() {
         return (
             this.grapher.isLineChart ||
+            this.grapher.isSlopeChart ||
             this.grapher.isStackedArea ||
             this.grapher.isStackedDiscreteBar
         )
@@ -71,6 +82,7 @@ export class EditorFeatures {
             this.grapher.isStackedBar ||
             this.grapher.isStackedDiscreteBar ||
             this.grapher.isLineChart ||
+            this.grapher.isSlopeChart ||
             this.grapher.isScatter ||
             this.grapher.isMarimekko
         )
@@ -102,15 +114,57 @@ export class EditorFeatures {
     }
 
     @computed get canSpecifyMissingDataStrategy() {
+        if (!this.grapher.hasMultipleYColumns) return false
+
+        if (
+            this.grapher.isStackedArea ||
+            this.grapher.isStackedBar ||
+            this.grapher.isStackedDiscreteBar
+        ) {
+            return true
+        }
+
+        // for line and slope charts, specifying a missing data strategy only makes sense
+        // if there are multiple entities
+        if (this.grapher.isLineChart || this.grapher.isSlopeChart) {
+            return (
+                this.grapher.canChangeEntity ||
+                this.grapher.canSelectMultipleEntities
+            )
+        }
+
+        return false
+    }
+
+    @computed get showChangeInPrefixToggle() {
         return (
-            this.grapher.hasMultipleYColumns &&
-            (this.grapher.canChangeEntity ||
-                this.grapher.canSelectMultipleEntities) &&
-            (this.grapher.isStackedArea ||
-                this.grapher.isStackedBar ||
-                this.grapher.isStackedDiscreteBar ||
+            (this.grapher.isLineChart || this.grapher.isSlopeChart) &&
+            (this.grapher.isRelativeMode || this.grapher.canToggleRelativeMode)
+        )
+    }
+
+    @computed get showEntityAnnotationInTitleToggle() {
+        return (
+            !this.grapher.canChangeEntity &&
+            !this.grapher.canSelectMultipleEntities
+        )
+    }
+
+    @computed get showTimeAnnotationInTitleToggle() {
+        return (
+            !this.grapher.hasTimeline ||
+            !(
                 this.grapher.isDiscreteBar ||
-                this.grapher.isLineChart)
+                this.grapher.isStackedDiscreteBar ||
+                this.grapher.isMarimekko
+            )
+        )
+    }
+
+    @computed get canHighlightSeries() {
+        return (
+            (this.grapher.hasLineChart || this.grapher.hasSlopeChart) &&
+            this.grapher.isOnChartTab
         )
     }
 }

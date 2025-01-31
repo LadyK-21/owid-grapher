@@ -1,12 +1,10 @@
 #! /usr/bin/env jest
 
-import { ColumnTypeNames } from "./CoreColumnDef.js"
-import { CoreMatrix } from "./CoreTableConstants.js"
+import { ColumnTypeNames, CoreMatrix, Time } from "@ourworldindata/types"
 import {
     emptyColumnsInFirstRowInDelimited,
     getDropIndexes,
     toleranceInterpolation,
-    interpolateRowValuesWithTolerance,
     matrixToDelimited,
     parseDelimited,
     rowsToMatrix,
@@ -18,75 +16,73 @@ import {
     concatColumnStores,
     guessColumnDefFromSlugAndRow,
     standardizeSlugs,
-    cartesianProduct,
 } from "./CoreTableUtils.js"
 import { ErrorValueTypes } from "./ErrorValues.js"
 import { imemo } from "@ourworldindata/utils"
 
-describe(interpolateRowValuesWithTolerance, () => {
+describe(toleranceInterpolation, () => {
     it("handles empty array", () => {
-        expect(
-            interpolateRowValuesWithTolerance([], "value", "time", 2)
-        ).toEqual([])
+        const valArr: number[] = []
+        const timesArr: Time[] = []
+        toleranceInterpolation(valArr, timesArr, {
+            timeToleranceBackwards: 2,
+            timeToleranceForwards: 2,
+        })
+        expect(valArr).toEqual([])
+        expect(timesArr).toEqual([])
     })
-    it("handles undefined values with infinte tolerance", () => {
+    it("handles undefined values with infinite tolerance", () => {
         // This is an edge case that can cause problems
-        expect(
-            interpolateRowValuesWithTolerance(
-                [{ value: undefined, time: 0 }],
-                "value",
-                "time",
-                Infinity
-            )
-        ).toEqual([{ value: ErrorValueTypes.NoValueWithinTolerance, time: 0 }])
+        const valArr = [undefined]
+        const timesArr = [0]
+        toleranceInterpolation(valArr as any[], timesArr, {
+            timeToleranceBackwards: Infinity,
+            timeToleranceForwards: Infinity,
+        })
+        expect(valArr).toEqual([ErrorValueTypes.NoValueWithinTolerance])
+        expect(timesArr).toEqual([0])
     })
     it("leaves array unchanged if tolerance = 0", () => {
-        const result = interpolateRowValuesWithTolerance(
-            [
-                { value: 1, time: 0 },
-                { value: undefined, time: 1 },
-                { value: undefined, time: 2 },
-                { value: 3, time: 3 },
-            ],
-            "value",
-            "time",
-            0
-        )
-        expect(result[1].value).toEqual(ErrorValueTypes.NoValueWithinTolerance)
-        expect(result[2].value).toEqual(ErrorValueTypes.NoValueWithinTolerance)
+        const valArr = [1, undefined, undefined, 3]
+        const timesArr = [0, 1, 2, 3]
+        toleranceInterpolation(valArr as any[], timesArr, {
+            timeToleranceBackwards: 0,
+            timeToleranceForwards: 0,
+        })
+        expect(valArr).toEqual([
+            1,
+            ErrorValueTypes.NoValueWithinTolerance,
+            ErrorValueTypes.NoValueWithinTolerance,
+            3,
+        ])
     })
     it("fills in gaps in simple case", () => {
-        const result = interpolateRowValuesWithTolerance(
-            [
-                { value: 1, time: 0 },
-                { value: undefined, time: 1 },
-                { value: undefined, time: 2 },
-                { value: 3, time: 3 },
-            ],
-            "value",
-            "time",
-            2
-        )
-        expect(result.map((r) => r.value)).toEqual([1, 1, 3, 3])
-        expect(result.map((r) => r.time)).toEqual([0, 0, 3, 3])
+        const valArr = [1, undefined, undefined, 3]
+        const timesArr = [0, 1, 2, 3]
+        toleranceInterpolation(valArr as any[], timesArr, {
+            timeToleranceBackwards: 2,
+            timeToleranceForwards: 2,
+        })
+        expect(valArr).toEqual([1, 1, 3, 3])
+        expect(timesArr).toEqual([0, 0, 3, 3])
     })
     it("fills in initial and trailing values", () => {
-        const result = interpolateRowValuesWithTolerance(
-            [
-                { value: undefined, time: 0 },
-                { value: ErrorValueTypes.NaNButShouldBeNumber, time: 1 },
-                { value: 1, time: 2 },
-                { value: ErrorValueTypes.UndefinedButShouldBeNumber, time: 3 },
-                { value: undefined, time: 4 },
-                { value: undefined, time: 5 },
-                { value: 3, time: 6 },
-                { value: undefined, time: 7 },
-            ],
-            "value",
-            "time",
-            1
-        )
-        expect(result.map((r) => r.value)).toEqual([
+        const valArr = [
+            undefined,
+            ErrorValueTypes.NaNButShouldBeNumber,
+            1,
+            ErrorValueTypes.UndefinedButShouldBeNumber,
+            undefined,
+            undefined,
+            3,
+            undefined,
+        ]
+        const timesArr = [0, 1, 2, 3, 4, 5, 6, 7]
+        toleranceInterpolation(valArr as any[], timesArr, {
+            timeToleranceBackwards: 1,
+            timeToleranceForwards: 1,
+        })
+        expect(valArr).toEqual([
             ErrorValueTypes.NoValueWithinTolerance,
             1,
             1,
@@ -96,27 +92,25 @@ describe(interpolateRowValuesWithTolerance, () => {
             3,
             3,
         ])
-        expect(result.map((r) => r.time)).toEqual([0, 2, 2, 2, 4, 6, 6, 6])
+        expect(timesArr).toEqual([0, 2, 2, 2, 4, 6, 6, 6])
     })
     it("handles infinity tolerance", () => {
-        const result = interpolateRowValuesWithTolerance(
-            [
-                { value: undefined, time: 0 },
-                { value: ErrorValueTypes.NaNButShouldBeNumber, time: 1 },
-                { value: 1, time: 2 },
-                { value: undefined, time: 3 },
-                { value: undefined, time: 4 },
-            ],
-            "value",
-            "time",
-            Infinity
-        )
-        expect(result.map((r) => r.value)).toEqual([1, 1, 1, 1, 1])
-        expect(result.map((r) => r.time)).toEqual([2, 2, 2, 2, 2])
+        const valArr = [
+            undefined,
+            ErrorValueTypes.NaNButShouldBeNumber,
+            1,
+            undefined,
+            undefined,
+        ]
+        const timesArr = [0, 1, 2, 3, 4]
+        toleranceInterpolation(valArr as any[], timesArr, {
+            timeToleranceBackwards: Infinity,
+            timeToleranceForwards: Infinity,
+        })
+        expect(valArr).toEqual([1, 1, 1, 1, 1])
+        expect(timesArr).toEqual([2, 2, 2, 2, 2])
     })
-})
 
-describe(toleranceInterpolation, () => {
     it("doesn't interpolate values beyond end", () => {
         const valuesAsc = [
             1,
@@ -305,6 +299,14 @@ describe("matrix methods", () => {
 123 345 usa`)
     })
 
+    it("handles missing data for some cells", () => {
+        const rows = parseDelimited(`gdp,pop
+1
+1,2`)
+        expect(Object.keys(rows[0])).toEqual(["gdp", "pop"])
+        expect(rows[0].pop).toEqual("")
+    })
+
     it("can trim an array", () => {
         expect(trimArray([1, "2", "", null, undefined])).toEqual([1, "2"])
         const test = [1, "2", "", null, undefined, 1]
@@ -385,11 +387,24 @@ describe(trimEmptyRows, () => {
 
 describe(sortColumnStore, () => {
     it("can sort", () => {
-        const result = sortColumnStore(
-            { countries: ["usa", "can", "mex"], pops: [123, 21, 99] },
-            ["pops"]
-        )
+        const columnStore = {
+            countries: ["usa", "can", "mex"],
+            pops: [123, 21, 99],
+        }
+        const result = sortColumnStore(columnStore, ["pops"])
         expect(result["pops"]).toEqual([21, 99, 123])
+        expect(result["countries"]).toEqual(["can", "mex", "usa"])
+        expect(result).not.toBe(columnStore)
+    })
+
+    it("can detect a sorted array and leave it untouched", () => {
+        const columnStore = {
+            countries: ["usa", "can", "mex"],
+            pops: [21, 99, 123],
+        }
+        const result = sortColumnStore(columnStore, ["pops"])
+        expect(result["pops"]).toEqual([21, 99, 123])
+        expect(result).toBe(columnStore)
     })
 })
 
@@ -502,23 +517,5 @@ describe(concatColumnStores, () => {
                 ErrorValueTypes.MissingValuePlaceholder,
             ],
         })
-    })
-})
-
-describe(cartesianProduct, () => {
-    it("correctly calculates a cartesian product", () => {
-        const a = [1, 2, 3]
-        const b = ["a", "b"]
-
-        const product = cartesianProduct<string | number>(a, b)
-
-        expect(product).toEqual([
-            [1, "a"],
-            [1, "b"],
-            [2, "a"],
-            [2, "b"],
-            [3, "a"],
-            [3, "b"],
-        ])
     })
 })

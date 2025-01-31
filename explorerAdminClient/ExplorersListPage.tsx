@@ -14,7 +14,7 @@ import {
     runInAction,
 } from "mobx"
 import { observer } from "mobx-react"
-import React from "react"
+import { Component } from "react"
 import {
     DefaultNewExplorerSlug,
     ExplorersRouteResponse,
@@ -23,8 +23,8 @@ import {
     EXPLORERS_ROUTE_FOLDER,
     GetAllExplorersRoute,
     UNSAVED_EXPLORER_DRAFT,
-} from "../explorer/ExplorerConstants.js"
-import { ExplorerProgram } from "../explorer/ExplorerProgram.js"
+    ExplorerProgram,
+} from "@ourworldindata/explorer"
 import { GitCmsClient } from "../gitCms/GitCmsClient.js"
 import {
     GIT_CMS_BASE_ROUTE,
@@ -35,7 +35,7 @@ import { BAKED_BASE_URL } from "../settings/clientSettings.js"
 import { AdminManager } from "./AdminManager.js"
 
 @observer
-class ExplorerRow extends React.Component<{
+class ExplorerRow extends Component<{
     explorer: ExplorerProgram
     indexPage: ExplorersIndexPage
     gitCmsBranchName: string
@@ -148,7 +148,7 @@ class ExplorerRow extends React.Component<{
 }
 
 @observer
-class ExplorerList extends React.Component<{
+class ExplorerList extends Component<{
     explorers: ExplorerProgram[]
     searchHighlight?: (text: string) => any
     indexPage: ExplorersIndexPage
@@ -185,7 +185,7 @@ class ExplorerList extends React.Component<{
 }
 
 @observer
-export class ExplorersIndexPage extends React.Component<{
+export class ExplorersIndexPage extends Component<{
     manager?: AdminManager
 }> {
     @observable explorers: ExplorerProgram[] = []
@@ -225,7 +225,7 @@ export class ExplorersIndexPage extends React.Component<{
                 const html = text.replace(
                     new RegExp(
                         this.highlightSearch.replace(
-                            /[-\/\\^$*+?.()|[\]{}]/g,
+                            /[-/\\^$*+?.()|[\]{}]/g,
                             "\\$&"
                         ),
                         "i"
@@ -283,7 +283,7 @@ export class ExplorersIndexPage extends React.Component<{
     private async fetchAllExplorers() {
         const { searchInput } = this
 
-        const response = await fetch(GetAllExplorersRoute)
+        const response = await fetch(`/admin/${GetAllExplorersRoute}`)
         const json = (await response.json()) as ExplorersRouteResponse
         if (!json.success) alert(JSON.stringify(json.errorMessage))
         this.needsPull = json.needsPull
@@ -326,7 +326,7 @@ export class ExplorersIndexPage extends React.Component<{
             commitMessage: `Setting publish status of ${filename} to ${newVersion.isPublished}`,
         })
         this.resetLoadingModal()
-        this.fetchAllExplorers()
+        await this.fetchAllExplorers()
     }
 
     @action.bound async deleteFile(filename: string) {
@@ -337,7 +337,7 @@ export class ExplorersIndexPage extends React.Component<{
             filepath: `${EXPLORERS_GIT_CMS_FOLDER}/${filename}`,
         })
         this.resetLoadingModal()
-        this.fetchAllExplorers()
+        await this.fetchAllExplorers()
     }
 
     dispose!: IReactionDisposer
@@ -346,7 +346,7 @@ export class ExplorersIndexPage extends React.Component<{
             () => this.searchInput || this.maxVisibleRows,
             debounce(() => this.fetchAllExplorers(), 200)
         )
-        this.fetchAllExplorers()
+        void this.fetchAllExplorers()
     }
 
     componentWillUnmount() {

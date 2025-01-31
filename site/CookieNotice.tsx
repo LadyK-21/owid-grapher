@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import classnames from "classnames"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faCheck } from "@fortawesome/free-solid-svg-icons"
-import { Action, getTodayDate } from "./CookiePreferencesManager.js"
+import { Action, getTodayDate } from "./cookiePreferences.js"
 
 export const CookieNotice = ({
     accepted,
@@ -35,15 +35,28 @@ export const CookieNotice = ({
                         website.
                     </p>
                     <p className="cookie-notice__text">
-                        By continuing without changing your cookie settings, we
-                        assume you agree to this.
+                        By agreeing, you consent to our use of cookies and other
+                        analytics tools according to{" "}
+                        <a href="/privacy-policy">our privacy policy</a>.
                     </p>
                 </div>
                 <div className="actions">
-                    <a href="/privacy-policy" className="button">
-                        Manage preferences
-                    </a>
                     <button
+                        aria-label="Reject cookies"
+                        className="button"
+                        onClick={() =>
+                            dispatch({
+                                type: Action.Reject,
+                                payload: { date: getTodayDate() },
+                            })
+                        }
+                        data-test="reject"
+                        data-track-note="cookie_notice"
+                    >
+                        No thanks
+                    </button>
+                    <button
+                        aria-label="Accept cookies"
                         className="button accept"
                         onClick={() =>
                             dispatch({
@@ -52,7 +65,7 @@ export const CookieNotice = ({
                             })
                         }
                         data-test="accept"
-                        data-track-note="cookie-notice"
+                        data-track-note="cookie_notice"
                     >
                         <span className="icon">
                             <FontAwesomeIcon icon={faCheck} />

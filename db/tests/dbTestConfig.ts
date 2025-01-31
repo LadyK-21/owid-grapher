@@ -9,7 +9,7 @@ import {
 } from "../../settings/serverSettings.js"
 
 export const dbTestConfig = {
-    client: "mysql",
+    client: "mysql2",
     connection: {
         database: GRAPHER_TEST_DB_NAME,
         user: GRAPHER_TEST_DB_USER,
@@ -17,6 +17,7 @@ export const dbTestConfig = {
         host: GRAPHER_TEST_DB_HOST,
         port: GRAPHER_TEST_DB_PORT,
         charset: "utf8mb4",
+        jsonStrings: true,
     },
     pool: {
         min: 2,

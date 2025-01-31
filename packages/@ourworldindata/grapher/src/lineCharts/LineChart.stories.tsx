@@ -1,13 +1,12 @@
-import React from "react"
+import * as React from "react"
 import { LineChart } from "../lineCharts/LineChart"
+import { OwidTableSlugs, ScaleType } from "@ourworldindata/types"
 import {
     SampleColumnSlugs,
     SynthesizeFruitTable,
     SynthesizeFruitTableWithNonPositives,
     SynthesizeGDPTable,
-    OwidTableSlugs,
 } from "@ourworldindata/core-table"
-import { ScaleType } from "../core/GrapherConstants"
 import { Bounds, makeAnnotationsSlug } from "@ourworldindata/utils"
 
 export default {
@@ -15,7 +14,7 @@ export default {
     component: LineChart,
 }
 
-export const SingleColumnMultiCountry = (): JSX.Element => {
+export const SingleColumnMultiCountry = (): React.ReactElement => {
     const table = SynthesizeGDPTable()
     const bounds = new Bounds(0, 0, 500, 250)
     return (
@@ -45,7 +44,7 @@ export const SingleColumnMultiCountry = (): JSX.Element => {
     )
 }
 
-export const WithLogScaleAndNegativeAndZeroValues = (): JSX.Element => {
+export const WithLogScaleAndNegativeAndZeroValues = (): React.ReactElement => {
     const table = SynthesizeFruitTableWithNonPositives({
         entityCount: 2,
         timeRange: [1900, 2000],
@@ -75,7 +74,7 @@ export const WithLogScaleAndNegativeAndZeroValues = (): JSX.Element => {
     )
 }
 
-export const WithoutCirclesOnPoints = (): JSX.Element => {
+export const WithoutCirclesOnPoints = (): React.ReactElement => {
     const table = SynthesizeGDPTable({
         entityCount: 6,
         timeRange: [1900, 2000],
@@ -95,7 +94,7 @@ export const WithoutCirclesOnPoints = (): JSX.Element => {
     )
 }
 
-export const WithAnnotations = (): JSX.Element => {
+export const WithAnnotations = (): React.ReactElement => {
     let table = SynthesizeGDPTable({
         entityCount: 6,
         timeRange: [1900, 2000],
@@ -124,7 +123,7 @@ export const WithAnnotations = (): JSX.Element => {
     )
 }
 
-export const MultiColumnSingleCountry = (): JSX.Element => {
+export const MultiColumnSingleCountry = (): React.ReactElement => {
     const table = SynthesizeGDPTable()
     const bounds = new Bounds(0, 0, 500, 250)
     return (
@@ -149,7 +148,7 @@ export const MultiColumnSingleCountry = (): JSX.Element => {
     )
 }
 
-export const MultiColumnMultiCountry = (): JSX.Element => {
+export const MultiColumnMultiCountry = (): React.ReactElement => {
     const table = SynthesizeFruitTable({ entityCount: 5 })
     const bounds = new Bounds(0, 0, 500, 250)
     return (

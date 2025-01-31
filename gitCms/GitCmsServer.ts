@@ -22,7 +22,7 @@ import {
     GIT_CMS_PULL_ROUTE,
 } from "./GitCmsConstants.js"
 import { sync } from "glob"
-import { logErrorAndMaybeSendToBugsnag } from "../serverUtils/errorLog.js"
+import { logErrorAndMaybeCaptureInSentry } from "../serverUtils/errorLog.js"
 import _ from "lodash"
 
 // todo: cleanup typings
@@ -90,7 +90,7 @@ export class GitCmsServer {
     }
 
     private async autopush() {
-        if (this.options.shouldAutoPush) this.git.push()
+        if (this.options.shouldAutoPush) void this.git.push()
     }
 
     private async pullCommand(verbose: boolean | undefined = undefined) {
@@ -152,7 +152,7 @@ export class GitCmsServer {
         globStr: string,
         folder: string
     ): Promise<GitCmsGlobResponse> {
-        const query = globStr.replace(/[^a-zA-Z\*]/, "")
+        const query = globStr.replace(/[^a-zA-Z*]/, "")
         const cwd = this.baseDir + folder
         const results = sync(query, {
             cwd,
@@ -173,7 +173,7 @@ export class GitCmsServer {
         authorName = GIT_DEFAULT_USERNAME,
         authorEmail = GIT_DEFAULT_EMAIL
     ): Promise<GitCmsResponse> {
-        const filepath = rawFilepath.replace(/\~/g, "/")
+        const filepath = rawFilepath.replace(/~/g, "/")
         try {
             ensureNoParentLinksInFilePath(filepath)
 
@@ -188,9 +188,7 @@ export class GitCmsServer {
             // eslint-disable-next-line no-console
             console.log(`Deleted ${filepath}`)
 
-            // do not push in dev
-            // XXX: we should not push in staging either!
-            if (ENV == "production") {
+            if (ENV === "production") {
                 await this.commitFile(
                     filepath,
                     `Deleted ${filepath}`,
@@ -203,7 +201,7 @@ export class GitCmsServer {
             return { success: true }
         } catch (error) {
             const err = error as Error
-            logErrorAndMaybeSendToBugsnag(err)
+            void logErrorAndMaybeCaptureInSentry(err)
             return { success: false, error: err.toString() }
         }
     }
@@ -227,14 +225,12 @@ export class GitCmsServer {
             const pull = await this.autopull()
             if (!pull.success) throw pull.error
 
-            // do not push in dev
-            // XXX: we should not push in staging either!
-            if (ENV == "production") {
+            if (ENV === "production") {
                 const commitMsg = commitMessage
                     ? commitMessage
                     : fs.existsSync(absolutePath)
-                    ? `Updating ${filename}`
-                    : `Adding ${filename}`
+                      ? `Updating ${filename}`
+                      : `Adding ${filename}`
 
                 await this.commitFile(
                     filename,
@@ -247,7 +243,7 @@ export class GitCmsServer {
             return { success: true }
         } catch (error) {
             const err = error as Error
-            logErrorAndMaybeSendToBugsnag(err)
+            void logErrorAndMaybeCaptureInSentry(err)
             return { success: false, error: err.toString() }
         }
     }
@@ -258,7 +254,7 @@ export class GitCmsServer {
         } = {}
 
         routes[GIT_CMS_PULL_ROUTE] = async (
-            req: Request,
+            _req: Request,
             res: ResponseWithUserInfo
         ) => res.send(await this.pullCommand()) // Pull latest from github
 

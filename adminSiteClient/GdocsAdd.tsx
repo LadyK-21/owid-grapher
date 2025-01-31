@@ -1,10 +1,10 @@
-import { gdocUrlRegex } from "@ourworldindata/utils"
-import React from "react"
+import { GDOCS_URL_PLACEHOLDER, gdocUrlRegex } from "@ourworldindata/utils"
+import * as React from "react"
 import {
     GDOCS_BASIC_ARTICLE_TEMPLATE_URL,
     GDOCS_CLIENT_EMAIL,
 } from "../settings/clientSettings.js"
-import { useGdocsStore } from "./GdocsStore.js"
+import { useGdocsStore } from "./GdocsStoreContext.js"
 
 export const GdocsAdd = ({ onAdd }: { onAdd: (id: string) => void }) => {
     const [documentUrl, setDocumentUrl] = React.useState("")
@@ -64,9 +64,13 @@ export const GdocsAdd = ({ onAdd }: { onAdd: (id: string) => void }) => {
                         onChange={(e) => setDocumentUrl(e.target.value)}
                         value={documentUrl}
                         required
-                        placeholder="https://docs.google.com/document/d/****/edit"
-                        pattern={gdocUrlRegex.toString().slice(1, -1)}
+                        placeholder={GDOCS_URL_PLACEHOLDER}
+                        pattern={gdocUrlRegex.source}
                     />
+                    <span className="validation-notice">
+                        Invalid URL - it should look like this:{" "}
+                        <pre>{GDOCS_URL_PLACEHOLDER}</pre>
+                    </span>
                 </div>
             </div>
             <div className="modal-footer">

@@ -4,6 +4,9 @@
 import path from "path"
 import dotenv from "dotenv"
 import findBaseDir from "./findBaseDir.js"
+import fs from "fs"
+import ini from "ini"
+import os from "os"
 
 const baseDir = findBaseDir(__dirname)
 if (baseDir === undefined) throw new Error("could not locate base package.json")
@@ -16,7 +19,7 @@ import { parseIntOrUndefined } from "@ourworldindata/utils"
 const serverSettings = process.env ?? {}
 
 export const BASE_DIR: string = baseDir
-export const ENV: "development" | "production" = clientSettings.ENV
+export const ENV = clientSettings.ENV
 
 export const ADMIN_SERVER_PORT: number = clientSettings.ADMIN_SERVER_PORT
 export const ADMIN_SERVER_HOST: string = clientSettings.ADMIN_SERVER_HOST
@@ -24,17 +27,12 @@ export const DATA_API_FOR_ADMIN_UI: string | undefined =
     serverSettings.DATA_API_FOR_ADMIN_UI
 export const BAKED_BASE_URL: string = clientSettings.BAKED_BASE_URL
 
-export const VITE_PREVIEW: boolean =
-    serverSettings.VITE_PREVIEW === "true" ?? false
+export const VITE_PREVIEW: boolean = serverSettings.VITE_PREVIEW === "true"
 
 export const ADMIN_BASE_URL: string = clientSettings.ADMIN_BASE_URL
-export const WORDPRESS_URL: string = clientSettings.WORDPRESS_URL
 
 export const BAKED_GRAPHER_URL: string =
     serverSettings.BAKED_GRAPHER_URL ?? `${BAKED_BASE_URL}/grapher`
-
-export const OPTIMIZE_SVG_EXPORTS: boolean =
-    serverSettings.OPTIMIZE_SVG_EXPORTS === "true" ?? false
 
 export const GITHUB_USERNAME: string =
     serverSettings.GITHUB_USERNAME ?? "owid-test"
@@ -43,14 +41,9 @@ export const GIT_DEFAULT_USERNAME: string =
 export const GIT_DEFAULT_EMAIL: string =
     serverSettings.GIT_DEFAULT_EMAIL ?? "info@ourworldindata.org"
 
-export const BUGSNAG_API_KEY: string | undefined =
-    serverSettings.BUGSNAG_API_KEY
-export const BUGSNAG_NODE_API_KEY: string | undefined =
-    serverSettings.BUGSNAG_NODE_API_KEY
-
 export const BLOG_POSTS_PER_PAGE: number =
     parseIntOrUndefined(serverSettings.BLOG_POSTS_PER_PAGE) ?? 21
-export const BLOG_SLUG: string = serverSettings.BLOG_SLUG ?? "blog"
+export const BLOG_SLUG: string = serverSettings.BLOG_SLUG ?? "latest"
 
 export const GRAPHER_DB_NAME: string = serverSettings.GRAPHER_DB_NAME ?? "owid"
 export const GRAPHER_DB_USER: string = serverSettings.GRAPHER_DB_USER ?? "root"
@@ -78,27 +71,15 @@ export const BAKED_SITE_DIR: string =
 export const SECRET_KEY: string =
     serverSettings.SECRET_KEY ??
     "fejwiaof jewiafo jeioa fjieowajf isa fjidosajfgj"
-export const WORDPRESS_DB_NAME: string = serverSettings.WORDPRESS_DB_NAME ?? ""
-export const WORDPRESS_DB_USER: string = serverSettings.WORDPRESS_DB_USER ?? ""
-export const WORDPRESS_DB_PASS: string = serverSettings.WORDPRESS_DB_PASS ?? ""
-export const WORDPRESS_DB_HOST: string = serverSettings.WORDPRESS_DB_HOST ?? ""
-export const WORDPRESS_DB_PORT: number | undefined = parseIntOrUndefined(
-    serverSettings.WORDPRESS_DB_PORT
-)
-export const WORDPRESS_API_USER: string =
-    serverSettings.WORDPRESS_API_USER ?? ""
-export const WORDPRESS_API_PASS: string =
-    serverSettings.WORDPRESS_API_PASS ?? ""
 export const SESSION_COOKIE_AGE: number =
     parseIntOrUndefined(serverSettings.SESSION_COOKIE_AGE) ?? 1209600
 export const ALGOLIA_SECRET_KEY: string =
     serverSettings.ALGOLIA_SECRET_KEY ?? ""
 export const ALGOLIA_INDEXING: boolean =
-    serverSettings.ALGOLIA_INDEXING === "true" ?? false
+    serverSettings.ALGOLIA_INDEXING === "true"
 
 // Wordpress target setting
-export const WORDPRESS_DIR: string = serverSettings.WORDPRESS_DIR ?? "wordpress"
-export const HTTPS_ONLY: boolean = serverSettings.HTTPS_ONLY !== "false" ?? true
+export const HTTPS_ONLY: boolean = serverSettings.HTTPS_ONLY !== "false"
 
 export const GIT_DATASETS_DIR: string =
     serverSettings.GIT_DATASETS_DIR ?? `${BASE_DIR}/datasetsExport` //  Where the git exports go
@@ -107,21 +88,12 @@ export const UNCATEGORIZED_TAG_ID: number =
     parseIntOrUndefined(serverSettings.UNCATEGORIZED_TAG_ID) ?? 375
 
 // Should the static site output be baked when relevant database items change
-export const BAKE_ON_CHANGE: boolean =
-    serverSettings.BAKE_ON_CHANGE === "true" ?? false
-export const MAX_NUM_BAKE_PROCESSES: number = Number.parseInt(
-    serverSettings.MAX_NUM_BAKE_PROCESSES ?? "4",
-    10
-)
+export const BAKE_ON_CHANGE: boolean = serverSettings.BAKE_ON_CHANGE === "true"
 export const DEPLOY_QUEUE_FILE_PATH: string =
     serverSettings.DEPLOY_QUEUE_FILE_PATH ?? `${BASE_DIR}/.queue`
 export const DEPLOY_PENDING_FILE_PATH: string =
     serverSettings.DEPLOY_PENDING_FILE_PATH ?? `${BASE_DIR}/.pending`
 export const CLOUDFLARE_AUD: string = serverSettings.CLOUDFLARE_AUD ?? ""
-
-export const DATA_FILES_CHECKSUMS_DIRECTORY: string =
-    serverSettings.DATA_FILES_CHECKSUMS_DIRECTORY ??
-    `${BASE_DIR}/data_files_checksums`
 
 // Either remote catalog `https://owid-catalog.nyc3.digitaloceanspaces.com/` or local catalog `.../etl/data/`
 // Note that Cloudflare proxy on `https://catalog.ourworldindata.org` does not support range requests yet
@@ -143,29 +115,86 @@ export const GDOCS_CLIENT_ID: string = serverSettings.GDOCS_CLIENT_ID ?? ""
 export const GDOCS_BACKPORTING_TARGET_FOLDER: string =
     serverSettings.GDOCS_BACKPORTING_TARGET_FOLDER ?? ""
 
-export const GDOCS_IMAGES_BACKPORTING_TARGET_FOLDER: string =
-    serverSettings.GDOCS_IMAGES_BACKPORTING_TARGET_FOLDER ?? ""
-
-export const GDOCS_HOMEPAGE_CONFIG_DOCUMENT_ID: string =
-    serverSettings.GDOCS_HOMEPAGE_CONFIG_DOCUMENT_ID ??
-    "1LpZ5LFDTA6buEb_uL-IOWQC1YLAEbpj7odup-zgg1II"
-
-export const GDOCS_SHARED_DRIVE_ID = serverSettings.GDOCS_SHARED_DRIVE_ID ?? ""
+export const GDOCS_DONATE_FAQS_DOCUMENT_ID: string =
+    serverSettings.GDOCS_DONATE_FAQS_DOCUMENT_ID ?? ""
 
 export const GDOCS_DETAILS_ON_DEMAND_ID =
     serverSettings.GDOCS_DETAILS_ON_DEMAND_ID ?? ""
 
-export const IMAGE_HOSTING_SPACE_URL: string =
-    serverSettings.IMAGE_HOSTING_SPACE_URL || ""
-export const IMAGE_HOSTING_CDN_URL: string =
-    serverSettings.IMAGE_HOSTING_CDN_URL || ""
-// e.g. owid-image-hosting/development
-export const IMAGE_HOSTING_BUCKET_PATH: string =
-    serverSettings.IMAGE_HOSTING_BUCKET_PATH || ""
+// Load R2 credentials from rclone config
+let rcloneConfig: any = {}
+const rcloneConfigPath = path.join(os.homedir(), ".config/rclone/rclone.conf")
+if (fs.existsSync(rcloneConfigPath)) {
+    rcloneConfig = ini.parse(fs.readFileSync(rcloneConfigPath, "utf-8"))
+}
+
+// e.g. https://images-staging.owid.io/
+export const IMAGE_HOSTING_R2_CDN_URL: string =
+    serverSettings.IMAGE_HOSTING_R2_CDN_URL || ""
+// e.g. owid-image-hosting-staging/development
+export const IMAGE_HOSTING_R2_BUCKET_PATH: string =
+    serverSettings.IMAGE_HOSTING_R2_BUCKET_PATH || ""
 // e.g. development
-export const IMAGE_HOSTING_BUCKET_SUBFOLDER_PATH: string =
-    IMAGE_HOSTING_BUCKET_PATH.slice(IMAGE_HOSTING_BUCKET_PATH.indexOf("/") + 1)
-export const IMAGE_HOSTING_SPACE_ACCESS_KEY_ID: string =
-    serverSettings.IMAGE_HOSTING_SPACE_ACCESS_KEY_ID || ""
-export const IMAGE_HOSTING_SPACE_SECRET_ACCESS_KEY: string =
-    serverSettings.IMAGE_HOSTING_SPACE_SECRET_ACCESS_KEY || ""
+export const IMAGE_HOSTING_R2_BUCKET_SUBFOLDER_PATH: string =
+    IMAGE_HOSTING_R2_BUCKET_PATH.slice(
+        IMAGE_HOSTING_R2_BUCKET_PATH.indexOf("/") + 1
+    )
+// extract R2 credentials from rclone config as defaults
+export const R2_ENDPOINT: string =
+    serverSettings.R2_ENDPOINT ||
+    rcloneConfig["owid-r2"]?.endpoint ||
+    "https://078fcdfed9955087315dd86792e71a7e.r2.cloudflarestorage.com"
+export const R2_ACCESS_KEY_ID: string =
+    serverSettings.R2_ACCESS_KEY_ID ||
+    rcloneConfig["owid-r2"]?.access_key_id ||
+    ""
+export const R2_SECRET_ACCESS_KEY: string =
+    serverSettings.R2_SECRET_ACCESS_KEY ||
+    rcloneConfig["owid-r2"]?.secret_access_key ||
+    ""
+export const R2_REGION: string =
+    serverSettings.R2_REGION || rcloneConfig["owid-r2"]?.region || "auto"
+
+export const CLOUDFLARE_IMAGES_ACCOUNT_ID: string =
+    serverSettings.CLOUDFLARE_IMAGES_ACCOUNT_ID || ""
+
+export const CLOUDFLARE_IMAGES_API_KEY: string =
+    serverSettings.CLOUDFLARE_IMAGES_API_KEY || ""
+
+export const GRAPHER_CONFIG_R2_BUCKET: string | undefined =
+    serverSettings.GRAPHER_CONFIG_R2_BUCKET
+export const GRAPHER_CONFIG_R2_BUCKET_PATH: string | undefined =
+    serverSettings.GRAPHER_CONFIG_R2_BUCKET_PATH
+
+export const DATA_API_URL: string = clientSettings.DATA_API_URL
+
+export const FEATURE_FLAGS = clientSettings.FEATURE_FLAGS
+
+export const BUILDKITE_API_ACCESS_TOKEN: string =
+    serverSettings.BUILDKITE_API_ACCESS_TOKEN ?? ""
+export const BUILDKITE_DEPLOY_CONTENT_PIPELINE_SLUG: string =
+    serverSettings.BUILDKITE_DEPLOY_CONTENT_PIPELINE_SLUG ||
+    "owid-deploy-content-master"
+export const BUILDKITE_BRANCH: string =
+    serverSettings.BUILDKITE_BRANCH || "master"
+export const BUILDKITE_DEPLOY_CONTENT_SLACK_CHANNEL: string =
+    serverSettings.BUILDKITE_DEPLOY_CONTENT_SLACK_CHANNEL || "C06EWA0DK4H" // #content-updates
+
+export const OPENAI_API_KEY: string = serverSettings.OPENAI_API_KEY ?? ""
+
+export const SLACK_BOT_OAUTH_TOKEN: string =
+    serverSettings.SLACK_BOT_OAUTH_TOKEN ?? ""
+
+export const LEGACY_WORDPRESS_IMAGE_URL: string =
+    serverSettings.LEGACY_WORDPRESS_IMAGE_URL ??
+    "https://assets.ourworldindata.org/uploads"
+
+// search evaluation
+export const SEARCH_EVAL_URL: string =
+    "https://pub-ec761fe0df554b02bc605610f3296000.r2.dev"
+
+// We currently use ENV=production on staging servers, it'd be better to have ENV=staging
+// but that would require changing a lot of code
+export const ENV_IS_STAGING: boolean = ADMIN_BASE_URL.includes(
+    "http://staging-site"
+)

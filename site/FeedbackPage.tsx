@@ -1,14 +1,15 @@
-import React from "react"
+import { Component } from "react"
 import { Head } from "./Head.js"
 import { SiteHeader } from "./SiteHeader.js"
 import { SiteFooter } from "./SiteFooter.js"
 import { FeedbackForm } from "../site/Feedback.js"
+import { Html } from "./Html.js"
 
-export class FeedbackPage extends React.Component<{ baseUrl: string }> {
+export class FeedbackPage extends Component<{ baseUrl: string }> {
     render() {
         const { baseUrl } = this.props
         return (
-            <html>
+            <Html>
                 <Head
                     canonicalUrl={`${baseUrl}/feedback`}
                     pageTitle="Feedback"
@@ -23,7 +24,7 @@ export class FeedbackPage extends React.Component<{ baseUrl: string }> {
                     <SiteFooter hideDonate={true} baseUrl={baseUrl} />
                 </body>
                 <script type="module">{`window.runFeedbackPage()`}</script>
-            </html>
+            </Html>
         )
     }
 }

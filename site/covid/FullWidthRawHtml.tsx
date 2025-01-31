@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 export const RawHtml = ({ url }: { url: string }) => {
     const [html, setHtml] = useState<null | string>(null)
@@ -9,7 +9,7 @@ export const RawHtml = ({ url }: { url: string }) => {
             if (!response.ok) return
             setHtml(await response.text())
         }
-        fetchHtml()
+        void fetchHtml()
     }, [url])
 
     return html && <div dangerouslySetInnerHTML={{ __html: html }}></div>

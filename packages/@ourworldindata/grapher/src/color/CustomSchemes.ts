@@ -1,47 +1,48 @@
-import { omit, invert } from "@ourworldindata/utils"
-import { ColorSchemeInterface, ColorSchemeName } from "./ColorConstants.js"
+import { omit, invert, lazy } from "@ourworldindata/utils"
+import { ColorSchemeInterface, ColorSchemeName } from "@ourworldindata/types"
 
+// TODO: Initialize CustomColorSchemes lazily
 export const CustomColorSchemes: ColorSchemeInterface[] = []
 
 // Create some of our own!
 
 export const OwidDistinctColors = {
-    Purple: "#6D3E91",
-    DarkOrange: "#C05917",
-    LightTeal: "#58AC8C",
-    Blue: "#286BBB",
+    Purple: "#6d3e91",
+    DarkOrange: "#c05917",
+    LightTeal: "#58ac8c",
+    Blue: "#286bbb",
     Maroon: "#883039",
-    Camel: "#BC8E5A",
-    MidnightBlue: "#00295B",
-    DustyCoral: "#C15065",
-    DarkOliveGreen: "#18470F",
-    DarkCopper: "#9A5129",
-    Peach: "#E56E5A",
-    Mauve: "#A2559C",
-    Turquoise: "#38AABA",
+    Camel: "#bc8e5a",
+    MidnightBlue: "#00295b",
+    DustyCoral: "#c15065",
+    DarkOliveGreen: "#18470f",
+    DarkCopper: "#9a5129",
+    Peach: "#e56e5a",
+    Mauve: "#a2559c",
+    Turquoise: "#38aaba",
     OliveGreen: "#578145",
     Cherry: "#970046",
-    Teal: "#00847E",
-    RustyOrange: "#B13507",
-    Denim: "#4C6A9C",
-    Fuchsia: "#CF0A66",
-    TealishGreen: "#00875E",
-    Copper: "#B16214",
-    DarkMauve: "#8C4569",
-    Lime: "#3B8E1D",
-    Coral: "#D73C50",
+    Teal: "#00847e",
+    RustyOrange: "#b13507",
+    Denim: "#4c6a9c",
+    Fuchsia: "#cf0a66",
+    TealishGreen: "#00875e",
+    Copper: "#b16214",
+    DarkMauve: "#8c4569",
+    Lime: "#3b8e1d",
+    Coral: "#d73c50",
 } as const
 
-const OwidDistinctColorsNames = invert(OwidDistinctColors)
+const OwidDistinctColorsNames = lazy(() => invert(OwidDistinctColors))
 
 // These are variations of some of the colors above where the original color would have too little
 // contrast against a white background for thin lines or text elements
 export const DarkerOwidDistinctColors: Record<string, string> = {
-    DarkOrangeDarker: "#BE5915",
-    PeachDarker: "#C4523E",
-    LightTealDarker: "#2C8465",
+    DarkOrangeDarker: "#be5915",
+    PeachDarker: "#c4523e",
+    LightTealDarker: "#2c8465",
     TurquoiseDarker: "#008291",
-    CamelDarker: "#996D39",
+    CamelDarker: "#996d39",
     LimeDarker: "#338711",
 }
 
@@ -54,13 +55,14 @@ const darkerColorReplacementsHexToReplacementColorName = {
     [OwidDistinctColors.Lime]: DarkerOwidDistinctColors.LimeDarker,
 } as Record<string, string>
 
+// TODO: Make this into a lazy initialization
 export const OwidDistinctLinesColors = {
     ...omit(OwidDistinctColors, Object.keys(DarkerOwidDistinctColors)),
     ...DarkerOwidDistinctColors,
 }
 
 // Used for looking up names from color hex values
-const OwidDistinctLinesColorNames = invert(OwidDistinctLinesColors)
+const OwidDistinctLinesColorNames = lazy(() => invert(OwidDistinctLinesColors))
 
 // Below are 5 variations of the same colors in different permutations
 export const CategoricalColorsPaletteA = [
@@ -160,30 +162,30 @@ export const OwidDistinctColorScheme = {
 CustomColorSchemes.push(OwidDistinctColorScheme)
 
 const OwidDistinctLinesPalette = [
-    OwidDistinctColors.DustyCoral,
-    DarkerOwidDistinctColors.LightTealDarker,
-    DarkerOwidDistinctColors.DarkOrangeDarker,
-    OwidDistinctColors.Purple,
-    OwidDistinctColors.Fuchsia,
-    OwidDistinctColors.DarkOliveGreen,
-    OwidDistinctColors.Blue,
-    OwidDistinctColors.Maroon,
-    DarkerOwidDistinctColors.CamelDarker,
-    OwidDistinctColors.MidnightBlue,
-    OwidDistinctColors.DarkCopper,
-    DarkerOwidDistinctColors.PeachDarker,
-    OwidDistinctColors.Mauve,
-    DarkerOwidDistinctColors.TurquoiseDarker,
-    OwidDistinctColors.OliveGreen,
-    OwidDistinctColors.Cherry,
-    OwidDistinctColors.Teal,
-    OwidDistinctColors.RustyOrange,
     OwidDistinctColors.Denim,
-    OwidDistinctColors.TealishGreen,
-    OwidDistinctColors.Copper,
-    OwidDistinctColors.DarkMauve,
+    OwidDistinctColors.RustyOrange,
+    DarkerOwidDistinctColors.CamelDarker,
+    DarkerOwidDistinctColors.LightTealDarker,
+    OwidDistinctColors.Purple,
+    OwidDistinctColors.Maroon,
+    OwidDistinctColors.MidnightBlue,
+    OwidDistinctColors.Mauve,
+    OwidDistinctColors.DarkCopper,
+    DarkerOwidDistinctColors.TurquoiseDarker,
+    OwidDistinctColors.Cherry,
     DarkerOwidDistinctColors.LimeDarker,
+    DarkerOwidDistinctColors.PeachDarker,
+    OwidDistinctColors.Blue,
+    OwidDistinctColors.DarkOliveGreen,
     OwidDistinctColors.Coral,
+    OwidDistinctColors.Copper,
+    OwidDistinctColors.Teal,
+    OwidDistinctColors.Fuchsia,
+    OwidDistinctColors.OliveGreen,
+    DarkerOwidDistinctColors.DarkOrangeDarker,
+    OwidDistinctColors.DarkMauve,
+    OwidDistinctColors.TealishGreen,
+    OwidDistinctColors.DustyCoral,
 ]
 
 export const OwidDistinctLinesColorScheme = {
@@ -253,7 +255,7 @@ export const EnergyColors = {
 }
 
 // Used for looking up color names from hex values
-const EnergyColorsNames = invert(EnergyColors)
+const EnergyColorsNames = lazy(() => invert(EnergyColors))
 
 const EnergyColorPalette = [
     EnergyColors.Coal,
@@ -274,7 +276,7 @@ export const OwidEnergy = {
     isDistinct: true,
     colorSets: [EnergyColorPalette],
 }
-CustomColorSchemes.push(OwidCategoricalEScheme)
+CustomColorSchemes.push(OwidEnergy)
 
 function getModifiedLinesNames(
     colorNames: Record<string, string>
@@ -289,7 +291,9 @@ function getModifiedLinesNames(
     )
 }
 
-const EnergyColorsLinesNames = getModifiedLinesNames(EnergyColorsNames)
+const EnergyColorsLinesNames = lazy(() =>
+    getModifiedLinesNames(EnergyColorsNames())
+)
 
 export const OwidEnergyLines = getModifiedLinesColorScheme(OwidEnergy)
 CustomColorSchemes.push(OwidEnergyLines)
@@ -310,14 +314,14 @@ CustomColorSchemes.push({
 
 export const ContinentColors = {
     Africa: OwidDistinctColors.Mauve,
-    Antarctica: OwidDistinctColors.Turquoise,
+    Antarctica: OwidDistinctColors.DarkCopper,
     Asia: OwidDistinctColors.Teal,
     Europe: OwidDistinctColors.Denim,
     NorthAmerica: OwidDistinctColors.Peach,
     ["North America"]: OwidDistinctColors.Peach,
     SouthAmerica: OwidDistinctColors.Maroon,
     ["South America"]: OwidDistinctColors.Maroon,
-    Oceania: OwidDistinctColors.DarkCopper,
+    Oceania: OwidDistinctColors.Turquoise,
     World: OwidDistinctColors.DarkOliveGreen,
     SubSaharanAfrica: OwidDistinctColors.DarkMauve,
     MiddleEastNorthAfrica: OwidDistinctColors.Purple,
@@ -332,11 +336,10 @@ export const ContinentColors = {
 } as const
 
 // Used for looking up color names from hex values
-const ContinentColorsNames = invert(ContinentColors)
+const ContinentColorsNames = lazy(() => invert(ContinentColors))
 
 const ContinentColorPalette = [
     ContinentColors.Africa,
-    ContinentColors.Antarctica,
     ContinentColors.Asia,
     ContinentColors.Europe,
     ContinentColors.NorthAmerica,
@@ -353,6 +356,7 @@ const ContinentColorPalette = [
     ContinentColors.EasternEurope,
     ContinentColors.WesternEurope,
     ContinentColors.AustralasiaAndOceania,
+    ContinentColors.Antarctica,
 ]
 
 export const ContinentColorsColorScheme = {
@@ -383,7 +387,9 @@ function getModifiedLinesColorScheme(
     }
 }
 
-const ContinentColorsLinesNames = getModifiedLinesNames(ContinentColorsNames)
+const ContinentColorsLinesNames = lazy(() =>
+    getModifiedLinesNames(ContinentColorsNames())
+)
 
 export const ContinentColorsLinesColorScheme = getModifiedLinesColorScheme(
     ContinentColorsColorScheme
@@ -559,7 +565,7 @@ export const BinaryMapPaletteB = {
     displayName: "Binary map palette B",
     singleColorScale: false,
     isDistinct: true,
-    colorSets: [["#F1B6DA", "#b8e186"]],
+    colorSets: [["#f1b6da", "#b8e186"]],
 }
 
 CustomColorSchemes.push(BinaryMapPaletteB)
@@ -579,7 +585,7 @@ export const BinaryMapPaletteD = {
     displayName: "Binary map palette D",
     singleColorScale: false,
     isDistinct: true,
-    colorSets: [["#FDB863", "#b2abd2"]],
+    colorSets: [["#fdb863", "#b2abd2"]],
 }
 
 CustomColorSchemes.push(BinaryMapPaletteD)
@@ -625,9 +631,9 @@ export function getColorNameOwidDistinctAndSemanticPalettes(
 ): string[] {
     return getColorNameAndSemanticPalettes(
         color,
-        OwidDistinctColorsNames,
-        ContinentColorsNames,
-        EnergyColorsNames
+        OwidDistinctColorsNames(),
+        ContinentColorsNames(),
+        EnergyColorsNames()
     )
 }
 
@@ -636,9 +642,9 @@ export function getColorNameOwidDistinctLinesAndSemanticPalettes(
 ): string[] {
     return getColorNameAndSemanticPalettes(
         color,
-        OwidDistinctLinesColorNames,
-        ContinentColorsLinesNames,
-        EnergyColorsLinesNames
+        OwidDistinctLinesColorNames(),
+        ContinentColorsLinesNames(),
+        EnergyColorsLinesNames()
     )
 }
 

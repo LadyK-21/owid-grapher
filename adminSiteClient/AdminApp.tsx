@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { Admin } from "./Admin.js"
 import { ChartEditorPage } from "./ChartEditorPage.js"
 import { action } from "mobx"
@@ -6,7 +6,6 @@ import { observer } from "mobx-react"
 import { ChartIndexPage } from "./ChartIndexPage.js"
 import { UsersIndexPage } from "./UsersIndexPage.js"
 import { DatasetsIndexPage } from "./DatasetsIndexPage.js"
-import { CountryStandardizerPage } from "./CountryStandardizerPage.js"
 import { UserEditPage } from "./UserEditPage.js"
 import { VariableEditPage } from "./VariableEditPage.js"
 import { VariablesIndexPage } from "./VariablesIndexPage.js"
@@ -14,17 +13,16 @@ import { DatasetEditPage } from "./DatasetEditPage.js"
 import { VariablesAnnotationPage } from "./VariablesAnnotationPage.js"
 import { SourceEditPage } from "./SourceEditPage.js"
 import { RedirectsIndexPage } from "./RedirectsIndexPage.js"
+import SiteRedirectsIndexPage from "./SiteRedirectsIndexPage"
 import { TagEditPage } from "./TagEditPage.js"
 import { TagsIndexPage } from "./TagsIndexPage.js"
+import { TagGraphPage } from "./TagGraphPage.js"
 import { PostsIndexPage } from "./PostsIndexPage.js"
 import { TestIndexPage } from "./TestIndexPage.js"
-import { ImportPage } from "./ImportPage.js"
 import { NotFoundPage } from "./NotFoundPage.js"
 import { PostEditorPage } from "./PostEditorPage.js"
 import { DeployStatusPage } from "./DeployStatusPage.js"
-import { SuggestedChartRevisionApproverPage } from "./SuggestedChartRevisionApproverPage.js"
-import { SuggestedChartRevisionListPage } from "./SuggestedChartRevisionListPage.js"
-import { SuggestedChartRevisionImportPage } from "./SuggestedChartRevisionImportPage.js"
+import { ExplorerTagsPage } from "./ExplorerTagsPage.js"
 import { BulkDownloadPage } from "./BulkDownloadPage.js"
 import {
     BrowserRouter as Router,
@@ -37,16 +35,20 @@ import { AdminAppContext } from "./AdminAppContext.js"
 import { Base64 } from "js-base64"
 import { ExplorerCreatePage } from "../explorerAdminClient/ExplorerCreatePage.js"
 import { ExplorersIndexPage } from "../explorerAdminClient/ExplorersListPage.js"
-import { EXPLORERS_ROUTE_FOLDER } from "../explorer/ExplorerConstants.js"
+import { EXPLORERS_ROUTE_FOLDER } from "@ourworldindata/explorer"
 import { AdminLayout } from "./AdminLayout.js"
 import { BulkGrapherConfigEditorPage } from "./BulkGrapherConfigEditor.js"
 import { GdocsIndexPage, GdocsMatchProps } from "./GdocsIndexPage.js"
 import { GdocsPreviewPage } from "./GdocsPreviewPage.js"
-import { GdocsStoreProvider } from "./GdocsStore.js"
+import { GdocsStoreProvider } from "./GdocsStoreProvider.js"
+import { IndicatorChartEditorPage } from "./IndicatorChartEditorPage.js"
+import { ChartViewEditorPage } from "./ChartViewEditorPage.js"
+import { ChartViewIndexPage } from "./ChartViewIndexPage.js"
+import { ImageIndexPage } from "./ImagesIndexPage.js"
 
 @observer
 class AdminErrorMessage extends React.Component<{ admin: Admin }> {
-    render(): JSX.Element | null {
+    render(): React.ReactElement | null {
         const { admin } = this.props
         const error = admin.errorMessage
 
@@ -54,9 +56,11 @@ class AdminErrorMessage extends React.Component<{ admin: Admin }> {
             <Modal
                 className="errorMessage"
                 onClose={action(() => {
-                    error.isFatal
-                        ? window.location.reload()
-                        : (admin.errorMessage = undefined)
+                    if (error.isFatal) {
+                        window.location.reload()
+                    } else {
+                        admin.errorMessage = undefined
+                    }
                 })}
             >
                 <div className="modal-header">
@@ -88,7 +92,7 @@ class AdminErrorMessage extends React.Component<{ admin: Admin }> {
 
 @observer
 class AdminLoader extends React.Component<{ admin: Admin }> {
-    render(): JSX.Element | null {
+    render(): React.ReactElement | null {
         const { admin } = this.props
         return admin.showLoadingIndicator ? <LoadingBlocker /> : null
     }
@@ -103,7 +107,7 @@ export class AdminApp extends React.Component<{
         return { admin: this.props.admin }
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const { admin, gitCmsBranchName } = this.props
 
         return (
@@ -158,6 +162,23 @@ export class AdminApp extends React.Component<{
                             />
                             <Route
                                 exact
+                                path="/chartViews"
+                                component={ChartViewIndexPage}
+                            />
+                            <Route
+                                exact
+                                path="/chartViews/:chartViewId/edit"
+                                render={({ match }) => (
+                                    <ChartViewEditorPage
+                                        chartViewId={parseInt(
+                                            match.params.chartViewId
+                                        )}
+                                    />
+                                )}
+                            />
+                            <Route path="/images" component={ImageIndexPage} />
+                            <Route
+                                exact
                                 path={`/${EXPLORERS_ROUTE_FOLDER}/:slug`}
                                 render={({ match }) => (
                                     <AdminLayout title="Create Explorer">
@@ -204,8 +225,14 @@ export class AdminApp extends React.Component<{
                             />
                             <Route
                                 exact
-                                path="/import"
-                                component={ImportPage}
+                                path="/variables/:variableId/config"
+                                render={({ match }) => (
+                                    <IndicatorChartEditorPage
+                                        variableId={parseInt(
+                                            match.params.variableId
+                                        )}
+                                    />
+                                )}
                             />
                             <Route
                                 exact
@@ -252,13 +279,13 @@ export class AdminApp extends React.Component<{
                             />
                             <Route
                                 exact
-                                path="/standardize"
-                                component={CountryStandardizerPage}
+                                path="/redirects"
+                                component={RedirectsIndexPage}
                             />
                             <Route
                                 exact
-                                path="/redirects"
-                                component={RedirectsIndexPage}
+                                path="/site-redirects"
+                                component={SiteRedirectsIndexPage}
                             />
                             <Route
                                 exact
@@ -268,6 +295,11 @@ export class AdminApp extends React.Component<{
                                         tagId={parseInt(match.params.tagId)}
                                     />
                                 )}
+                            />
+                            <Route
+                                exact
+                                path="/tag-graph"
+                                component={TagGraphPage}
                             />
                             <Route
                                 exact
@@ -317,30 +349,8 @@ export class AdminApp extends React.Component<{
                             />
                             <Route
                                 exact
-                                path="/suggested-chart-revisions"
-                                component={SuggestedChartRevisionListPage}
-                            />
-                            <Route
-                                exact
-                                path="/suggested-chart-revisions/import"
-                                component={SuggestedChartRevisionImportPage}
-                            />
-                            <Route
-                                exact
-                                path="/suggested-chart-revisions/review"
-                                component={SuggestedChartRevisionApproverPage}
-                            />
-                            <Route
-                                exact
-                                path="/suggested-chart-revisions/review/:suggestedChartRevisionId"
-                                render={({ match }) => (
-                                    <SuggestedChartRevisionApproverPage
-                                        suggestedChartRevisionId={parseInt(
-                                            match.params
-                                                .suggestedChartRevisionId
-                                        )}
-                                    />
-                                )}
+                                path="/explorer-tags"
+                                component={ExplorerTagsPage}
                             />
                             <Route
                                 exact

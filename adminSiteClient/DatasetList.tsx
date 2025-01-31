@@ -1,13 +1,14 @@
-import React from "react"
+import * as React from "react"
 import { observable, action } from "mobx"
 import { observer } from "mobx-react"
 import * as lodash from "lodash"
 import { bind } from "decko"
 
 import { Link } from "./Link.js"
-import { Tag } from "./TagBadge.js"
+import { DbChartTagJoin } from "@ourworldindata/utils"
 import { AdminAppContext, AdminAppContextType } from "./AdminAppContext.js"
-import { EditableTags, Timeago } from "./Forms.js"
+import { Timeago } from "./Forms.js"
+import { EditableTags } from "./EditableTags.js"
 
 export interface DatasetListItem {
     id: number
@@ -19,7 +20,7 @@ export interface DatasetListItem {
     dataEditedByUserName: string
     metadataEditedAt: Date
     metadataEditedByUserName: string
-    tags: Tag[]
+    tags: DbChartTagJoin[]
     isPrivate: boolean
     nonRedistributable: boolean
     version: string
@@ -29,13 +30,13 @@ export interface DatasetListItem {
 @observer
 class DatasetRow extends React.Component<{
     dataset: DatasetListItem
-    availableTags: Tag[]
-    searchHighlight?: (text: string) => string | JSX.Element
+    availableTags: DbChartTagJoin[]
+    searchHighlight?: (text: string) => string | React.ReactElement
 }> {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
-    async saveTags(tags: Tag[]) {
+    async saveTags(tags: DbChartTagJoin[]) {
         const { dataset } = this.props
         const json = await this.context.admin.requestJSON(
             `/api/datasets/${dataset.id}/setTags`,
@@ -47,8 +48,8 @@ class DatasetRow extends React.Component<{
         }
     }
 
-    @action.bound onSaveTags(tags: Tag[]) {
-        this.saveTags(tags)
+    @action.bound onSaveTags(tags: DbChartTagJoin[]) {
+        void this.saveTags(tags)
     }
 
     render() {
@@ -73,8 +74,8 @@ class DatasetRow extends React.Component<{
                     </Link>
                 </td>
                 <td>{dataset.namespace}</td>
-                <td>{dataset.version}</td>
                 <td>{highlight(dataset.shortName)}</td>
+                <td>{dataset.version}</td>
                 <td>{dataset.numCharts}</td>
                 <td>
                     <Timeago
@@ -99,12 +100,12 @@ class DatasetRow extends React.Component<{
 @observer
 export class DatasetList extends React.Component<{
     datasets: DatasetListItem[]
-    searchHighlight?: (text: string) => string | JSX.Element
+    searchHighlight?: (text: string) => string | React.ReactElement
 }> {
     static contextType = AdminAppContext
     context!: AdminAppContextType
 
-    @observable availableTags: Tag[] = []
+    @observable availableTags: DbChartTagJoin[] = []
 
     @bind async getTags() {
         const json = await this.context.admin.getJSON("/api/tags.json")
@@ -112,7 +113,7 @@ export class DatasetList extends React.Component<{
     }
 
     componentDidMount() {
-        this.getTags()
+        void this.getTags()
     }
 
     render() {
@@ -123,8 +124,8 @@ export class DatasetList extends React.Component<{
                     <tr>
                         <th>Dataset</th>
                         <th>Namespace</th>
-                        <th>Version</th>
                         <th>Short name</th>
+                        <th>Version</th>
                         <th>Number of charts</th>
                         <th>Uploaded</th>
                         <th>Notes</th>

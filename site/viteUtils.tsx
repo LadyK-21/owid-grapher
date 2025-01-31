@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import findBaseDir from "../settings/findBaseDir.js"
 import fs from "fs-extra"
 import {
@@ -6,20 +6,35 @@ import {
     BAKED_BASE_URL,
     VITE_PREVIEW,
 } from "../settings/serverSettings.js"
-import { GOOGLE_FONTS_URL, POLYFILL_URL } from "./SiteConstants.js"
-import type { Manifest } from "vite"
+import { POLYFILL_URL } from "./SiteConstants.js"
+import type { Manifest, ManifestChunk } from "vite"
 import { sortBy } from "@ourworldindata/utils"
+import urljoin from "url-join"
 
 const VITE_DEV_URL = process.env.VITE_DEV_URL ?? "http://localhost:8090"
 
 export const VITE_ASSET_SITE_ENTRY = "site/owid.entry.ts"
 export const VITE_ASSET_ADMIN_ENTRY = "adminSiteClient/admin.entry.ts"
 
-// We ALWAYS load Google Fonts and polyfills.
+export enum ViteEntryPoint {
+    Site = "site",
+    Admin = "admin",
+}
 
-const googleFontsStyles = (
-    <link key="google-fonts" href={GOOGLE_FONTS_URL} rel="stylesheet" />
-)
+export const VITE_ENTRYPOINT_INFO = {
+    [ViteEntryPoint.Site]: {
+        entryPointFile: VITE_ASSET_SITE_ENTRY,
+        outDir: "assets",
+        outName: "owid",
+    },
+    [ViteEntryPoint.Admin]: {
+        entryPointFile: VITE_ASSET_ADMIN_ENTRY,
+        outDir: "assets-admin",
+        outName: "admin",
+    },
+}
+
+// We ALWAYS load polyfills.
 
 const polyfillScript = <script key="polyfill" src={POLYFILL_URL} />
 const polyfillPreload = (
@@ -28,18 +43,23 @@ const polyfillPreload = (
         rel="preload"
         href={POLYFILL_URL}
         as="script"
+        // Cloudflare's Early Hints generation for this URL fumbles the `&amp;` contained in this link; so we disable this for "Early Hints" for now.
+        // See https://github.com/cloudflare/workers-sdk/issues/6527
+        // Cloudflare disables Early Hints generation for any <link> that doesn't just contain `rel`, `href`, `as` - so the actual name of this
+        // attr doesn't actually matter.
+        data-cloudflare-disable-early-hints
     />
 )
 
 interface Assets {
-    forHeader: JSX.Element[]
-    forFooter: JSX.Element[]
+    forHeader: React.ReactElement[]
+    forFooter: React.ReactElement[]
 }
 
 // in dev: we need to load several vite core scripts and plugins; other than that we only need to load the entry point, and vite will take care of the rest.
-const devAssets = (entry: string, baseUrl: string): Assets => {
+const devAssets = (entrypoint: ViteEntryPoint, baseUrl: string): Assets => {
     return {
-        forHeader: [googleFontsStyles, polyfillPreload],
+        forHeader: [polyfillPreload],
         forFooter: [
             polyfillScript,
             <script
@@ -63,40 +83,55 @@ const devAssets = (entry: string, baseUrl: string): Assets => {
                 type="module"
                 src={`${baseUrl}/@vite/client`}
             />,
-            <script key={entry} type="module" src={`${baseUrl}/${entry}`} />,
+            <script
+                key={entrypoint}
+                type="module"
+                src={`${baseUrl}/${VITE_ENTRYPOINT_INFO[entrypoint].entryPointFile}`}
+            />,
         ],
     }
 }
 
-// Goes through the manifest.json file that vite creates, finds all the assets that are required for the entry point,
+// Goes through the manifest.json files that vite creates, finds all the assets that are required for the given entry point,
 // and creates the appropriate <link> and <script> tags for them.
 export const createTagsForManifestEntry = (
     manifest: Manifest,
     entry: string,
     assetBaseUrl: string
 ): Assets => {
-    const createTags = (entry: string): JSX.Element[] => {
+    const createTags = (entry: string): React.ReactElement[] => {
         const manifestEntry =
             Object.values(manifest).find((e) => e.file === entry) ??
-            manifest[entry]
-        let assets = [] as JSX.Element[]
+            (manifest[entry] as ManifestChunk | undefined)
+        let assets = [] as React.ReactElement[]
 
-        if (!manifestEntry)
+        if (!manifestEntry && !entry.endsWith(".css"))
             throw new Error(`Could not find manifest entry for ${entry}`)
 
-        const assetUrl = `${assetBaseUrl}${manifestEntry.file}`
+        const assetUrl = urljoin(assetBaseUrl, manifestEntry?.file ?? entry)
 
         if (entry.endsWith(".css")) {
             assets = [
                 ...assets,
+                <link
+                    key={`${entry}-preload`}
+                    rel="preload"
+                    href={assetUrl}
+                    as="style"
+                />,
                 <link key={entry} rel="stylesheet" href={assetUrl} />,
             ]
         } else if (entry.match(/\.[cm]?(js|jsx|ts|tsx)$/)) {
             // explicitly reference the entry; preload it and its dependencies
-            if (manifestEntry.isEntry) {
+            if (manifestEntry?.isEntry) {
                 assets = [
                     ...assets,
-                    <script key={entry} type="module" src={assetUrl} />,
+                    <script
+                        key={entry}
+                        type="module"
+                        src={assetUrl}
+                        data-attach-owid-error-handler
+                    />,
                 ]
             }
 
@@ -112,10 +147,10 @@ export const createTagsForManifestEntry = (
 
         // we need to recurse into both the module imports and imported css files, and add tags for them as well
         // also, we need to take care of the order here, so the imported file is loaded before the importing file
-        if (manifestEntry.css) {
+        if (manifestEntry?.css) {
             assets = [...manifestEntry.css.flatMap(createTags), ...assets]
         }
-        if (manifestEntry.imports) {
+        if (manifestEntry?.imports) {
             assets = [...manifestEntry.imports.flatMap(createTags), ...assets]
         }
         return assets
@@ -130,40 +165,49 @@ export const createTagsForManifestEntry = (
 
 // in prod: we need to make sure that we include <script> and <link> tags that are required for the entry point.
 // this could be, for example: owid.mjs, common.mjs, owid.css, common.css. (plus Google Fonts and polyfills)
-const prodAssets = (entry: string, baseUrl: string): Assets => {
+const prodAssets = (entrypoint: ViteEntryPoint, baseUrl: string): Assets => {
     const baseDir = findBaseDir(__dirname)
-    const manifestPath = `${baseDir}/dist/manifest.json`
+    const entrypointInfo = VITE_ENTRYPOINT_INFO[entrypoint]
+    const manifestPath = `${baseDir}/dist/${entrypointInfo.outDir}/.vite/manifest.json`
     let manifest
     try {
-        manifest = fs.readJSONSync(manifestPath) as Manifest
+        manifest = fs.readJsonSync(manifestPath) as Manifest
     } catch (err) {
         throw new Error(
-            `Could not read build manifest ('${manifestPath}'), which is required for production.
+            `Could not read the build manifest ('${manifestPath}'), which is required for production.
             If you're running in VITE_PREVIEW mode, wait for the build to finish and then reload this page.`,
             { cause: err }
         )
     }
 
-    const assetBaseUrl = `${baseUrl}/`
-    const assets = createTagsForManifestEntry(manifest, entry, assetBaseUrl)
+    const assetBaseUrl = `${baseUrl}/${entrypointInfo.outDir}/`
+    const assets = createTagsForManifestEntry(
+        manifest,
+        entrypointInfo.entryPointFile,
+        assetBaseUrl
+    )
 
     return {
         // sort for some kind of consistency: first modulepreload, then preload, then stylesheet
-        forHeader: sortBy(
-            [googleFontsStyles, polyfillPreload, ...assets.forHeader],
-            "props.rel"
-        ),
+        forHeader: sortBy([polyfillPreload, ...assets.forHeader], "props.rel"),
         forFooter: [polyfillScript, ...assets.forFooter],
     }
 }
 
-export const viteAssets = (entry: string) =>
-    ENV === "production" || VITE_PREVIEW
-        ? prodAssets(entry, BAKED_BASE_URL)
-        : devAssets(entry, VITE_DEV_URL)
+const useProductionAssets = ENV !== "development" || VITE_PREVIEW
+
+const viteAssets = (entrypoint: ViteEntryPoint, prodBaseUrl?: string) =>
+    useProductionAssets
+        ? prodAssets(entrypoint, prodBaseUrl ?? "")
+        : devAssets(entrypoint, VITE_DEV_URL)
+
+export const viteAssetsForAdmin = () => viteAssets(ViteEntryPoint.Admin)
+export const viteAssetsForSite = () => viteAssets(ViteEntryPoint.Site)
 
 export const generateEmbedSnippet = () => {
-    const assets = viteAssets(VITE_ASSET_SITE_ENTRY)
+    // Make sure we're using an absolute URL here, since we don't know in what context the embed snippet is used.
+    const assets = viteAssets(ViteEntryPoint.Site, BAKED_BASE_URL)
+
     const serializedAssets = [...assets.forHeader, ...assets.forFooter].map(
         (el) => ({
             tag: el.type,

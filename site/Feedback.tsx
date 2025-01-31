@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import ReactDOM from "react-dom"
 import { observer } from "mobx-react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
@@ -18,14 +18,11 @@ const sendFeedback = async (feedback: Feedback) => {
         environment: `Current URL: ${window.location.href}\nUser Agent: ${navigator.userAgent}\nViewport: ${window.innerWidth}x${window.innerHeight}`,
     }
 
-    return await fetch(
-        "https://owid-feedback.netlify.app/.netlify/functions/hello",
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json;charset=UTF-8" },
-            body: JSON.stringify(json),
-        }
-    ).then((res) => {
+    return await fetch("https://feedback.owid.io", {
+        method: "POST",
+        headers: { "Content-Type": "application/json;charset=UTF-8" },
+        body: JSON.stringify(json),
+    }).then((res) => {
         if (!res.ok)
             throw new Error(
                 `Sending feedback failed: ${res.status} ${res.statusText}`
@@ -75,7 +72,7 @@ const vaccineNotice = (
         key="vaccineNotice"
         href={`${BAKED_BASE_URL}/covid-vaccinations#frequently-asked-questions`}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener"
     >
         Covid Vaccines Questions
     </a>
@@ -86,7 +83,7 @@ const copyrightNotice = (
         key="copyrightNotice"
         href={`${BAKED_BASE_URL}/faqs#how-is-your-work-copyrighted`}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener"
     >
         Copyright Queries
     </a>
@@ -96,7 +93,7 @@ const citationNotice = (
         key="citationNotice"
         href={`${BAKED_BASE_URL}/faqs#how-should-i-cite-your-work`}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener"
     >
         How to Cite our Work
     </a>
@@ -106,13 +103,13 @@ const translateNotice = (
         key="translateNotice"
         href={`${BAKED_BASE_URL}/faqs#can-i-translate-your-work-into-another-language`}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener"
     >
         Translating our work
     </a>
 )
 
-const topicNotices = new Map<SpecialFeedbackTopic, JSX.Element>([
+const topicNotices = new Map<SpecialFeedbackTopic, React.ReactElement>([
     [SpecialFeedbackTopic.Vaccination, vaccineNotice],
     [SpecialFeedbackTopic.Citation, citationNotice],
     [SpecialFeedbackTopic.Licensing, copyrightNotice],
@@ -146,7 +143,7 @@ export class FeedbackForm extends React.Component<{
         this.done = false
         this.error = undefined
         this.loading = true
-        this.submit()
+        void this.submit()
     }
 
     @action.bound onName(e: React.ChangeEvent<HTMLInputElement>) {
@@ -192,7 +189,7 @@ export class FeedbackForm extends React.Component<{
                             messages we are not able to reply to all.
                         </p>
                     </div>
-                    <div className="actions">
+                    <div aria-label="Close feedback form" className="actions">
                         <button onClick={this.onClose}>Close</button>
                     </div>
                 </div>
@@ -213,7 +210,7 @@ export class FeedbackForm extends React.Component<{
                         <a
                             href={`${BAKED_BASE_URL}/faqs`}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener"
                         >
                             <strong>General FAQ</strong>
                         </a>{" "}
@@ -221,7 +218,7 @@ export class FeedbackForm extends React.Component<{
                         <a
                             href={`${BAKED_BASE_URL}/covid-vaccinations#frequently-asked-questions`}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener"
                         >
                             <strong>Vaccinations FAQ</strong>
                         </a>
@@ -232,6 +229,7 @@ export class FeedbackForm extends React.Component<{
                         <label htmlFor="feedback.message">Message</label>
                         <textarea
                             id="feedback.message"
+                            className="sentry-mask"
                             onChange={this.onMessage}
                             rows={5}
                             minLength={30}
@@ -249,6 +247,7 @@ export class FeedbackForm extends React.Component<{
                         <label htmlFor="feedback.name">Your name</label>
                         <input
                             id="feedback.name"
+                            className="sentry-mask"
                             onChange={this.onName}
                             autoFocus={autofocus}
                             disabled={loading}
@@ -258,11 +257,17 @@ export class FeedbackForm extends React.Component<{
                         <label htmlFor="feedback.email">Email address</label>
                         <input
                             id="feedback.email"
+                            className="sentry-mask"
                             onChange={this.onEmail}
                             type="email"
-                            required
                             disabled={loading}
                         />
+                        <small className="form-text text-muted">
+                            Your name and email will only be used to reply to
+                            you and not for any other purpose. If you do not
+                            give a valid email, we will not be able to reply to
+                            you.
+                        </small>
                     </div>
                     {this.error ? (
                         <div style={{ color: "red" }}>{this.error}</div>
@@ -274,7 +279,11 @@ export class FeedbackForm extends React.Component<{
                     ) : undefined}
                 </div>
                 <div className="footer">
-                    <button type="submit" disabled={loading}>
+                    <button
+                        aria-label="Submit feedback"
+                        type="submit"
+                        disabled={loading}
+                    >
                         Send message
                     </button>
                 </div>
@@ -328,13 +337,18 @@ export class FeedbackPrompt extends React.Component {
                     </div>
                 </div>
                 {this.isOpen ? (
-                    <button className="prompt" onClick={this.toggleOpen}>
+                    <button
+                        aria-label="Close feedback form"
+                        className="prompt"
+                        onClick={this.toggleOpen}
+                    >
                         <FontAwesomeIcon icon={faTimes} /> Close
                     </button>
                 ) : (
                     <button
+                        aria-label="Open feedback form"
                         className="prompt"
-                        data-track-note="page-open-feedback"
+                        data-track-note="page_open_feedback"
                         onClick={this.toggleOpen}
                     >
                         <FontAwesomeIcon icon={faCommentAlt} /> Feedback

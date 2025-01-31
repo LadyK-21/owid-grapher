@@ -2,723 +2,547 @@ import React from "react"
 import {
     Bounds,
     DEFAULT_BOUNDS,
-    intersection,
-    without,
-    uniq,
-    isEmpty,
-    last,
-    sortBy,
-    max,
-    flatten,
-    getRelativeMouse,
     domainExtent,
-    minBy,
-    maxBy,
     exposeInstanceOnWindow,
-    TextWrap,
+    PointVector,
+    clamp,
+    makeIdForHumanConsumption,
+    guid,
+    excludeUndefined,
+    getRelativeMouse,
+    minBy,
+    dyFromAlign,
+    uniq,
+    sortBy,
 } from "@ourworldindata/utils"
 import { observable, computed, action } from "mobx"
 import { observer } from "mobx-react"
 import { NoDataModal } from "../noDataModal/NoDataModal"
 import {
-    VerticalColorLegend,
-    VerticalColorLegendManager,
-} from "../verticalColorLegend/VerticalColorLegend"
-import { ColorScale, ColorScaleManager } from "../color/ColorScale"
-import {
     BASE_FONT_SIZE,
-    ScaleType,
-    EntitySelectionMode,
-    SeriesName,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_OPACITY_MUTE,
 } from "../core/GrapherConstants"
+import {
+    ScaleType,
+    SeriesName,
+    ColorSchemeName,
+    ColumnSlug,
+    MissingDataStrategy,
+    Time,
+    SeriesStrategy,
+    EntityName,
+    VerticalAlign,
+    FacetStrategy,
+    InteractionState,
+    HorizontalAlign,
+} from "@ourworldindata/types"
 import { ChartInterface } from "../chart/ChartInterface"
 import { ChartManager } from "../chart/ChartManager"
-import { scaleLinear, scaleLog, ScaleLinear, ScaleLogarithmic } from "d3-scale"
-import { extent } from "d3-array"
+import { scaleLinear, ScaleLinear } from "d3-scale"
 import { select } from "d3-selection"
-import { Text } from "../text/Text"
 import {
-    DEFAULT_SLOPE_CHART_COLOR,
-    LabelledSlopesProps,
-    SlopeAxisProps,
+    PlacedSlopeChartSeries,
+    RawSlopeChartSeries,
+    RenderSlopeChartSeries,
     SlopeChartSeries,
-    SlopeChartValue,
-    SlopeProps,
 } from "./SlopeChartConstants"
-import { CoreColumn, OwidTable, Color } from "@ourworldindata/core-table"
-import { autoDetectYColumnSlugs, makeSelectionArray } from "../chart/ChartUtils"
-import { ColorSchemeName } from "../color/ColorConstants"
-import { AxisConfig, FontSizeManager } from "../axis/AxisConfig"
+import { CoreColumn, OwidTable } from "@ourworldindata/core-table"
+import {
+    autoDetectSeriesStrategy,
+    autoDetectYColumnSlugs,
+    byHoverThenFocusState,
+    getDefaultFailMessage,
+    getHoverStateForSeries,
+    getShortNameForEntity,
+    makeSelectionArray,
+} from "../chart/ChartUtils"
+import { AxisConfig } from "../axis/AxisConfig"
+import { VerticalAxis } from "../axis/Axis"
+import { VerticalAxisComponent } from "../axis/AxisViews"
+import { NoDataSection } from "../scatterCharts/NoDataSection"
+import { CategoricalColorAssigner } from "../color/CategoricalColorAssigner"
+import { ColorScheme } from "../color/ColorScheme"
+import { ColorSchemes } from "../color/ColorSchemes"
+import { LineLegend, LineLegendProps } from "../lineLegend/LineLegend"
+import {
+    makeTooltipRoundingNotice,
+    makeTooltipToleranceNotice,
+    Tooltip,
+    TooltipState,
+    TooltipValueRange,
+} from "../tooltip/Tooltip"
+import { TooltipFooterIcon } from "../tooltip/TooltipProps"
+import {
+    AnnotationsMap,
+    getAnnotationsForSeries,
+    getAnnotationsMap,
+    getColorKey,
+    getSeriesName,
+} from "../lineCharts/LineChartHelpers"
+import { SelectionArray } from "../selection/SelectionArray"
+import { Halo } from "@ourworldindata/components"
+import { HorizontalColorLegendManager } from "../horizontalColorLegend/HorizontalColorLegends"
+import { CategoricalBin } from "../color/ColorScaleBin"
+import {
+    OWID_NON_FOCUSED_GRAY,
+    GRAPHER_BACKGROUND_DEFAULT,
+    GRAPHER_DARK_TEXT,
+} from "../color/ColorConstants"
+import { FocusArray } from "../focus/FocusArray"
+import { LineLabelSeries } from "../lineLegend/LineLegendTypes"
+
+type SVGMouseOrTouchEvent =
+    | React.MouseEvent<SVGGElement>
+    | React.TouchEvent<SVGGElement>
+
+export interface SlopeChartManager extends ChartManager {
+    canSelectMultipleEntities?: boolean // used to pick an appropriate series name
+    hasTimeline?: boolean // used to filter the table for the entity selector
+    hideNoDataSection?: boolean
+}
+
+const NON_FOCUSED_LINE_COLOR = OWID_NON_FOCUSED_GRAY
+
+const TOP_PADDING = 6 // leave room for overflowing dots
+const LINE_LEGEND_PADDING = 4
 
 @observer
 export class SlopeChart
     extends React.Component<{
         bounds?: Bounds
-        manager: ChartManager
+        manager: SlopeChartManager
     }>
-    implements ChartInterface, VerticalColorLegendManager, ColorScaleManager
+    implements ChartInterface
 {
-    // currently hovered individual series key
-    @observable hoverKey?: string
-    // currently hovered legend color
-    @observable hoverColor?: string
+    private slopeAreaRef: React.RefObject<SVGGElement> = React.createRef()
+    private defaultBaseColorScheme = ColorSchemeName.OwidDistinctLines
+
+    private sidebarMargin = 10
+
+    @observable hoveredSeriesName?: string
+    @observable tooltipState = new TooltipState<{
+        series: SlopeChartSeries
+    }>({ fade: "immediate" })
 
     transformTable(table: OwidTable) {
-        if (!table.has(this.yColumnSlug)) return table
+        table = table.filterByEntityNames(
+            this.selectionArray.selectedEntityNames
+        )
 
         // TODO: remove this filter once we don't have mixed type columns in datasets
-        table = table.replaceNonNumericCellsWithErrorValues([this.yColumnSlug])
+        table = table.replaceNonNumericCellsWithErrorValues(this.yColumnSlugs)
+
+        if (this.isLogScale)
+            table = table.replaceNonPositiveCellsForLogScale(this.yColumnSlugs)
+
+        this.yColumnSlugs.forEach((slug) => {
+            table = table.interpolateColumnWithTolerance(slug)
+        })
 
         return table
-            .dropRowsWithErrorValuesForColumn(this.yColumnSlug)
-            .interpolateColumnWithTolerance(this.yColumnSlug)
     }
 
-    @computed get manager() {
-        return this.props.manager
-    }
+    transformTableForSelection(table: OwidTable): OwidTable {
+        table = table.replaceNonNumericCellsWithErrorValues(this.yColumnSlugs)
 
-    @computed.struct get bounds() {
-        return this.props.bounds ?? DEFAULT_BOUNDS
-    }
+        this.yColumnSlugs.forEach((slug) => {
+            table = table.interpolateColumnWithTolerance(slug)
+        })
 
-    @computed get fontSize() {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
-    }
-
-    @computed get legendItems() {
-        return this.colorScale.legendBins
-            .filter((bin) => this.colorsInUse.includes(bin.color))
-            .map((bin) => {
-                return {
-                    key: bin.label ?? "",
-                    label: bin.label ?? "",
-                    color: bin.color,
-                }
-            })
-    }
-
-    @computed get maxLegendWidth() {
-        return this.sidebarMaxWidth
-    }
-
-    @action.bound onSlopeMouseOver(slopeProps: SlopeProps) {
-        this.hoverKey = slopeProps.seriesName
-    }
-
-    @action.bound onSlopeMouseLeave() {
-        this.hoverKey = undefined
-    }
-
-    @action.bound onSlopeClick() {
-        const { manager, hoverKey } = this
-        if (
-            manager.addCountryMode === EntitySelectionMode.Disabled ||
-            !manager.addCountryMode ||
-            hoverKey === undefined
-        ) {
-            return
+        // if time selection is disabled, then filter all entities that
+        // don't have data for the current time period
+        if (!this.manager.hasTimeline && this.startTime !== this.endTime) {
+            table = table
+                .filterByTargetTimes([this.startTime, this.endTime])
+                .dropEntitiesThatHaveSomeMissingOrErrorValueInAllColumns(
+                    this.yColumnSlugs
+                )
         }
 
-        this.selectionArray.toggleSelection(hoverKey)
-    }
-
-    @action.bound onLegendMouseOver(color: string) {
-        this.hoverColor = color
-    }
-
-    @action.bound onLegendMouseLeave() {
-        this.hoverColor = undefined
-    }
-
-    @computed private get selectionArray() {
-        return makeSelectionArray(this.manager)
-    }
-
-    @computed private get selectedEntityNames() {
-        return this.selectionArray.selectedEntityNames
-    }
-
-    // When the color legend is clicked, toggle selection fo all associated keys
-    @action.bound onLegendClick() {
-        const { manager, hoverColor } = this
-        if (
-            manager.addCountryMode === EntitySelectionMode.Disabled ||
-            !manager.addCountryMode ||
-            hoverColor === undefined
-        )
-            return
-
-        const seriesNamesToToggle = this.series
-            .filter((g) => g.color === hoverColor)
-            .map((g) => g.seriesName)
-        const areAllSeriesActive =
-            intersection(seriesNamesToToggle, this.selectedEntityNames)
-                .length === seriesNamesToToggle.length
-        if (areAllSeriesActive)
-            this.selectionArray.setSelectedEntities(
-                without(this.selectedEntityNames, ...seriesNamesToToggle)
+        // if entities with partial data are not plotted,
+        // make sure they don't show up in the entity selector
+        if (this.missingDataStrategy === MissingDataStrategy.hide) {
+            table = table.dropEntitiesThatHaveNoDataInSomeColumn(
+                this.yColumnSlugs
             )
-        else
-            this.selectionArray.setSelectedEntities(
-                this.selectedEntityNames.concat(seriesNamesToToggle)
-            )
+        }
+
+        return table
     }
 
-    // Colors on the legend for which every matching group is focused
-    @computed get focusColors() {
-        const { colorsInUse } = this
-        return colorsInUse.filter((color) => {
-            const matchingSeriesNames = this.series
-                .filter((g) => g.color === color)
-                .map((g) => g.seriesName)
-            return (
-                intersection(matchingSeriesNames, this.selectedEntityNames)
-                    .length === matchingSeriesNames.length
-            )
-        })
-    }
-
-    @computed get focusKeys() {
-        return this.selectedEntityNames
-    }
-
-    // All currently hovered group keys, combining the legend and the main UI
-    @computed.struct get hoverKeys() {
-        const { hoverColor, hoverKey } = this
-
-        const hoverKeys =
-            hoverColor === undefined
-                ? []
-                : uniq(
-                      this.series
-                          .filter((g) => g.color === hoverColor)
-                          .map((g) => g.seriesName)
-                  )
-
-        if (hoverKey !== undefined) hoverKeys.push(hoverKey)
-
-        return hoverKeys
-    }
-
-    // Colors currently on the chart and not greyed out
-    @computed get activeColors() {
-        const { hoverKeys, focusKeys } = this
-        const activeKeys = hoverKeys.concat(focusKeys)
-
-        if (activeKeys.length === 0)
-            // No hover or focus means they're all active by default
-            return uniq(this.series.map((g) => g.color))
-
-        return uniq(
-            this.series
-                .filter((g) => activeKeys.indexOf(g.seriesName) !== -1)
-                .map((g) => g.color)
-        )
-    }
-
-    // Only show colors on legend that are actually in use
-    @computed private get colorsInUse() {
-        return uniq(this.series.map((series) => series.color))
-    }
-
-    @computed private get sidebarMaxWidth() {
-        return this.bounds.width * 0.5
-    }
-
-    private sidebarMinWidth = 100
-
-    @computed private get legendWidth() {
-        return new VerticalColorLegend({ manager: this }).width
-    }
-
-    @computed.struct private get sidebarWidth() {
-        const { sidebarMinWidth, sidebarMaxWidth, legendWidth } = this
-        return Math.max(Math.min(legendWidth, sidebarMaxWidth), sidebarMinWidth)
-    }
-
-    // correction is to account for the space taken by the legend
-    @computed private get innerBounds() {
-        const { sidebarWidth, showLegend } = this
-
-        return showLegend
-            ? this.bounds.padRight(sidebarWidth + 20)
-            : this.bounds
-    }
-
-    // verify the validity of data used to show legend
-    // this is for backwards compatibility with charts that were added without legend
-    // eg: https://ourworldindata.org/grapher/mortality-rate-improvement-by-cohort
-    @computed private get showLegend() {
-        const { colorsInUse } = this
-        const { legendBins } = this.colorScale
-        return legendBins.some((bin) => colorsInUse.includes(bin.color))
-    }
-
-    render() {
-        if (this.failMessage)
-            return (
-                <NoDataModal
-                    manager={this.manager}
-                    bounds={this.props.bounds}
-                    message={this.failMessage}
-                />
-            )
-
-        const { manager } = this.props
-        const { series, focusKeys, hoverKeys, innerBounds, showLegend } = this
-
-        const legend = showLegend ? (
-            <VerticalColorLegend manager={this} />
-        ) : (
-            <div></div>
-        )
-
-        return (
-            <g className="slopeChart">
-                <LabelledSlopes
-                    manager={manager}
-                    bounds={innerBounds}
-                    yColumn={this.yColumn!}
-                    seriesArr={series}
-                    focusKeys={focusKeys}
-                    hoverKeys={hoverKeys}
-                    onMouseOver={this.onSlopeMouseOver}
-                    onMouseLeave={this.onSlopeMouseLeave}
-                    onClick={this.onSlopeClick}
-                />
-                {legend}
-            </g>
-        )
-    }
-
-    @computed get legendY() {
-        return this.bounds.top
-    }
-
-    @computed get legendX(): number {
-        return this.bounds.right - this.sidebarWidth
-    }
-
-    @computed get failMessage() {
-        if (this.yColumn.isMissing) return "Missing Y column"
-        else if (isEmpty(this.series)) return "No matching data"
-        return ""
-    }
-
-    colorScale = this.props.manager.colorScaleOverride ?? new ColorScale(this)
-
-    @computed get colorScaleConfig() {
-        return this.manager.colorScale
-    }
-
-    @computed get colorScaleColumn() {
-        return (
-            // For faceted charts, we have to get the values of inputTable before it's filtered by
-            // the faceting logic.
-            this.manager.colorScaleColumnOverride ?? this.colorColumn
-        )
-    }
-
-    defaultBaseColorScheme = ColorSchemeName.continents
-
-    @computed private get yColumn() {
-        return this.transformedTable.get(this.yColumnSlug)
-    }
-
-    @computed protected get yColumnSlug() {
-        return autoDetectYColumnSlugs(this.manager)[0]
-    }
-
-    @computed private get colorColumn() {
-        // NB: This is tricky. Often it seems we use the Continent variable (123) for colors, but we only have 1 year for that variable, which
-        // would likely get filtered by any time filtering. So we need to jump up to the root table to get the color values we want.
-        // We should probably refactor this as part of a bigger color refactoring.
-        return this.inputTable.get(this.manager.colorColumnSlug)
-    }
-
-    @computed get transformedTable() {
+    @computed get transformedTableFromGrapher(): OwidTable {
         return (
             this.manager.transformedTable ??
             this.transformTable(this.inputTable)
         )
     }
 
-    @computed get inputTable() {
-        return this.manager.table
-    }
-
-    // helper method to directly get the associated color value given an Entity
-    // dimension data saves color a level deeper. eg: { Afghanistan => { 2015: Asia|Color }}
-    // this returns that data in the form { Afghanistan => Asia }
-    @computed private get colorBySeriesName(): Map<
-        SeriesName,
-        Color | undefined
-    > {
-        const { colorScale, colorColumn } = this
-        if (colorColumn.isMissing) return new Map()
-
-        const colorByEntity = new Map<SeriesName, Color | undefined>()
-
-        colorColumn.valueByEntityNameAndOriginalTime.forEach(
-            (timeToColorMap, seriesName) => {
-                const values = Array.from(timeToColorMap.values())
-                const key = last(values)
-                colorByEntity.set(seriesName, colorScale.getColor(key))
-            }
-        )
-
-        return colorByEntity
-    }
-
-    @computed private get sizeColumn() {
-        return this.transformedTable.get(this.manager.sizeColumnSlug)
-    }
-
-    // helper method to directly get the associated size value given an Entity
-    // dimension data saves size a level deeper. eg: { Afghanistan => { 1990: 1, 2015: 10 }}
-    // this returns that data in the form { Afghanistan => 1 }
-    @computed private get sizeByEntity(): Map<string, any> {
-        const sizeCol = this.sizeColumn
-        const sizeByEntity = new Map<string, any>()
-
-        if (sizeCol)
-            sizeCol.valueByEntityNameAndOriginalTime.forEach(
-                (timeToSizeMap, entity) => {
-                    const values = Array.from(timeToSizeMap.values())
-                    sizeByEntity.set(entity, values[0]) // hack: default to the value associated with the first time
-                }
+    @computed get transformedTable(): OwidTable {
+        let table = this.transformedTableFromGrapher
+        // The % growth transform cannot be applied in transformTable() because it will filter out
+        // any rows before startTime and change the timeline bounds.
+        const { isRelativeMode, startTime } = this.manager
+        if (isRelativeMode && startTime !== undefined) {
+            table = table.toTotalGrowthForEachColumnComparedToStartTime(
+                startTime,
+                this.yColumnSlugs ?? []
             )
-
-        return sizeByEntity
-    }
-
-    componentDidMount() {
-        exposeInstanceOnWindow(this)
-    }
-
-    @computed get series() {
-        const column = this.yColumn
-        if (!column) return []
-
-        const { colorBySeriesName, sizeByEntity } = this
-        const { minTime, maxTime } = column
-
-        const table = this.inputTable
-
-        return column.uniqEntityNames
-            .map((seriesName) => {
-                const values: SlopeChartValue[] = []
-
-                const yValues =
-                    column.valueByEntityNameAndOriginalTime.get(seriesName)! ||
-                    []
-
-                yValues.forEach((value, time) => {
-                    if (time !== minTime && time !== maxTime) return
-
-                    values.push({
-                        x: time,
-                        y: value,
-                    })
-                })
-
-                const color =
-                    table.getColorForEntityName(seriesName) ??
-                    colorBySeriesName.get(seriesName) ??
-                    DEFAULT_SLOPE_CHART_COLOR
-
-                return {
-                    seriesName,
-                    color,
-                    size: sizeByEntity.get(seriesName) || 1,
-                    values,
-                } as SlopeChartSeries
-            })
-            .filter((series) => series.values.length >= 2)
-    }
-}
-
-@observer
-class SlopeChartAxis extends React.Component<SlopeAxisProps> {
-    static calculateBounds(
-        containerBounds: Bounds,
-        props: {
-            column: CoreColumn
-            orient: "left" | "right"
-            scale: ScaleLinear<number, number>
         }
-    ) {
-        const { scale, column } = props
-        const longestTick = maxBy(
-            scale.ticks(6).map((tick) => column.formatValueShort(tick)),
-            (tick) => tick.length
-        )
-        const axisWidth = Bounds.forText(longestTick).width
-        return new Bounds(
-            containerBounds.x,
-            containerBounds.y,
-            axisWidth,
-            containerBounds.height
-        )
+        return table
     }
 
-    static getTicks(
-        scale: ScaleLinear<number, number> | ScaleLogarithmic<number, number>,
-        scaleType: ScaleType
-    ) {
-        if (scaleType === ScaleType.log) {
-            let minPower10 = Math.ceil(
-                Math.log(scale.domain()[0]) / Math.log(10)
-            )
-            if (!isFinite(minPower10)) minPower10 = 0
-            let maxPower10 = Math.floor(
-                Math.log(scale.domain()[1]) / Math.log(10)
-            )
-            if (maxPower10 <= minPower10) maxPower10 += 1
-
-            const tickValues = []
-            for (let i = minPower10; i <= maxPower10; i++) {
-                tickValues.push(Math.pow(10, i))
-            }
-            return tickValues
-        } else {
-            return scale.ticks(6)
-        }
-    }
-
-    @computed get ticks() {
-        return SlopeChartAxis.getTicks(this.props.scale, this.props.scaleType)
-    }
-
-    render() {
-        const { bounds, scale, orient, column } = this.props
-        const { ticks } = this
-        const textColor = "#666"
-
-        return (
-            <g className="axis" fontSize="0.8em">
-                {ticks.map((tick, i) => {
-                    return (
-                        <text
-                            key={i}
-                            x={orient === "left" ? bounds.left : bounds.right}
-                            y={scale(tick)}
-                            fill={textColor}
-                            dominantBaseline="middle"
-                            textAnchor={orient === "left" ? "start" : "end"}
-                        >
-                            {column.formatValueShort(tick)}
-                        </text>
-                    )
-                })}
-            </g>
-        )
-    }
-}
-
-@observer
-class Slope extends React.Component<SlopeProps> {
-    line: SVGElement | null = null
-
-    @computed get isInBackground() {
-        const { isLayerMode, isHovered, isFocused } = this.props
-
-        if (!isLayerMode) return false
-
-        return !(isHovered || isFocused)
-    }
-
-    render() {
-        const {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-            size,
-            hasLeftLabel,
-            hasRightLabel,
-            leftValueStr,
-            rightValueStr,
-            leftLabel,
-            rightLabel,
-            labelFontSize,
-            leftLabelBounds,
-            rightLabelBounds,
-            isFocused,
-            isHovered,
-        } = this.props
-        const { isInBackground } = this
-
-        const lineColor = isInBackground ? "#e2e2e2" : color //'#89C9CF'
-        const labelColor = isInBackground ? "#aaa" : "#333"
-        const opacity = isHovered ? 1 : isFocused ? 0.7 : 0.5
-        const lineStrokeWidth = isHovered
-            ? size * 2
-            : isFocused
-            ? 1.5 * size
-            : size
-
-        const leftValueLabelBounds = Bounds.forText(leftValueStr, {
-            fontSize: labelFontSize,
-        })
-        const rightValueLabelBounds = Bounds.forText(rightValueStr, {
-            fontSize: labelFontSize,
-        })
-
-        return (
-            <g className="slope">
-                {hasLeftLabel &&
-                    leftLabel.render(
-                        leftLabelBounds.x + leftLabelBounds.width,
-                        leftLabelBounds.y,
-                        {
-                            textAnchor: "end",
-                            fill: labelColor,
-                            fontWeight:
-                                isFocused || isHovered ? "bold" : undefined,
-                        }
-                    )}
-                {hasLeftLabel && (
-                    <Text
-                        x={x1 - 8}
-                        y={y1 - leftValueLabelBounds.height / 2}
-                        textAnchor="end"
-                        fontSize={labelFontSize}
-                        fill={labelColor}
-                        fontWeight={isFocused || isHovered ? "bold" : undefined}
-                    >
-                        {leftValueStr}
-                    </Text>
-                )}
-                <circle
-                    cx={x1}
-                    cy={y1}
-                    r={isFocused || isHovered ? 4 : 2}
-                    fill={lineColor}
-                    opacity={opacity}
-                />
-                <line
-                    ref={(el) => (this.line = el)}
-                    x1={x1}
-                    y1={y1}
-                    x2={x2}
-                    y2={y2}
-                    stroke={lineColor}
-                    strokeWidth={lineStrokeWidth}
-                    opacity={opacity}
-                />
-                <circle
-                    cx={x2}
-                    cy={y2}
-                    r={isFocused || isHovered ? 4 : 2}
-                    fill={lineColor}
-                    opacity={opacity}
-                />
-                {hasRightLabel && (
-                    <Text
-                        x={x2 + 8}
-                        y={y2 - rightValueLabelBounds.height / 2}
-                        fontSize={labelFontSize}
-                        fill={labelColor}
-                        fontWeight={isFocused || isHovered ? "bold" : undefined}
-                    >
-                        {rightValueStr}
-                    </Text>
-                )}
-                {hasRightLabel &&
-                    rightLabel.render(rightLabelBounds.x, rightLabelBounds.y, {
-                        fill: labelColor,
-                        fontWeight: isFocused || isHovered ? "bold" : undefined,
-                    })}
-            </g>
-        )
-    }
-}
-
-@observer
-class LabelledSlopes
-    extends React.Component<LabelledSlopesProps>
-    implements FontSizeManager
-{
-    base: React.RefObject<SVGGElement> = React.createRef()
-
-    @computed private get data() {
-        return this.props.seriesArr
-    }
-
-    @computed private get yColumn() {
-        return this.props.yColumn
-    }
-
-    @computed private get manager() {
+    @computed private get manager(): SlopeChartManager {
         return this.props.manager
     }
 
-    @computed private get bounds() {
-        return this.props.bounds
+    @computed get inputTable(): OwidTable {
+        return this.manager.table
     }
 
-    @computed get fontSize() {
-        return this.manager.baseFontSize ?? BASE_FONT_SIZE
+    @computed private get bounds(): Bounds {
+        return this.props.bounds ?? DEFAULT_BOUNDS
     }
 
-    @computed private get focusedSeriesNames() {
-        return intersection(
-            this.props.focusKeys || [],
-            this.data.map((g) => g.seriesName)
-        )
+    @computed private get innerBounds(): Bounds {
+        return this.bounds
+            .padTop(TOP_PADDING)
+            .padBottom(this.bottomPadding)
+            .padRight(this.sidebarWidth + this.sidebarMargin)
     }
 
-    @computed private get hoveredSeriesNames() {
-        return intersection(
-            this.props.hoverKeys || [],
-            this.data.map((g) => g.seriesName)
-        )
+    @computed get fontSize(): number {
+        return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
-    // Layered mode occurs when any entity on the chart is hovered or focused
-    // Then, a special "foreground" set of entities is rendered over the background
-    @computed private get isLayerMode() {
+    @computed private get isLogScale(): boolean {
+        return this.yScaleType === ScaleType.log
+    }
+
+    @computed private get missingDataStrategy(): MissingDataStrategy {
+        return this.manager.missingDataStrategy || MissingDataStrategy.auto
+    }
+
+    @computed private get selectionArray(): SelectionArray {
+        return makeSelectionArray(this.manager.selection)
+    }
+
+    @computed get focusArray(): FocusArray {
+        return this.manager.focusArray ?? new FocusArray()
+    }
+
+    @computed private get formatColumn(): CoreColumn {
+        return this.yColumns[0]
+    }
+
+    @computed private get lineStrokeWidth(): number {
+        return this.manager.isStaticAndSmall ? 3 : 1.5
+    }
+
+    @computed private get backgroundColor(): string {
+        return this.manager.backgroundColor ?? GRAPHER_BACKGROUND_DEFAULT
+    }
+
+    @computed private get isHoverModeActive(): boolean {
         return (
-            this.focusedSeriesNames.length > 0 ||
-            this.hoveredSeriesNames.length > 0
+            this.hoveredSeriesNames.length > 0 ||
+            // if the external legend is hovered, we want to mute
+            // all non-hovered series even if the chart doesn't plot
+            // the currently hovered series
+            !!this.manager.externalLegendHoverBin
         )
     }
 
-    @computed private get isPortrait() {
-        return this.bounds.width < 400
+    @computed get isFocusModeActive(): boolean {
+        return !this.focusArray.isEmpty
     }
 
-    @computed private get allValues() {
-        return flatten(this.props.seriesArr.map((g) => g.values))
+    @computed private get yColumns(): CoreColumn[] {
+        return this.yColumnSlugs.map((slug) => this.transformedTable.get(slug))
     }
 
-    @computed private get xDomainDefault(): [number, number] {
-        return domainExtent(
-            this.allValues.map((v) => v.x),
-            ScaleType.linear
+    @computed protected get yColumnSlugs(): ColumnSlug[] {
+        return autoDetectYColumnSlugs(this.manager)
+    }
+
+    @computed private get colorScheme(): ColorScheme {
+        return (
+            (this.manager.baseColorScheme
+                ? ColorSchemes.get(this.manager.baseColorScheme)
+                : null) ?? ColorSchemes.get(this.defaultBaseColorScheme)
+        )
+    }
+
+    @computed private get startTime(): Time {
+        return this.transformedTable.minTime ?? 0
+    }
+
+    @computed private get endTime(): Time {
+        return this.transformedTable.maxTime ?? 0
+    }
+
+    @computed private get startX(): number {
+        return this.xScale(this.startTime)
+    }
+
+    @computed private get endX(): number {
+        return this.xScale(this.endTime)
+    }
+
+    @computed get seriesStrategy(): SeriesStrategy {
+        return autoDetectSeriesStrategy(this.manager, true)
+    }
+
+    @computed get availableFacetStrategies(): FacetStrategy[] {
+        const strategies: FacetStrategy[] = [FacetStrategy.none]
+
+        if (this.selectionArray.numSelectedEntities > 1)
+            strategies.push(FacetStrategy.entity)
+
+        if (this.yColumns.length > 1) strategies.push(FacetStrategy.metric)
+
+        return strategies
+    }
+
+    @computed private get categoricalColorAssigner(): CategoricalColorAssigner {
+        return new CategoricalColorAssigner({
+            colorScheme: this.colorScheme,
+            invertColorScheme: this.manager.invertColorScheme,
+            colorMap:
+                this.seriesStrategy === SeriesStrategy.entity
+                    ? this.inputTable.entityNameColorIndex
+                    : this.inputTable.columnDisplayNameToColorMap,
+            autoColorMapCache: this.manager.seriesColorMap,
+        })
+    }
+
+    @computed private get annotationsMap(): AnnotationsMap | undefined {
+        return getAnnotationsMap(this.inputTable, this.yColumnSlugs[0])
+    }
+
+    private constructSingleSeries(
+        entityName: EntityName,
+        column: CoreColumn
+    ): RawSlopeChartSeries {
+        const { startTime, endTime, seriesStrategy } = this
+        const { canSelectMultipleEntities = false } = this.manager
+
+        const { availableEntityNames } = this.transformedTable
+        const columnName = column.nonEmptyDisplayName
+        const props = {
+            entityName,
+            columnName,
+            seriesStrategy,
+            availableEntityNames,
+            canSelectMultipleEntities,
+        }
+        const seriesName = getSeriesName(props)
+        const displayName = getSeriesName({
+            ...props,
+            entityName: getShortNameForEntity(entityName) ?? entityName,
+        })
+
+        const owidRowByTime = column.owidRowByEntityNameAndTime.get(entityName)
+        const start = owidRowByTime?.get(startTime)
+        const end = owidRowByTime?.get(endTime)
+
+        const colorKey = getColorKey(props)
+        const color = this.categoricalColorAssigner.assign(colorKey)
+
+        const annotation = getAnnotationsForSeries(
+            this.annotationsMap,
+            seriesName
+        )
+
+        return {
+            column,
+            seriesName,
+            entityName,
+            displayName,
+            color,
+            start,
+            end,
+            annotation,
+        }
+    }
+
+    private isSeriesValid(
+        series: RawSlopeChartSeries
+    ): series is SlopeChartSeries {
+        const {
+            start,
+            end,
+            column: { tolerance },
+        } = series
+
+        // if the start or end value is missing, we can't draw the slope
+        if (start?.value === undefined || end?.value === undefined) return false
+
+        // sanity check (might happen if tolerance is enabled)
+        if (start.originalTime >= end.originalTime) return false
+
+        const isToleranceAppliedToStartValue =
+            start.originalTime !== this.startTime
+        const isToleranceAppliedToEndValue = end.originalTime !== this.endTime
+
+        // if tolerance has been applied to one of the values, then we require
+        // a minimal distance between the original times
+        if (isToleranceAppliedToStartValue || isToleranceAppliedToEndValue) {
+            return end.originalTime - start.originalTime >= tolerance
+        }
+
+        return true
+    }
+
+    // Usually we drop rows with missing data in the transformTable function.
+    // But if we did that for slope charts, we wouldn't know whether a slope
+    // has been dropped because it actually had no data or a sibling slope had
+    // no data. But we need that information for the "No data" section. That's
+    // why the filtering happens here, so that the noDataSeries can be populated
+    // correctly.
+    private shouldSeriesBePlotted(
+        series: RawSlopeChartSeries
+    ): series is SlopeChartSeries {
+        if (!this.isSeriesValid(series)) return false
+
+        // when the missing data strategy is set to "hide", we might
+        // choose not to plot a valid series
+        if (
+            this.seriesStrategy === SeriesStrategy.column &&
+            this.missingDataStrategy === MissingDataStrategy.hide
+        ) {
+            const allSeriesForEntity = this.rawSeriesByEntityName.get(
+                series.entityName
+            )
+            return !!allSeriesForEntity?.every((series) =>
+                this.isSeriesValid(series)
+            )
+        }
+
+        return true
+    }
+
+    @computed private get rawSeries(): RawSlopeChartSeries[] {
+        return this.yColumns.flatMap((column) =>
+            this.selectionArray.selectedEntityNames.map((entityName) =>
+                this.constructSingleSeries(entityName, column)
+            )
+        )
+    }
+
+    @computed private get rawSeriesByEntityName(): Map<
+        SeriesName,
+        RawSlopeChartSeries[]
+    > {
+        const map = new Map<SeriesName, RawSlopeChartSeries[]>()
+        this.rawSeries.forEach((series) => {
+            const { entityName } = series
+            if (!map.has(entityName)) map.set(entityName, [])
+            map.get(entityName)!.push(series)
+        })
+        return map
+    }
+
+    @computed get series(): SlopeChartSeries[] {
+        return this.rawSeries.filter((series) =>
+            this.shouldSeriesBePlotted(series)
+        )
+    }
+
+    @computed private get placedSeries(): PlacedSlopeChartSeries[] {
+        const { yAxis, startX, endX } = this
+
+        return this.series.map((series) => {
+            const startY = yAxis.place(series.start.value)
+            const endY = yAxis.place(series.end.value)
+
+            const startPoint = new PointVector(startX, startY)
+            const endPoint = new PointVector(endX, endY)
+
+            return { ...series, startPoint, endPoint }
+        })
+    }
+
+    private hoverStateForSeries(series: SlopeChartSeries): InteractionState {
+        return getHoverStateForSeries(series, {
+            isHoverModeActive: this.isHoverModeActive,
+            hoveredSeriesNames: this.hoveredSeriesNames,
+        })
+    }
+
+    private focusStateForSeries(series: SlopeChartSeries): InteractionState {
+        return this.focusArray.state(series.seriesName)
+    }
+
+    @computed private get renderSeries(): RenderSlopeChartSeries[] {
+        const series: RenderSlopeChartSeries[] = this.placedSeries.map(
+            (series) => {
+                return {
+                    ...series,
+                    hover: this.hoverStateForSeries(series),
+                    focus: this.focusStateForSeries(series),
+                }
+            }
+        )
+
+        // sort by interaction state so that foreground series
+        // are drawn on top of background series
+        if (this.isHoverModeActive || this.isFocusModeActive) {
+            return sortBy(series, byHoverThenFocusState)
+        }
+
+        return series
+    }
+
+    @computed
+    private get noDataSeries(): RawSlopeChartSeries[] {
+        return this.rawSeries.filter((series) => !this.isSeriesValid(series))
+    }
+
+    @computed private get showNoDataSection(): boolean {
+        if (this.manager.hideNoDataSection) return false
+
+        // nothing to show if there are no series with missing data
+        if (this.noDataSeries.length === 0) return false
+
+        // the No Data section is HTML and won't show up in the SVG export
+        if (this.manager.isStatic) return false
+
+        // we usually don't show the no data section if columns are plotted
+        // (since columns don't appear in the entity selector there is no need
+        // to explain that a column is missing – it just adds noise). but if
+        // the missing data strategy is set to hide, then we do want to give
+        // feedback as to why a slope is currently not rendered
+        return (
+            this.seriesStrategy === SeriesStrategy.entity ||
+            this.missingDataStrategy === MissingDataStrategy.hide
         )
     }
 
     @computed private get yAxisConfig(): AxisConfig {
-        return new AxisConfig(this.manager.yAxisConfig, this)
-    }
-
-    @computed private get yScaleType() {
-        return this.yAxisConfig.scaleType || ScaleType.linear
-    }
-
-    @computed private get yDomainDefault(): [number, number] {
-        return domainExtent(
-            this.allValues.map((v) => v.y),
-            this.yScaleType || ScaleType.linear
+        return new AxisConfig(
+            {
+                nice: this.manager.yAxisConfig?.scaleType !== ScaleType.log,
+                ...this.manager.yAxisConfig,
+            },
+            this
         )
     }
 
-    @computed private get xDomain(): [number, number] {
-        return this.xDomainDefault
+    @computed get allYValues(): number[] {
+        return this.series.flatMap((series) => [
+            series.start.value,
+            series.end.value,
+        ])
+    }
+
+    @computed private get yScaleType(): ScaleType {
+        return this.yAxisConfig.scaleType ?? ScaleType.linear
+    }
+
+    @computed private get yDomainDefault(): [number, number] {
+        const defaultDomain: [number, number] = [Infinity, -Infinity]
+        return domainExtent(this.allYValues, this.yScaleType) ?? defaultDomain
     }
 
     @computed private get yDomain(): [number, number] {
@@ -730,416 +554,933 @@ class LabelledSlopes
         ]
     }
 
-    @computed get sizeScale(): ScaleLinear<number, number> {
-        return scaleLinear()
-            .domain(
-                extent(this.props.seriesArr.map((series) => series.size)) as [
-                    number,
-                    number
-                ]
-            )
-            .range([1, 4])
+    @computed private get bottomPadding(): number {
+        return 1.5 * GRAPHER_FONT_SCALE_12 * this.fontSize
     }
 
-    @computed get yScaleConstructor(): any {
-        return this.yScaleType === ScaleType.log ? scaleLog : scaleLinear
+    @computed private get xLabelPadding(): number {
+        return this.useCompactLayout ? 4 : 8
     }
 
-    @computed private get yScale():
-        | ScaleLinear<number, number>
-        | ScaleLogarithmic<number, number> {
-        return this.yScaleConstructor()
-            .domain(this.yDomain)
-            .range(this.props.bounds.padBottom(50).yRange())
+    @computed private get yRange(): [number, number] {
+        return this.innerBounds.yRange()
+    }
+
+    @computed get yAxis(): VerticalAxis {
+        const axis = this.yAxisConfig.toVerticalAxis()
+        axis.domain = this.yDomain
+        axis.range = this.yRange
+        axis.formatColumn = this.yColumns[0]
+        axis.label = ""
+        return axis
+    }
+
+    @computed private get yAxisWidth(): number {
+        return this.yAxis.width
     }
 
     @computed private get xScale(): ScaleLinear<number, number> {
-        const { bounds, isPortrait, xDomain, yScale, yColumn } = this
-        const padding = isPortrait
-            ? 0
-            : SlopeChartAxis.calculateBounds(bounds, {
-                  orient: "left",
-                  scale: yScale,
-                  column: yColumn,
-              }).width
-        return scaleLinear()
-            .domain(xDomain)
-            .range(bounds.padWidth(padding).xRange())
+        const { xDomain, xRange } = this
+        return scaleLinear().domain(xDomain).range(xRange)
     }
 
-    @computed get maxLabelWidth() {
-        return this.bounds.width / 5
+    @computed private get xDomain(): [number, number] {
+        return [this.startTime, this.endTime]
     }
 
-    @computed private get initialSlopeData() {
-        const {
-            data,
-            isPortrait,
-            xScale,
-            yScale,
-            sizeScale,
-            yColumn,
-            maxLabelWidth: maxWidth,
-        } = this
+    @computed private get sidebarWidth(): number {
+        return this.showNoDataSection
+            ? clamp(this.bounds.width * 0.125, 60, 140)
+            : 0
+    }
 
-        const slopeData: SlopeProps[] = []
-        const yDomain = yScale.domain()
-
-        data.forEach((series) => {
-            // Ensure values fit inside the chart
-            if (
-                !series.values.every(
-                    (d) => d.y >= yDomain[0] && d.y <= yDomain[1]
-                )
+    @computed get externalLegend(): HorizontalColorLegendManager | undefined {
+        if (!this.manager.showLegend) {
+            const categoricalLegendData = this.series.map(
+                (series, index) =>
+                    new CategoricalBin({
+                        index,
+                        value: series.seriesName,
+                        label: series.seriesName,
+                        color: series.color,
+                    })
             )
-                return
-
-            const text = series.seriesName
-            const [v1, v2] = series.values
-            const [x1, x2] = [xScale(v1.x), xScale(v2.x)]
-            const [y1, y2] = [yScale(v1.y), yScale(v2.y)]
-            const fontSize = (isPortrait ? 0.6 : 0.65) * this.fontSize
-            const leftValueStr = yColumn.formatValueShort(v1.y)
-            const rightValueStr = yColumn.formatValueShort(v2.y)
-            const leftValueWidth = Bounds.forText(leftValueStr, {
-                fontSize,
-            }).width
-            const rightValueWidth = Bounds.forText(rightValueStr, {
-                fontSize,
-            }).width
-            const leftLabel = new TextWrap({
-                maxWidth,
-                fontSize,
-                lineHeight: 1,
-                text,
-            })
-            const rightLabel = new TextWrap({
-                maxWidth,
-                fontSize,
-                lineHeight: 1,
-                text,
-            })
-
-            slopeData.push({
-                x1,
-                y1,
-                x2,
-                y2,
-                color: series.color,
-                size: sizeScale(series.size) || 1,
-                leftValueStr,
-                rightValueStr,
-                leftValueWidth,
-                rightValueWidth,
-                leftLabel,
-                rightLabel,
-                labelFontSize: fontSize,
-                seriesName: series.seriesName,
-                isFocused: false,
-                isHovered: false,
-                hasLeftLabel: true,
-                hasRightLabel: true,
-            } as SlopeProps)
-        })
-
-        return slopeData
+            return { categoricalLegendData }
+        }
+        return undefined
     }
 
-    @computed get maxValueWidth() {
-        return max(this.initialSlopeData.map((s) => s.leftValueWidth)) as number
+    @computed get maxLineLegendWidth(): number {
+        return 0.25 * this.innerBounds.width
     }
 
-    @computed private get labelAccountedSlopeData() {
-        const { maxLabelWidth, maxValueWidth } = this
+    @computed get lineLegendFontSize(): number {
+        return LineLegend.fontSize({ fontSize: this.fontSize })
+    }
 
-        return this.initialSlopeData.map((slope) => {
-            // Squish slopes to make room for labels
-            const x1 = slope.x1 + maxLabelWidth + maxValueWidth + 8
-            const x2 = slope.x2 - maxLabelWidth - maxValueWidth - 8
+    @computed get lineLegendYRange(): [number, number] {
+        const top = this.bounds.top
 
-            // Position the labels
-            const leftLabelBounds = new Bounds(
-                x1 - slope.leftValueWidth - 12 - slope.leftLabel.width,
-                slope.y1 - slope.leftLabel.height / 2,
-                slope.leftLabel.width,
-                slope.leftLabel.height
+        const bottom =
+            this.bounds.bottom -
+            // leave space for the x-axis labels
+            this.bottomPadding +
+            // but allow for a little extra space
+            this.lineLegendFontSize / 2
+
+        return [top, bottom]
+    }
+
+    @computed private get lineLegendPropsCommon(): Partial<LineLegendProps> {
+        return {
+            yAxis: this.yAxis,
+            maxWidth: this.maxLineLegendWidth,
+            fontSize: this.fontSize,
+            isStatic: this.manager.isStatic,
+            yRange: this.lineLegendYRange,
+            verticalAlign: VerticalAlign.top,
+            showTextOutlines: true,
+            textOutlineColor: this.backgroundColor,
+            onMouseOver: this.onLineLegendMouseOver,
+            onMouseLeave: this.onLineLegendMouseLeave,
+            onClick:
+                this.series.length > 1 ? this.onLineLegendClick : undefined,
+        }
+    }
+
+    @computed private get lineLegendPropsRight(): Partial<LineLegendProps> {
+        return { xAnchor: "start" }
+    }
+
+    @computed private get lineLegendPropsLeft(): Partial<LineLegendProps> {
+        return {
+            xAnchor: "end",
+            seriesNamesSortedByImportance:
+                this.seriesSortedByImportanceForLineLegendLeft,
+        }
+    }
+
+    private formatValue(value: number): string {
+        return this.formatColumn.formatValueShortWithAbbreviations(value)
+    }
+
+    @computed get lineLegendMaxLevelLeft(): number {
+        if (!this.manager.showLegend) return 0
+
+        // can't use `lineLegendSeriesLeft` due to a circular dependency
+        const series = this.series.map((series) =>
+            this.constructSingleLineLegendSeries(
+                series,
+                (series) => series.start.value,
+                { showSeriesName: false }
             )
-            const rightLabelBounds = new Bounds(
-                x2 + slope.rightValueWidth + 12,
-                slope.y2 - slope.rightLabel.height / 2,
-                slope.rightLabel.width,
-                slope.rightLabel.height
-            )
-
-            return {
-                ...slope,
-                x1: x1,
-                x2: x2,
-                leftLabelBounds: leftLabelBounds,
-                rightLabelBounds: rightLabelBounds,
-            }
-        })
-    }
-
-    @computed get backgroundGroups() {
-        return this.slopeData.filter(
-            (group) => !(group.isHovered || group.isFocused)
         )
-    }
 
-    @computed get foregroundGroups() {
-        return this.slopeData.filter(
-            (group) => !!(group.isHovered || group.isFocused)
-        )
-    }
-
-    // Get the final slope data with hover focusing and collision detection
-    @computed get slopeData(): SlopeProps[] {
-        const { focusedSeriesNames, hoveredSeriesNames } = this
-        let slopeData = this.labelAccountedSlopeData
-
-        slopeData = slopeData.map((slope) => {
-            return {
-                ...slope,
-                isFocused: focusedSeriesNames.includes(slope.seriesName),
-                isHovered: hoveredSeriesNames.includes(slope.seriesName),
-            }
+        return LineLegend.maxLevel({
+            series,
+            ...this.lineLegendPropsCommon,
+            seriesNamesSortedByImportance:
+                this.seriesSortedByImportanceForLineLegendLeft,
+            // not including `lineLegendPropsLeft` due to a circular dependency
         })
+    }
 
-        // How to work out which of two slopes to prioritize for labelling conflicts
-        function chooseLabel(s1: SlopeProps, s2: SlopeProps) {
-            if (s1.isHovered && !s2.isHovered)
-                // Hovered slopes always have priority
-                return s1
-            else if (!s1.isHovered && s2.isHovered) return s2
-            else if (s1.isFocused && !s2.isFocused)
-                // Focused slopes are next in priority
-                return s1
-            else if (!s1.isFocused && s2.isFocused) return s2
-            else if (s1.hasLeftLabel && !s2.hasLeftLabel)
-                // Slopes which already have one label are prioritized for the other side
-                return s1
-            else if (!s1.hasLeftLabel && s2.hasLeftLabel) return s2
-            else if (s1.size > s2.size)
-                // Larger sizes get the next priority
-                return s1
-            else if (s2.size > s1.size) return s2
-            else return s1 // Equal priority, just do the first one
+    @computed get lineLegendWidthLeft(): number {
+        const props: LineLegendProps = {
+            series: this.lineLegendSeriesLeft,
+            ...this.lineLegendPropsCommon,
+            ...this.lineLegendPropsLeft,
         }
 
-        // Eliminate overlapping labels, one pass for each side
-        slopeData.forEach((s1) => {
-            slopeData.forEach((s2) => {
-                if (
-                    s1 !== s2 &&
-                    s1.hasLeftLabel &&
-                    s2.hasLeftLabel &&
-                    s1.leftLabelBounds.intersects(s2.leftLabelBounds)
-                ) {
-                    if (chooseLabel(s1, s2) === s1) s2.hasLeftLabel = false
-                    else s1.hasLeftLabel = false
-                }
-            })
-        })
-
-        slopeData.forEach((s1) => {
-            slopeData.forEach((s2) => {
-                if (
-                    s1 !== s2 &&
-                    s1.hasRightLabel &&
-                    s2.hasRightLabel &&
-                    s1.rightLabelBounds.intersects(s2.rightLabelBounds)
-                ) {
-                    if (chooseLabel(s1, s2) === s1) s2.hasRightLabel = false
-                    else s1.hasRightLabel = false
-                }
-            })
-        })
-
-        // Order by focus/hover and size for draw order
-        slopeData = sortBy(slopeData, (slope) => slope.size)
-        slopeData = sortBy(slopeData, (slope) =>
-            slope.isFocused || slope.isHovered ? 1 : 0
-        )
-
-        return slopeData
+        // We usually use the "stable" width of the line legend, which might be
+        // a bit too wide because the connector line width is always added, even
+        // it no connector lines are drawn. Using the stable width prevents
+        // layout shifts when the connector lines are toggled on and off.
+        // However, if the chart area is very narrow (like when it's faceted),
+        // the stable width of the line legend takes too much space, so we use the
+        // actual width instead.
+        return this.isNarrow
+            ? LineLegend.width(props)
+            : LineLegend.stableWidth(props)
     }
 
-    mouseFrame?: number
-    @action.bound onMouseLeave() {
-        if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
-
-        if (this.props.onMouseLeave) this.props.onMouseLeave()
+    @computed get lineLegendRight(): LineLegend {
+        return new LineLegend({
+            series: this.lineLegendSeriesRight,
+            ...this.lineLegendPropsCommon,
+            ...this.lineLegendPropsRight,
+        })
     }
 
-    @action.bound onMouseMove(
-        ev: React.MouseEvent<SVGGElement> | React.TouchEvent<SVGGElement>
-    ) {
-        if (this.base.current) {
-            const mouse = getRelativeMouse(this.base.current, ev.nativeEvent)
+    @computed get lineLegendWidthRight(): number {
+        // We usually use the "stable" width of the line legend, which might be
+        // a bit too wide because the connector line width is always added, even
+        // it no connector lines are drawn. Using the stable width prevents
+        // layout shifts when the connector lines are toggled on and off.
+        // However, if the chart area is very narrow (like when it's faceted),
+        // the stable width of the line legend takes too much space, so we use the
+        // actual width instead.
+        return this.isNarrow
+            ? this.lineLegendRight.width
+            : this.lineLegendRight.stableWidth
+    }
 
-            this.mouseFrame = requestAnimationFrame(() => {
-                if (this.props.bounds.contains(mouse)) {
-                    const distToSlope = new Map<SlopeProps, number>()
-                    for (const s of this.slopeData) {
-                        const dist =
-                            Math.abs(
-                                (s.y2 - s.y1) * mouse.x -
-                                    (s.x2 - s.x1) * mouse.y +
-                                    s.x2 * s.y1 -
-                                    s.y2 * s.x1
-                            ) /
-                            Math.sqrt((s.y2 - s.y1) ** 2 + (s.x2 - s.x1) ** 2)
-                        distToSlope.set(s, dist)
-                    }
+    @computed get visibleLineLegendLabelsRight(): Set<SeriesName> {
+        return new Set(this.lineLegendRight?.visibleSeriesNames ?? [])
+    }
 
-                    const closestSlope = minBy(this.slopeData, (s) =>
-                        distToSlope.get(s)
+    @computed get seriesSortedByImportanceForLineLegendLeft(): SeriesName[] {
+        return this.series
+            .map((s) => s.seriesName)
+            .sort((s1: SeriesName, s2: SeriesName): number => {
+                const PREFER_S1 = -1
+                const PREFER_S2 = 1
+
+                const s1_isLabelled = this.visibleLineLegendLabelsRight.has(s1)
+                const s2_isLabelled = this.visibleLineLegendLabelsRight.has(s2)
+
+                // prefer to show value labels for series that are already labelled
+                if (s1_isLabelled && !s2_isLabelled) return PREFER_S1
+                if (s2_isLabelled && !s1_isLabelled) return PREFER_S2
+
+                return 0
+            })
+    }
+
+    @computed get xRange(): [number, number] {
+        const lineLegendWidthLeft =
+            this.lineLegendWidthLeft + LINE_LEGEND_PADDING
+        const lineLegendWidthRight =
+            this.lineLegendWidthRight + LINE_LEGEND_PADDING
+        const chartAreaWidth = this.innerBounds.width
+
+        // start and end value when the slopes are as wide as possible
+        const minStartX =
+            this.innerBounds.x + this.yAxisWidth + lineLegendWidthLeft
+        const maxEndX = this.innerBounds.right - lineLegendWidthRight
+
+        // use all available space if the chart is narrow
+        if (this.manager.isNarrow || this.isNarrow) {
+            return [minStartX, maxEndX]
+        }
+
+        const offset = 0.25
+        let startX = this.innerBounds.x + offset * chartAreaWidth
+        let endX = this.innerBounds.right - offset * chartAreaWidth
+
+        // make sure the start and end values are within the bounds
+        startX = Math.max(startX, minStartX)
+        endX = Math.min(endX, maxEndX)
+
+        // pick a reasonable max width based on an ideal aspect ratio
+        const idealAspectRatio = 0.9
+        const availableWidth =
+            chartAreaWidth -
+            this.yAxisWidth -
+            lineLegendWidthLeft -
+            lineLegendWidthRight
+        const idealWidth = idealAspectRatio * this.bounds.height
+        const maxSlopeWidth = Math.min(idealWidth, availableWidth)
+
+        const currentSlopeWidth = endX - startX
+        if (currentSlopeWidth > maxSlopeWidth) {
+            const padding = currentSlopeWidth - maxSlopeWidth
+            startX += padding / 2
+            endX -= padding / 2
+        }
+
+        return [startX, endX]
+    }
+
+    @computed private get isNarrow(): boolean {
+        return this.bounds.width < 320
+    }
+
+    @computed get useCompactLayout(): boolean {
+        return !!this.manager.isSemiNarrow || this.isNarrow
+    }
+
+    @computed get hoveredSeriesNames(): SeriesName[] {
+        const hoveredSeriesNames: SeriesName[] = []
+
+        // hovered series name (either by hovering over a slope or a line legend label)
+        if (this.hoveredSeriesName)
+            hoveredSeriesNames.push(this.hoveredSeriesName)
+
+        // hovered legend item in the external facet legend
+        if (this.manager.externalLegendHoverBin) {
+            hoveredSeriesNames.push(
+                ...this.series
+                    .map((s) => s.seriesName)
+                    .filter((name) =>
+                        this.manager.externalLegendHoverBin?.contains(name)
                     )
+            )
+        }
 
-                    if (
-                        closestSlope &&
-                        (distToSlope.get(closestSlope) as number) < 20 &&
-                        this.props.onMouseOver
-                    ) {
-                        this.props.onMouseOver(closestSlope)
-                    } else {
-                        this.props.onMouseLeave()
-                    }
-                }
-            })
+        return hoveredSeriesNames
+    }
+
+    private constructSingleLineLegendSeries(
+        series: SlopeChartSeries,
+        getValue: (series: SlopeChartSeries) => number,
+        {
+            showSeriesName,
+            showAnnotation,
+        }: {
+            showSeriesName?: boolean
+            showAnnotation?: boolean
+        }
+    ): LineLabelSeries {
+        const { seriesName, displayName, color, annotation } = series
+        const value = getValue(series)
+        const formattedValue = this.formatValue(value)
+        return {
+            color,
+            seriesName,
+            annotation: showAnnotation ? annotation : undefined,
+            label: showSeriesName ? displayName : formattedValue,
+            formattedValue: showSeriesName ? formattedValue : undefined,
+            placeFormattedValueInNewLine: this.useCompactLayout,
+            yValue: value,
+            hover: this.hoverStateForSeries(series),
+            focus: this.focusStateForSeries(series),
         }
     }
 
-    @action.bound onClick() {
-        if (this.props.onClick) this.props.onClick()
+    @computed get lineLegendSeriesLeft(): LineLabelSeries[] {
+        const { showSeriesNamesInLineLegendLeft: showSeriesName } = this
+        return this.series.map((series) =>
+            this.constructSingleLineLegendSeries(
+                series,
+                (series) => series.start.value,
+                { showSeriesName }
+            )
+        )
+    }
+
+    @computed get lineLegendSeriesRight(): LineLabelSeries[] {
+        return this.series.map((series) =>
+            this.constructSingleLineLegendSeries(
+                series,
+                (series) => series.end.value,
+                {
+                    showSeriesName: this.manager.showLegend,
+                    showAnnotation: !this.useCompactLayout,
+                }
+            )
+        )
+    }
+
+    private animSelection?: d3.Selection<
+        d3.BaseType,
+        unknown,
+        SVGGElement | null,
+        unknown
+    >
+    private playIntroAnimation() {
+        // Nice little intro animation
+        this.animSelection = select(this.slopeAreaRef.current)
+            .selectAll(".slope")
+            .attr("stroke-dasharray", "100%")
+            .attr("stroke-dashoffset", "100%")
+
+        this.animSelection
+            .transition()
+            .duration(600)
+            .attr("stroke-dashoffset", "0%")
     }
 
     componentDidMount() {
+        exposeInstanceOnWindow(this)
+
         if (!this.manager.disableIntroAnimation) {
             this.playIntroAnimation()
         }
     }
 
-    private playIntroAnimation() {
-        // Nice little intro animation
-        select(this.base.current)
-            .select(".slopes")
-            .attr("stroke-dasharray", "100%")
-            .attr("stroke-dashoffset", "100%")
-            .transition()
-            .attr("stroke-dashoffset", "0%")
+    componentWillUnmount(): void {
+        if (this.animSelection) this.animSelection.interrupt()
     }
 
-    renderGroups(groups: SlopeProps[]) {
-        const { isLayerMode } = this
-
-        return groups.map((slope) => (
-            <Slope
-                key={slope.seriesName}
-                {...slope}
-                isLayerMode={isLayerMode}
-            />
-        ))
+    @computed private get showSeriesNamesInLineLegendLeft(): boolean {
+        return this.lineLegendMaxLevelLeft >= 4 && !!this.manager.showLegend
     }
 
-    render() {
+    private updateTooltipPosition(event: SVGMouseOrTouchEvent): void {
+        const ref = this.manager.base?.current
+        if (ref) this.tooltipState.position = getRelativeMouse(ref, event)
+    }
+
+    private detectHoveredSlope(event: SVGMouseOrTouchEvent): void {
+        const ref = this.slopeAreaRef.current
+        if (!ref) return
+
+        const mouse = getRelativeMouse(ref, event)
+        this.mouseFrame = requestAnimationFrame(() => {
+            if (this.placedSeries.length === 0) return
+
+            const distanceMap = new Map<PlacedSlopeChartSeries, number>()
+            for (const series of this.placedSeries) {
+                distanceMap.set(
+                    series,
+                    PointVector.distanceFromPointToLineSegmentSq(
+                        mouse,
+                        series.startPoint,
+                        series.endPoint
+                    )
+                )
+            }
+
+            const closestSlope = minBy(this.placedSeries, (s) =>
+                distanceMap.get(s)
+            )!
+            const distanceSq = distanceMap.get(closestSlope)!
+            const tolerance = 10
+            const toleranceSq = tolerance * tolerance
+
+            if (closestSlope && distanceSq < toleranceSq) {
+                this.onSlopeMouseOver(closestSlope)
+            } else {
+                this.onSlopeMouseLeave()
+            }
+        })
+    }
+
+    private hoverTimer?: NodeJS.Timeout
+    @action.bound onLineLegendMouseOver(seriesName: SeriesName): void {
+        clearTimeout(this.hoverTimer)
+        this.hoveredSeriesName = seriesName
+    }
+
+    @action.bound onLineLegendMouseLeave(): void {
+        clearTimeout(this.hoverTimer)
+        this.hoverTimer = setTimeout(() => {
+            // wait before clearing selection in case the mouse is moving quickly over neighboring labels
+            this.hoveredSeriesName = undefined
+        }, 200)
+    }
+
+    @action.bound onLineLegendClick(seriesName: SeriesName): void {
+        this.focusArray.toggle(seriesName)
+    }
+
+    @action.bound onSlopeMouseOver(series: SlopeChartSeries): void {
+        this.hoveredSeriesName = series.seriesName
+        this.tooltipState.target = { series }
+    }
+
+    @action.bound onSlopeMouseLeave(): void {
+        this.hoveredSeriesName = undefined
+        this.tooltipState.target = null
+    }
+
+    mouseFrame?: number
+    @action.bound onMouseMove(event: SVGMouseOrTouchEvent): void {
+        this.updateTooltipPosition(event)
+        this.detectHoveredSlope(event)
+    }
+
+    @action.bound onMouseLeave(): void {
+        if (this.mouseFrame !== undefined) cancelAnimationFrame(this.mouseFrame)
+
+        this.onSlopeMouseLeave()
+    }
+
+    @computed get failMessage(): string {
+        const message = getDefaultFailMessage(this.manager)
+        if (message) return message
+        else if (this.series.length === 0) return "No matching data"
+        return ""
+    }
+
+    @computed get renderUid(): number {
+        return guid()
+    }
+
+    @computed get tooltip(): React.ReactElement | undefined {
         const {
-            fontSize,
-            yScaleType,
-            bounds,
-            slopeData,
-            isPortrait,
-            xDomain,
-            yScale,
-            onMouseMove,
-            yColumn,
+            manager: { isRelativeMode },
+            tooltipState: { target, position, fading },
+            formatColumn,
+            startTime,
+            endTime,
         } = this
 
-        if (isEmpty(slopeData))
-            return <NoDataModal manager={this.props.manager} bounds={bounds} />
+        const { series } = target || {}
+        if (!series) return
 
-        const { x1, x2 } = slopeData[0]
-        const [y1, y2] = yScale.range()
+        const formatTime = (time: Time) => formatColumn.formatTime(time)
+
+        const title = series.seriesName
+        const titleAnnotation = series.annotation
+
+        const actualStartTime = series.start.originalTime
+        const actualEndTime = series.end.originalTime
+        const timeRange = `${formatTime(actualStartTime)} to ${formatTime(actualEndTime)}`
+        const timeLabel = isRelativeMode
+            ? `% change between ${formatColumn.formatTime(actualStartTime)} and ${formatColumn.formatTime(actualEndTime)}`
+            : timeRange
+
+        const constructTargetYearForToleranceNotice = () => {
+            const isStartValueOriginal = series.start.originalTime === startTime
+            const isEndValueOriginal = series.end.originalTime === endTime
+
+            if (!isStartValueOriginal && !isEndValueOriginal) {
+                return `${formatTime(startTime)} and ${formatTime(endTime)}`
+            } else if (!isStartValueOriginal) {
+                return formatTime(startTime)
+            } else if (!isEndValueOriginal) {
+                return formatTime(endTime)
+            } else {
+                return undefined
+            }
+        }
+
+        const targetYear = constructTargetYearForToleranceNotice()
+        const toleranceNotice = targetYear
+            ? {
+                  icon: TooltipFooterIcon.notice,
+                  text: makeTooltipToleranceNotice(targetYear),
+              }
+            : undefined
+        const roundingNotice = series.column.roundsToSignificantFigures
+            ? {
+                  icon: TooltipFooterIcon.none,
+                  text: makeTooltipRoundingNotice(
+                      [series.column.numSignificantFigures],
+                      { plural: !isRelativeMode }
+                  ),
+              }
+            : undefined
+        const footer = excludeUndefined([toleranceNotice, roundingNotice])
+
+        const values = isRelativeMode
+            ? [series.end.value]
+            : [series.start.value, series.end.value]
 
         return (
-            <g
-                className="LabelledSlopes"
-                ref={this.base}
-                onMouseMove={onMouseMove}
-                onTouchMove={onMouseMove}
-                onTouchStart={onMouseMove}
-                onMouseLeave={this.onMouseLeave}
-                onClick={this.onClick}
+            <Tooltip
+                id={this.renderUid}
+                tooltipManager={this.props.manager}
+                x={position.x}
+                y={position.y}
+                offsetX={20}
+                offsetY={-16}
+                style={{ maxWidth: "250px" }}
+                title={title}
+                titleAnnotation={titleAnnotation}
+                subtitle={timeLabel}
+                subtitleFormat={targetYear ? "notice" : undefined}
+                dissolve={fading}
+                footer={footer}
+                dismiss={() => (this.tooltipState.target = null)}
             >
-                <rect
-                    x={bounds.x}
-                    y={bounds.y}
-                    width={bounds.width}
-                    height={bounds.height}
-                    fill="rgba(255,255,255,0)"
-                    opacity={0}
-                />
-                <g className="gridlines">
-                    {SlopeChartAxis.getTicks(yScale, yScaleType).map(
-                        (tick, i) => {
-                            return (
-                                <line
-                                    key={i}
-                                    x1={x1}
-                                    y1={yScale(tick)}
-                                    x2={x2}
-                                    y2={yScale(tick)}
-                                    stroke="#eee"
-                                    strokeDasharray="3,2"
-                                />
-                            )
-                        }
-                    )}
-                </g>
-                {!isPortrait && (
-                    <SlopeChartAxis
-                        orient="left"
-                        column={yColumn}
-                        scale={yScale}
-                        scaleType={yScaleType}
-                        bounds={bounds}
+                <TooltipValueRange column={this.formatColumn} values={values} />
+            </Tooltip>
+        )
+    }
+
+    private makeMissingDataLabel(series: RawSlopeChartSeries): string {
+        const { displayName, start, end } = series
+
+        const startTime = this.formatColumn.formatTime(this.startTime)
+        const endTime = this.formatColumn.formatTime(this.endTime)
+
+        // mention the start or end value if they're missing
+        if (start?.value === undefined && end?.value === undefined) {
+            return `${displayName} (${startTime} & ${endTime})`
+        } else if (start?.value === undefined) {
+            return `${displayName} (${startTime})`
+        } else if (end?.value === undefined) {
+            return `${displayName} (${endTime})`
+        }
+
+        // if both values are given but the series shows up in the No Data
+        // section, then tolerance has been applied to one of the values
+        // in such a way that we decided not to render the slope after all
+        // (e.g. when the original times are too close to each other)
+        const isToleranceAppliedToStartValue =
+            start.originalTime !== this.startTime
+        const isToleranceAppliedToEndValue = end.originalTime !== this.endTime
+        if (isToleranceAppliedToStartValue && isToleranceAppliedToEndValue) {
+            return `${displayName} (${startTime} & ${endTime})`
+        } else if (isToleranceAppliedToStartValue) {
+            return `${displayName} (${startTime})`
+        } else if (isToleranceAppliedToEndValue) {
+            return `${displayName} (${endTime})`
+        }
+
+        return displayName
+    }
+
+    private renderNoDataSection(): React.ReactElement | void {
+        if (!this.showNoDataSection) return
+
+        const bounds = new Bounds(
+            this.innerBounds.right + this.sidebarMargin,
+            this.bounds.top,
+            this.sidebarWidth,
+            this.bounds.height
+        )
+        const seriesNames = this.noDataSeries.map((series) =>
+            this.makeMissingDataLabel(series)
+        )
+
+        return (
+            <NoDataSection
+                seriesNames={seriesNames}
+                bounds={bounds}
+                align={HorizontalAlign.right}
+                baseFontSize={this.fontSize}
+            />
+        )
+    }
+
+    private renderSlopes() {
+        return (
+            <g id={makeIdForHumanConsumption("slopes")}>
+                {this.renderSeries.map((series) => (
+                    <Slope
+                        key={series.seriesName}
+                        series={series}
+                        strokeWidth={this.lineStrokeWidth}
+                        outlineWidth={0.5}
+                        outlineStroke={this.backgroundColor}
                     />
-                )}
-                {!isPortrait && (
-                    <SlopeChartAxis
-                        orient="right"
-                        column={yColumn}
-                        scale={yScale}
-                        scaleType={yScaleType}
-                        bounds={bounds}
-                    />
-                )}
-                <line x1={x1} y1={y1} x2={x1} y2={y2} stroke="#333" />
-                <line x1={x2} y1={y1} x2={x2} y2={y2} stroke="#333" />
-                <Text
-                    x={x1}
-                    y={y1 + 10}
-                    textAnchor="middle"
-                    fill="#666"
-                    fontSize={fontSize}
-                >
-                    {xDomain[0].toString()}
-                </Text>
-                <Text
-                    x={x2}
-                    y={y1 + 10}
-                    textAnchor="middle"
-                    fill="#666"
-                    fontSize={fontSize}
-                >
-                    {xDomain[1].toString()}
-                </Text>
-                <g className="slopes">
-                    {this.renderGroups(this.backgroundGroups)}
-                    {this.renderGroups(this.foregroundGroups)}
-                </g>
+                ))}
             </g>
         )
     }
+
+    private renderInteractiveSlopes(): React.ReactElement {
+        return (
+            <g
+                ref={this.slopeAreaRef}
+                onMouseMove={this.onMouseMove}
+                onTouchMove={this.onMouseMove}
+                onTouchStart={this.onMouseMove}
+                onMouseLeave={this.onMouseLeave}
+            >
+                <rect
+                    x={this.startX}
+                    y={this.bounds.y}
+                    width={this.endX - this.startX}
+                    height={this.bounds.height}
+                    fillOpacity={0}
+                />
+                {this.renderSlopes()}
+            </g>
+        )
+    }
+
+    private renderYAxis(): React.ReactElement {
+        return (
+            <>
+                {!this.yAxis.hideGridlines && (
+                    <GridLines bounds={this.innerBounds} yAxis={this.yAxis} />
+                )}
+                {!this.yAxis.hideAxis && (
+                    <VerticalAxisComponent
+                        bounds={this.bounds}
+                        verticalAxis={this.yAxis}
+                        labelColor={this.manager.secondaryColorInStaticCharts}
+                    />
+                )}
+            </>
+        )
+    }
+
+    private renderXAxis() {
+        const { xDomain, startX, endX } = this
+
+        return (
+            <g id={makeIdForHumanConsumption("horizontal-axis")}>
+                <MarkX
+                    label={this.formatColumn.formatTime(xDomain[0])}
+                    x={startX}
+                    top={this.innerBounds.top}
+                    bottom={this.innerBounds.bottom}
+                    labelPadding={this.xLabelPadding}
+                    fontSize={this.yAxis.tickFontSize}
+                />
+                <MarkX
+                    label={this.formatColumn.formatTime(xDomain[1])}
+                    x={endX}
+                    top={this.innerBounds.top}
+                    bottom={this.innerBounds.bottom}
+                    labelPadding={this.xLabelPadding}
+                    fontSize={this.yAxis.tickFontSize}
+                />
+            </g>
+        )
+    }
+
+    private renderLineLegendRight(): React.ReactElement {
+        return (
+            <LineLegend
+                series={this.lineLegendSeriesRight}
+                x={this.xRange[1] + LINE_LEGEND_PADDING}
+                {...this.lineLegendPropsCommon}
+                {...this.lineLegendPropsRight}
+            />
+        )
+    }
+
+    private renderLineLegendLeft(): React.ReactElement {
+        const uniqYValues = uniq(
+            this.lineLegendSeriesLeft.map((series) => series.yValue)
+        )
+        const allSlopesStartFromZero =
+            uniqYValues.length === 1 && uniqYValues[0] === 0
+
+        // if all values have a start value of 0, show the 0-label only once
+        if (
+            // in relative mode, all slopes start from 0%
+            this.manager.isRelativeMode ||
+            allSlopesStartFromZero
+        )
+            return (
+                <Halo
+                    id="x-axis-zero-label"
+                    outlineColor={this.backgroundColor}
+                >
+                    <text
+                        x={this.startX}
+                        y={this.yAxis.place(0)}
+                        textAnchor="end"
+                        dx={-LINE_LEGEND_PADDING - 4}
+                        dy={dyFromAlign(VerticalAlign.middle)}
+                        fontSize={this.lineLegendFontSize}
+                    >
+                        {this.formatValue(0)}
+                    </text>
+                </Halo>
+            )
+
+        return (
+            <LineLegend
+                series={this.lineLegendSeriesLeft}
+                x={this.xRange[0] - LINE_LEGEND_PADDING}
+                {...this.lineLegendPropsCommon}
+                {...this.lineLegendPropsLeft}
+            />
+        )
+    }
+
+    private renderLineLegends(): React.ReactElement | void {
+        return (
+            <>
+                {this.renderLineLegendLeft()}
+                {this.renderLineLegendRight()}
+            </>
+        )
+    }
+
+    private renderInteractive(): React.ReactElement {
+        return (
+            <>
+                {this.renderYAxis()}
+                {this.renderXAxis()}
+                {this.renderInteractiveSlopes()}
+                {this.renderLineLegends()}
+                {this.renderNoDataSection()}
+                {this.tooltip}
+            </>
+        )
+    }
+
+    private renderStatic(): React.ReactElement {
+        return (
+            <>
+                {this.renderYAxis()}
+                {this.renderXAxis()}
+                {this.renderSlopes()}
+                {this.renderLineLegends()}
+            </>
+        )
+    }
+
+    render() {
+        if (this.failMessage)
+            return (
+                <>
+                    {this.renderYAxis()}
+                    <NoDataModal
+                        manager={this.manager}
+                        bounds={this.props.bounds}
+                        message={this.failMessage}
+                    />
+                </>
+            )
+
+        return this.manager.isStatic
+            ? this.renderStatic()
+            : this.renderInteractive()
+    }
+}
+
+interface SlopeProps {
+    series: RenderSlopeChartSeries
+    dotRadius?: number
+    strokeWidth?: number
+    outlineWidth?: number
+    outlineStroke?: string
+}
+
+function Slope({
+    series,
+    dotRadius = 2.5,
+    strokeWidth = 2,
+    outlineWidth = 0.5,
+    outlineStroke = "#fff",
+}: SlopeProps) {
+    const { seriesName, startPoint, endPoint, hover, focus } = series
+
+    const showOutline = !focus.background || hover.active
+    const opacity =
+        hover.background && !focus.background ? GRAPHER_OPACITY_MUTE : 1
+    const color =
+        !focus.background || hover.active
+            ? series.color
+            : NON_FOCUSED_LINE_COLOR
+    const lineWidth =
+        hover.background || focus.background ? 0.66 * strokeWidth : strokeWidth
+
+    return (
+        <g id={makeIdForHumanConsumption(seriesName)} className="slope">
+            {showOutline && (
+                <LineWithDots
+                    startPoint={startPoint}
+                    endPoint={endPoint}
+                    radius={dotRadius}
+                    color={outlineStroke}
+                    lineWidth={lineWidth + 2 * outlineWidth}
+                />
+            )}
+            <LineWithDots
+                startPoint={startPoint}
+                endPoint={endPoint}
+                radius={dotRadius}
+                color={color}
+                lineWidth={lineWidth}
+                opacity={opacity}
+            />
+        </g>
+    )
+}
+
+/**
+ * Line with two dots at the ends, drawn as a single path element.
+ */
+function LineWithDots({
+    startPoint,
+    endPoint,
+    radius,
+    color,
+    lineWidth = 2,
+    opacity = 1,
+}: {
+    startPoint: PointVector
+    endPoint: PointVector
+    radius: number
+    color: string
+    lineWidth?: number
+    opacity?: number
+}): React.ReactElement {
+    const startDotPath = makeCirclePath(startPoint.x, startPoint.y, radius)
+    const endDotPath = makeCirclePath(endPoint.x, endPoint.y, radius)
+
+    const linePath = makeLinePath(
+        startPoint.x,
+        startPoint.y,
+        endPoint.x,
+        endPoint.y
+    )
+
+    return (
+        <path
+            d={`${startDotPath} ${endDotPath} ${linePath}`}
+            fill={color}
+            stroke={color}
+            strokeWidth={lineWidth.toFixed(1)}
+            opacity={opacity}
+        />
+    )
+}
+
+interface GridLinesProps {
+    bounds: Bounds
+    yAxis: VerticalAxis
+}
+
+function GridLines({ bounds, yAxis }: GridLinesProps) {
+    return (
+        <g id={makeIdForHumanConsumption("grid-lines")}>
+            {yAxis.tickLabels.map((tick) => {
+                const y = yAxis.place(tick.value)
+                return (
+                    <line
+                        id={makeIdForHumanConsumption(tick.formattedValue)}
+                        key={tick.formattedValue}
+                        x1={bounds.left + yAxis.width}
+                        y1={y}
+                        x2={bounds.right}
+                        y2={y}
+                        stroke="#ddd"
+                        strokeDasharray="3,2"
+                    />
+                )
+            })}
+        </g>
+    )
+}
+
+function MarkX({
+    label,
+    x,
+    top,
+    bottom,
+    labelPadding,
+    fontSize,
+}: {
+    label: string
+    x: number
+    top: number
+    bottom: number
+    labelPadding: number
+    fontSize: number
+}) {
+    return (
+        <>
+            <line
+                id={makeIdForHumanConsumption(label)}
+                x1={x}
+                y1={top}
+                x2={x}
+                y2={bottom}
+                stroke="#999"
+            />
+            <text
+                x={x}
+                y={bottom + labelPadding}
+                dy={dyFromAlign(VerticalAlign.bottom)}
+                textAnchor="middle"
+                fill={GRAPHER_DARK_TEXT}
+                fontSize={fontSize}
+            >
+                {label}
+            </text>
+        </>
+    )
+}
+
+const makeCirclePath = (centerX: number, centerY: number, radius: number) => {
+    const topX = centerX
+    const topY = centerY - radius
+    return `M ${topX},${topY} A ${radius},${radius} 0 1,1 ${topX - 0.0001},${topY}`
+}
+
+const makeLinePath = (x1: number, y1: number, x2: number, y2: number) => {
+    return `M ${x1},${y1} L ${x2},${y2}`
 }

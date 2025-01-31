@@ -23,13 +23,28 @@ import {
     PrimitiveType,
     imemo,
     ToleranceStrategy,
+    IndicatorTitleWithFragments,
+    max,
+    min,
+    capitalize,
 } from "@ourworldindata/utils"
 import { CoreTable } from "./CoreTable.js"
-import { Time, JsTypes, CoreValueType } from "./CoreTableConstants.js"
-import { ColumnTypeNames, CoreColumnDef } from "./CoreColumnDef.js"
-import { EntityName, OwidVariableRow } from "./OwidTableConstants.js" // todo: remove. Should not be on CoreTable
-import { ErrorValue, ErrorValueTypes, isNotErrorValue } from "./ErrorValues.js"
-import { getOriginalTimeColumnSlug } from "./OwidTableUtil.js"
+import {
+    Time,
+    JsTypes,
+    CoreValueType,
+    ColumnTypeNames,
+    CoreColumnDef,
+    EntityName,
+    OwidVariableRow,
+    ErrorValue,
+    OwidVariableRoundingMode,
+} from "@ourworldindata/types"
+import { ErrorValueTypes, isNotErrorValue } from "./ErrorValues.js"
+import {
+    getOriginalTimeColumnSlug,
+    getOriginalValueColumnSlug,
+} from "./OwidTableUtil.js"
 
 interface ColumnSummary {
     numErrorValues: number
@@ -63,6 +78,10 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
 
     @imemo get isMissing(): boolean {
         return this instanceof MissingColumn
+    }
+
+    @imemo get hasNumberFormatting(): boolean {
+        return this instanceof AbstractColumnWithNumberFormatting
     }
 
     get sum(): number | undefined {
@@ -208,12 +227,31 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
         return this.originalTimeColumn.formatValue(time)
     }
 
+    @imemo get roundingMode(): OwidVariableRoundingMode {
+        return (
+            this.display?.roundingMode ?? OwidVariableRoundingMode.decimalPlaces
+        )
+    }
+
+    @imemo get roundsToFixedDecimals(): boolean {
+        return this.roundingMode === OwidVariableRoundingMode.decimalPlaces
+    }
+
+    @imemo get roundsToSignificantFigures(): boolean {
+        return this.roundingMode === OwidVariableRoundingMode.significantFigures
+    }
+
     @imemo get numDecimalPlaces(): number {
         return this.display?.numDecimalPlaces ?? 2
     }
 
+    @imemo get numSignificantFigures(): number {
+        return this.display?.numSignificantFigures ?? 3
+    }
+
     @imemo get unit(): string | undefined {
-        return this.display?.unit ?? this.def.unit
+        const unit = this.display?.unit ?? this.def.unit
+        return unit?.trim()
     }
 
     @imemo get shortUnit(): string | undefined {
@@ -261,8 +299,37 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
         return this.def.name ?? this.def.slug
     }
 
+    @imemo get nonEmptyName(): string {
+        return this.def.name || this.def.slug
+    }
+
     @imemo get displayName(): string {
-        return this.display?.name ?? this.name ?? ""
+        return (
+            this.display?.name ??
+            // this is a bit of an unusual fallback - if display.name is not given, titlePublic is the next best thing before name
+            this.def.presentation?.titlePublic ??
+            this.name ??
+            ""
+        )
+    }
+
+    @imemo get nonEmptyDisplayName(): string {
+        return (
+            this.display?.name ||
+            // this is a bit of an unusual fallback - if display.name is not given, titlePublic is the next best thing before name
+            this.def.presentation?.titlePublic ||
+            this.nonEmptyName
+        )
+    }
+
+    @imemo get titlePublicOrDisplayName(): IndicatorTitleWithFragments {
+        return this.def.presentation?.titlePublic
+            ? {
+                  title: this.def.presentation?.titlePublic,
+                  attributionShort: this.def.presentation?.attributionShort,
+                  titleVariant: this.def.presentation?.titleVariant,
+              }
+            : { title: this.display?.name || this.name || "" }
     }
 
     @imemo get datasetId(): number | undefined {
@@ -323,11 +390,17 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
     }
 
     @imemo get uniqValues(): JS_TYPE[] {
-        return uniq(this.values)
+        const set = this.uniqValuesAsSet
+
+        // Turn into array, faster than spread operator
+        const arr = new Array(set.size)
+        let i = 0
+        set.forEach((val) => (arr[i++] = val))
+        return arr
     }
 
     @imemo get uniqValuesAsSet(): Set<JS_TYPE> {
-        return new Set(this.uniqValues)
+        return new Set(this.values)
     }
 
     /**
@@ -368,6 +441,19 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
         ) as number[]
     }
 
+    @imemo get originalValueColumnSlug(): string | undefined {
+        return getOriginalValueColumnSlug(this.table, this.slug)
+    }
+
+    @imemo get originalValues(): JS_TYPE[] {
+        const { originalValueColumnSlug } = this
+        if (!originalValueColumnSlug) return []
+        return this.table.getValuesAtIndices(
+            originalValueColumnSlug,
+            this.validRowIndices
+        ) as JS_TYPE[]
+    }
+
     /**
      * True if the column has only 1 unique value. ErrorValues are counted as values, so
      * something like [DivideByZeroError, 2, 2] would not be constant.
@@ -394,7 +480,7 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
     }
 
     @imemo get numUniqs(): number {
-        return this.uniqValues.length
+        return this.uniqValuesAsSet.size
     }
 
     @imemo get valuesAscending(): JS_TYPE[] {
@@ -426,12 +512,12 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
 
     // todo: remove. should not be on coretable
     @imemo get maxTime(): Time {
-        return last(this.uniqTimesAsc) as Time
+        return max(this.allTimes) as Time
     }
 
     // todo: remove. should not be on coretable
     @imemo get minTime(): Time {
-        return this.uniqTimesAsc[0]
+        return min(this.allTimes) as Time
     }
 
     // todo: remove? Should not be on CoreTable
@@ -450,15 +536,19 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
     // todo: remove? Should not be on CoreTable
     // assumes table is sorted by time
     @imemo get owidRows(): OwidVariableRow<JS_TYPE>[] {
-        const times = this.originalTimes
-        const values = this.values
         const entities = this.allEntityNames
-        return range(0, times.length).map((index) => {
-            return {
+        const times = this.allTimes
+        const values = this.values
+        const originalTimes = this.originalTimes
+        const originalValues = this.originalValues
+        return range(0, originalTimes.length).map((index) => {
+            return omitUndefinedValues({
                 entityName: entities[index],
                 time: times[index],
                 value: values[index],
-            }
+                originalTime: originalTimes[index],
+                originalValue: originalValues[index],
+            })
         })
     }
 
@@ -476,6 +566,23 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
     }
 
     // todo: remove? Should not be on CoreTable
+    @imemo get owidRowByEntityNameAndTime(): Map<
+        EntityName,
+        Map<Time, OwidVariableRow<JS_TYPE>>
+    > {
+        const valueByEntityNameAndTime = new Map<
+            EntityName,
+            Map<Time, OwidVariableRow<JS_TYPE>>
+        >()
+        this.owidRows.forEach((row) => {
+            if (!valueByEntityNameAndTime.has(row.entityName))
+                valueByEntityNameAndTime.set(row.entityName, new Map())
+            valueByEntityNameAndTime.get(row.entityName)!.set(row.time, row)
+        })
+        return valueByEntityNameAndTime
+    }
+
+    // todo: remove? Should not be on CoreTable
     // NOTE: this uses the original times, so any tolerance is effectively unapplied.
     @imemo get valueByEntityNameAndOriginalTime(): Map<
         EntityName,
@@ -490,7 +597,7 @@ export abstract class AbstractCoreColumn<JS_TYPE extends PrimitiveType> {
                 valueByEntityNameAndTime.set(row.entityName, new Map())
             valueByEntityNameAndTime
                 .get(row.entityName)!
-                .set(row.time, row.value)
+                .set(row.originalTime, row.value)
         })
         return valueByEntityNameAndTime
     }
@@ -537,15 +644,29 @@ class BooleanColumn extends AbstractCoreColumn<boolean> {
     }
 }
 
+class OrdinalColumn extends CategoricalColumn {
+    @imemo get allowedValuesSorted(): string[] | undefined {
+        return this.def.sort
+    }
+
+    @imemo get sortedUniqNonEmptyStringVals(): string[] {
+        return this.allowedValuesSorted
+            ? this.allowedValuesSorted
+            : super.sortedUniqNonEmptyStringVals
+    }
+}
+
 abstract class AbstractColumnWithNumberFormatting<
-    T extends PrimitiveType
+    T extends PrimitiveType,
 > extends AbstractCoreColumn<T> {
     jsType = JsTypes.number
 
     formatValue(value: unknown, options?: TickFormattingOptions): string {
         if (isNumber(value)) {
             return formatValue(value, {
+                roundingMode: this.roundingMode,
                 numDecimalPlaces: this.numDecimalPlaces,
+                numSignificantFigures: this.numSignificantFigures,
                 ...options,
             })
         }
@@ -664,19 +785,29 @@ class IntegerColumn extends NumericColumn {
 class CurrencyColumn extends NumericColumn {
     formatValue(value: unknown, options?: TickFormattingOptions): string {
         return super.formatValue(value, {
+            roundingMode: OwidVariableRoundingMode.decimalPlaces,
             numDecimalPlaces: 0,
-            unit: "$",
+            unit: this.shortUnit,
             ...options,
         })
     }
+
+    @imemo get shortUnit(): string {
+        return "$"
+    }
 }
+
 // Expects 50% to be 50
 class PercentageColumn extends NumericColumn {
     formatValue(value: number, options?: TickFormattingOptions): string {
         return super.formatValue(value, {
-            unit: "%",
+            unit: this.shortUnit,
             ...options,
         })
+    }
+
+    @imemo get shortUnit(): string {
+        return "%"
     }
 }
 
@@ -707,6 +838,10 @@ export abstract class TimeColumn extends AbstractCoreColumn<number> {
 
     abstract preposition: string
 
+    @imemo get displayName(): string {
+        return capitalize(this.name)
+    }
+
     formatTime(time: number): string {
         return this.formatValue(time)
     }
@@ -728,16 +863,35 @@ class YearColumn extends TimeColumn {
 class DayColumn extends TimeColumn {
     preposition = "on"
 
+    // We cache these values because running `formatDay` thousands of times takes some time.
+    static formatValueCache = new Map<number, string>()
     formatValue(value: number): string {
-        return formatDay(value)
+        if (!DayColumn.formatValueCache.has(value)) {
+            const formatted = formatDay(value)
+            DayColumn.formatValueCache.set(value, formatted)
+            return formatted
+        }
+        return DayColumn.formatValueCache.get(value)!
     }
 
+    static formatValueForMobileCache = new Map<number, string>()
     formatValueForMobile(value: number): string {
-        return formatDay(value, { format: "MMM D, 'YY" })
+        if (!DayColumn.formatValueForMobileCache.has(value)) {
+            const formatted = formatDay(value, { format: "MMM D, 'YY" })
+            DayColumn.formatValueForMobileCache.set(value, formatted)
+            return formatted
+        }
+        return DayColumn.formatValueForMobileCache.get(value)!
     }
 
+    static formatForCsvCache = new Map<number, string>()
     formatForCsv(value: number): string {
-        return formatDay(value, { format: "YYYY-MM-DD" })
+        if (!DayColumn.formatForCsvCache.has(value)) {
+            const formatted = formatDay(value, { format: "YYYY-MM-DD" })
+            DayColumn.formatForCsvCache.set(value, formatted)
+            return formatted
+        }
+        return DayColumn.formatForCsvCache.get(value)!
     }
 }
 
@@ -803,6 +957,7 @@ export const ColumnTypeMap = {
     String: StringColumn,
     SeriesAnnotation: SeriesAnnotationColumn,
     Categorical: CategoricalColumn,
+    Ordinal: OrdinalColumn,
     Region: RegionColumn,
     Continent: ContinentColumn,
     NumberOrString: NumberOrStringColumn,
@@ -832,7 +987,7 @@ export const ColumnTypeMap = {
 // Keep this in. This is used as a compile-time check that ColumnTypeMap covers all
 // column names defined in ColumnTypeNames, since that is quite difficult to ensure
 // otherwise without losing inferred type information.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 const _ColumnTypeMap: {
     [key in ColumnTypeNames]: unknown
 } = ColumnTypeMap

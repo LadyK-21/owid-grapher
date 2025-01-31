@@ -1,9 +1,9 @@
-import React from "react"
+import { Component, Fragment } from "react"
 import { action } from "mobx"
 import { observer } from "mobx-react"
 import { SketchPicker } from "react-color"
 
-import { lastOfNonEmptyArray } from "@ourworldindata/utils"
+import { ColorSchemeName, lastOfNonEmptyArray } from "@ourworldindata/utils"
 import {
     ColorSchemes,
     getColorNameOwidDistinctAndSemanticPalettes,
@@ -16,7 +16,7 @@ interface ColorpickerProps {
 }
 
 @observer
-export class Colorpicker extends React.Component<ColorpickerProps> {
+export class Colorpicker extends Component<ColorpickerProps> {
     @action.bound onColor(color: string) {
         if (color === "") {
             this.props.onColor(undefined)
@@ -27,8 +27,8 @@ export class Colorpicker extends React.Component<ColorpickerProps> {
 
     render() {
         const scheme = this.props.showLineChartColors
-            ? ColorSchemes["OwidDistinctLines"]
-            : ColorSchemes["owid-distinct"]
+            ? ColorSchemes.get(ColorSchemeName.OwidDistinctLines)
+            : ColorSchemes.get(ColorSchemeName["owid-distinct"])
 
         const availableColors: string[] = lastOfNonEmptyArray(scheme.colorSets)
         const colorNameLookupFn = (color: string) => {
@@ -39,7 +39,7 @@ export class Colorpicker extends React.Component<ColorpickerProps> {
         }
 
         return (
-            <React.Fragment>
+            <Fragment>
                 <SketchPicker
                     disableAlpha
                     presetColors={availableColors.map((color) => ({
@@ -49,7 +49,7 @@ export class Colorpicker extends React.Component<ColorpickerProps> {
                     color={this.props.color}
                     onChange={(color) => this.onColor(color.hex)}
                 />
-            </React.Fragment>
+            </Fragment>
         )
     }
 }

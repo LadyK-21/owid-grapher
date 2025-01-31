@@ -51,6 +51,7 @@
             align-items: center;
             > li {
                 list-style-type: none;
+                white-space: nowrap;
                 > a,
                 .SiteNavigationToggle__button {
                     @include body-3-medium;
@@ -100,6 +101,7 @@
     .site-search-cta {
         display: flex;
         flex-direction: row;
+        flex-grow: 1;
         align-items: center;
         justify-content: end;
         height: $search-cta-height;
@@ -150,7 +152,7 @@
                 position: absolute;
                 top: calc(100% + $header-border-height);
                 right: 0;
-                width: 411px;
+                width: 411px; // see popover-box-styles mixin
                 @include sm-only {
                     margin-right: -16px;
                     width: 100vw;
@@ -172,12 +174,15 @@
             padding: 0 24px;
             background-color: $vermillion;
             &:hover {
-                background-color: #b40000;
+                background-color: $accent-vermillion;
             }
         }
     }
 
     &.search-active {
+        .site-primary-links {
+            display: none;
+        }
         @include sm-only {
             .site-logos {
                 display: none;
@@ -187,35 +192,23 @@
             .site-search-cta {
                 flex: 1 1 100%;
             }
-            .site-primary-links {
-                display: none;
-            }
         }
     }
+}
+.site-navigation__giving {
+    @include body-3-medium;
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 2px 0 5px;
+    color: $white;
+    background-color: $vermillion;
 
-    .SearchResults {
-        position: absolute;
-        top: calc(100% + $header-border-height);
-        height: calc(100vh - $header-height-sm);
-        left: 0;
-        margin: 0 -16px;
-        padding: 0 16px 24px;
-        max-width: 100vw; // force chart to resize and not overflow when rotating
-        /* Needs to go over the charts */
-        z-index: $zindex-search-overlay;
-        overflow-y: scroll;
-        overscroll-behavior: contain;
-        background: white;
-        @include sm-up {
-            margin: 0 #{-$padding-x-sm};
-            padding-left: $padding-x-sm;
-            padding-right: $padding-x-sm;
-        }
-        @include md-up {
-            height: calc(100vh - $header-height-md);
-            width: calc(100% + #{2 * $padding-x-md});
-            margin: 0 #{-$padding-x-md};
-            padding: 0 $padding-x-md 40px;
-        }
+    &:hover {
+        text-decoration: underline;
+    }
+
+    @include sm-only {
+        display: none;
     }
 }

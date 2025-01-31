@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { action, computed } from "mobx"
 import { observer } from "mobx-react"
 import {
@@ -7,7 +7,6 @@ import {
     min,
     max,
     last,
-    flatten,
     sum,
     dyFromAlign,
     removeAllWhitespace,
@@ -15,15 +14,23 @@ import {
     Color,
     HorizontalAlign,
     VerticalAlign,
-    TextWrap,
+    makeIdForHumanConsumption,
 } from "@ourworldindata/utils"
+import { TextWrap } from "@ourworldindata/components"
 import {
     ColorScaleBin,
     NumericBin,
     CategoricalBin,
 } from "../color/ColorScaleBin"
-import { BASE_FONT_SIZE } from "../core/GrapherConstants"
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_FONT_SCALE_12_8,
+    GRAPHER_FONT_SCALE_14,
+    GRAPHER_OPACITY_MUTE,
+} from "../core/GrapherConstants"
 import { darkenColorForLine } from "../color/ColorUtils"
+import { OWID_NON_FOCUSED_GRAY } from "../color/ColorConstants"
 
 export interface PositionedBin {
     x: number
@@ -44,6 +51,7 @@ interface CategoricalMark {
     x: number
     y: number
     rectSize: number
+    width: number
     label: {
         text: string
         bounds: Bounds
@@ -84,6 +92,11 @@ export interface HorizontalColorLegendManager {
     equalSizeBins?: boolean
     onLegendMouseLeave?: () => void
     onLegendMouseOver?: (d: ColorScaleBin) => void
+    onLegendClick?: (d: ColorScaleBin) => void
+    activeColors?: string[] // inactive colors are grayed out
+    focusColors?: string[] // focused colors are bolded
+    hoverColors?: string[] // non-hovered colors are muted
+    isStatic?: boolean
 }
 
 const DEFAULT_NUMERIC_BIN_SIZE = 10
@@ -179,7 +192,7 @@ export class HorizontalNumericColorLegend extends HorizontalColorLegend {
     }
 
     @computed private get tickFontSize(): number {
-        return 0.75 * this.fontSize
+        return GRAPHER_FONT_SCALE_12 * this.fontSize
     }
 
     @computed private get itemMargin(): number {
@@ -357,7 +370,7 @@ export class HorizontalNumericColorLegend extends HorizontalColorLegend {
     }
 
     @computed private get legendTitleFontSize(): number {
-        return this.fontSize * 0.85
+        return this.fontSize * GRAPHER_FONT_SCALE_14
     }
 
     @computed private get legendTitle(): TextWrap | undefined {
@@ -532,7 +545,7 @@ export class HorizontalNumericColorLegend extends HorizontalColorLegend {
         )
     }
 
-    render(): JSX.Element {
+    render(): React.ReactElement {
         const {
             manager,
             numericLabels,
@@ -547,81 +560,96 @@ export class HorizontalNumericColorLegend extends HorizontalColorLegend {
         const bottomY = this.numericLegendY + height
 
         return (
-            <g ref={this.base} className="numericColorLegend">
-                {numericLabels.map((label, index) => (
-                    <line
-                        key={index}
-                        x1={label.bounds.x + label.bounds.width / 2}
-                        y1={bottomY - numericBinSize}
-                        x2={label.bounds.x + label.bounds.width / 2}
-                        y2={bottomY + label.bounds.y + label.bounds.height}
-                        // if we use a light color for stroke (e.g. white), we want it to stay
-                        // "invisible", except for raised labels, where we want *some* contrast.
-                        stroke={
-                            label.raised ? darkenColorForLine(stroke) : stroke
-                        }
-                        strokeWidth={strokeWidth}
-                    />
-                ))}
-                {sortBy(
-                    positionedBins.map((positionedBin, index) => {
-                        const bin = positionedBin.bin
-                        const isFocus =
-                            numericFocusBracket &&
-                            bin.equals(numericFocusBracket)
-                        return (
-                            <NumericBinRect
-                                key={index}
-                                x={positionedBin.x}
-                                y={bottomY - numericBinSize}
-                                width={positionedBin.width}
-                                height={numericBinSize}
-                                fill={
-                                    bin.patternRef
-                                        ? `url(#${bin.patternRef})`
-                                        : bin.color
-                                }
-                                opacity={manager.legendOpacity} // defaults to undefined which removes the prop
-                                stroke={isFocus ? FOCUS_BORDER_COLOR : stroke}
-                                strokeWidth={isFocus ? 2 : strokeWidth}
-                                isOpenLeft={
-                                    bin instanceof NumericBin
-                                        ? bin.props.isOpenLeft
-                                        : false
-                                }
-                                isOpenRight={
-                                    bin instanceof NumericBin
-                                        ? bin.props.isOpenRight
-                                        : false
-                                }
-                            />
-                        )
-                    }),
-                    (rect) => rect.props["strokeWidth"]
-                )}
-                {numericLabels.map((label, index) => (
-                    <text
-                        key={index}
-                        x={label.bounds.x}
-                        y={bottomY + label.bounds.y}
-                        // we can't use dominant-baseline to do proper alignment since our svg-to-png library Sharp
-                        // doesn't support that (https://github.com/lovell/sharp/issues/1996), so we'll have to make
-                        // do with some rough positioning.
-                        dy={dyFromAlign(VerticalAlign.bottom)}
-                        fontSize={label.fontSize}
-                        fill={this.legendTextColor}
-                    >
-                        {label.text}
-                    </text>
-                ))}
-                {this.legendTitle?.render(
+            <g
+                ref={this.base}
+                id={makeIdForHumanConsumption("numeric-color-legend")}
+                className="numericColorLegend"
+            >
+                <g id={makeIdForHumanConsumption("lines")}>
+                    {numericLabels.map((label, index) => (
+                        <line
+                            key={index}
+                            id={makeIdForHumanConsumption(label.text)}
+                            x1={label.bounds.x + label.bounds.width / 2}
+                            y1={bottomY - numericBinSize}
+                            x2={label.bounds.x + label.bounds.width / 2}
+                            y2={bottomY + label.bounds.y + label.bounds.height}
+                            // if we use a light color for stroke (e.g. white), we want it to stay
+                            // "invisible", except for raised labels, where we want *some* contrast.
+                            stroke={
+                                label.raised
+                                    ? darkenColorForLine(stroke)
+                                    : stroke
+                            }
+                            strokeWidth={strokeWidth}
+                        />
+                    ))}
+                </g>
+                <g id={makeIdForHumanConsumption("swatches")}>
+                    {sortBy(
+                        positionedBins.map((positionedBin, index) => {
+                            const bin = positionedBin.bin
+                            const isFocus =
+                                numericFocusBracket &&
+                                bin.equals(numericFocusBracket)
+                            return (
+                                <NumericBinRect
+                                    key={index}
+                                    x={positionedBin.x}
+                                    y={bottomY - numericBinSize}
+                                    width={positionedBin.width}
+                                    height={numericBinSize}
+                                    fill={
+                                        bin.patternRef
+                                            ? `url(#${bin.patternRef})`
+                                            : bin.color
+                                    }
+                                    opacity={manager.legendOpacity} // defaults to undefined which removes the prop
+                                    stroke={
+                                        isFocus ? FOCUS_BORDER_COLOR : stroke
+                                    }
+                                    strokeWidth={isFocus ? 2 : strokeWidth}
+                                    isOpenLeft={
+                                        bin instanceof NumericBin
+                                            ? bin.props.isOpenLeft
+                                            : false
+                                    }
+                                    isOpenRight={
+                                        bin instanceof NumericBin
+                                            ? bin.props.isOpenRight
+                                            : false
+                                    }
+                                />
+                            )
+                        }),
+                        (rect) => rect.props["strokeWidth"]
+                    )}
+                </g>
+                <g id={makeIdForHumanConsumption("labels")}>
+                    {numericLabels.map((label, index) => (
+                        <text
+                            key={index}
+                            x={label.bounds.x}
+                            y={bottomY + label.bounds.y}
+                            // we can't use dominant-baseline to do proper alignment since our svg-to-png library Sharp
+                            // doesn't support that (https://github.com/lovell/sharp/issues/1996), so we'll have to make
+                            // do with some rough positioning.
+                            dy={dyFromAlign(VerticalAlign.bottom)}
+                            fontSize={label.fontSize}
+                            fill={this.legendTextColor}
+                        >
+                            {label.text}
+                        </text>
+                    ))}
+                </g>
+                {this.legendTitle?.renderSVG(
                     this.x,
                     // Align legend title baseline with bottom of color bins
                     this.numericLegendY +
                         height -
                         this.legendTitle.height +
                         this.legendTitleFontSize * 0.2,
-                    { fill: this.legendTextColor }
+                    { textProps: { fill: this.legendTextColor } }
                 )}
             </g>
         )
@@ -673,6 +701,9 @@ const NumericBinRect = (props: NumericBinRectProps) => {
 
 @observer
 export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
+    private rectPadding = 5
+    private markPadding = 5
+
     @computed get width(): number {
         return this.manager.legendWidth ?? this.manager.legendMaxWidth ?? 200
     }
@@ -686,10 +717,8 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
     }
 
     @computed private get markLines(): MarkLine[] {
-        const fontSize = this.fontSize * 0.8
+        const fontSize = this.fontSize * GRAPHER_FONT_SCALE_12_8
         const rectSize = this.fontSize * 0.75
-        const rectPadding = 5
-        const markPadding = 5
 
         const lines: MarkLine[] = []
         let marks: CategoricalMark[] = []
@@ -698,13 +727,19 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
         this.visibleCategoricalBins.forEach((bin) => {
             const labelBounds = Bounds.forText(bin.text, { fontSize })
             const markWidth =
-                rectSize + rectPadding + labelBounds.width + markPadding
+                rectSize +
+                this.rectPadding +
+                labelBounds.width +
+                this.markPadding
 
             if (xOffset + markWidth > this.width && marks.length > 0) {
-                lines.push({ totalWidth: xOffset - markPadding, marks: marks })
+                lines.push({
+                    totalWidth: xOffset - this.markPadding,
+                    marks: marks,
+                })
                 marks = []
                 xOffset = 0
-                yOffset += rectSize + rectPadding
+                yOffset += rectSize + this.rectPadding
             }
 
             const markX = xOffset
@@ -713,7 +748,7 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
             const label = {
                 text: bin.text,
                 bounds: labelBounds.set({
-                    x: markX + rectSize + rectPadding,
+                    x: markX + rectSize + this.rectPadding,
                     y: markY + rectSize / 2,
                 }),
                 fontSize,
@@ -722,6 +757,7 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
             marks.push({
                 x: markX,
                 y: markY,
+                width: markWidth,
                 rectSize,
                 label,
                 bin,
@@ -731,7 +767,7 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
         })
 
         if (marks.length > 0)
-            lines.push({ totalWidth: xOffset - markPadding, marks: marks })
+            lines.push({ totalWidth: xOffset - this.markPadding, marks: marks })
 
         return lines
     }
@@ -756,8 +792,8 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
                 align === HorizontalAlign.center
                     ? (width - line.totalWidth) / 2
                     : align === HorizontalAlign.right
-                    ? width - line.totalWidth
-                    : 0
+                      ? width - line.totalWidth
+                      : 0
             line.marks.forEach((mark) => {
                 mark.x += xShift
                 mark.label.bounds = mark.label.bounds.set({
@@ -766,67 +802,150 @@ export class HorizontalCategoricalColorLegend extends HorizontalColorLegend {
             })
         })
 
-        return flatten(lines.map((l) => l.marks))
+        return lines.flatMap((l) => l.marks)
     }
 
     @computed get height(): number {
         return max(this.marks.map((mark) => mark.y + mark.rectSize)) ?? 0
     }
 
-    render(): JSX.Element {
+    renderLabels(): React.ReactElement {
+        const { manager, marks } = this
+        const { focusColors, hoverColors = [] } = manager
+
+        return (
+            <g id={makeIdForHumanConsumption("labels")}>
+                {marks.map((mark, index) => {
+                    const isFocus = focusColors?.includes(mark.bin.color)
+                    const isNotHovered =
+                        hoverColors.length > 0 &&
+                        !hoverColors.includes(mark.bin.color)
+
+                    return (
+                        <text
+                            key={`${mark.label}-${index}`}
+                            x={this.legendX + mark.label.bounds.x}
+                            y={this.categoryLegendY + mark.label.bounds.y}
+                            // we can't use dominant-baseline to do proper alignment since our svg-to-png library Sharp
+                            // doesn't support that (https://github.com/lovell/sharp/issues/1996), so we'll have to make
+                            // do with some rough positioning.
+                            dy={dyFromAlign(VerticalAlign.middle)}
+                            fontSize={mark.label.fontSize}
+                            fontWeight={isFocus ? "bold" : undefined}
+                            opacity={isNotHovered ? GRAPHER_OPACITY_MUTE : 1}
+                        >
+                            {mark.label.text}
+                        </text>
+                    )
+                })}
+            </g>
+        )
+    }
+
+    renderSwatches(): React.ReactElement {
+        const { manager, marks } = this
+        const { activeColors, hoverColors = [] } = manager
+
+        return (
+            <g id={makeIdForHumanConsumption("swatches")}>
+                {marks.map((mark, index) => {
+                    const isActive = activeColors?.includes(mark.bin.color)
+                    const isHovered = hoverColors.includes(mark.bin.color)
+                    const isNotHovered =
+                        hoverColors.length > 0 &&
+                        !hoverColors.includes(mark.bin.color)
+
+                    const color = mark.bin.patternRef
+                        ? `url(#${mark.bin.patternRef})`
+                        : mark.bin.color
+
+                    const fill =
+                        isHovered || isActive || activeColors === undefined
+                            ? color
+                            : OWID_NON_FOCUSED_GRAY
+
+                    const opacity = isNotHovered
+                        ? GRAPHER_OPACITY_MUTE
+                        : manager.legendOpacity
+
+                    return (
+                        <rect
+                            id={makeIdForHumanConsumption(mark.label.text)}
+                            key={`${mark.label}-${index}`}
+                            x={this.legendX + mark.x}
+                            y={this.categoryLegendY + mark.y}
+                            width={mark.rectSize}
+                            height={mark.rectSize}
+                            fill={fill}
+                            stroke={manager.categoricalBinStroke}
+                            strokeWidth={0.4}
+                            opacity={opacity}
+                        />
+                    )
+                })}
+            </g>
+        )
+    }
+
+    renderInteractiveElements(): React.ReactElement {
         const { manager, marks } = this
 
         return (
             <g>
-                <g className="categoricalColorLegend">
-                    {marks.map((mark, index) => {
-                        return (
-                            <g
-                                key={index}
-                                onMouseOver={(): void =>
-                                    manager.onLegendMouseOver
-                                        ? manager.onLegendMouseOver(mark.bin)
-                                        : undefined
+                {marks.map((mark, index) => {
+                    const mouseOver = (): void =>
+                        manager.onLegendMouseOver
+                            ? manager.onLegendMouseOver(mark.bin)
+                            : undefined
+                    const mouseLeave = (): void =>
+                        manager.onLegendMouseLeave
+                            ? manager.onLegendMouseLeave()
+                            : undefined
+                    const click = manager.onLegendClick
+                        ? (): void => manager.onLegendClick?.(mark.bin)
+                        : undefined
+
+                    const cursor = click ? "pointer" : "default"
+
+                    return (
+                        <g
+                            key={`${mark.label}-${index}`}
+                            onMouseOver={mouseOver}
+                            onMouseLeave={mouseLeave}
+                            onClick={click}
+                            style={{ cursor }}
+                        >
+                            {/* for hover interaction */}
+                            <rect
+                                x={this.legendX + mark.x}
+                                y={
+                                    this.categoryLegendY +
+                                    mark.y -
+                                    this.rectPadding / 2
                                 }
-                                onMouseLeave={(): void =>
-                                    manager.onLegendMouseLeave
-                                        ? manager.onLegendMouseLeave()
-                                        : undefined
+                                height={mark.rectSize + this.rectPadding}
+                                width={
+                                    mark.width + SPACE_BETWEEN_CATEGORICAL_BINS
                                 }
-                            >
-                                <rect
-                                    x={this.legendX + mark.x}
-                                    y={this.categoryLegendY + mark.y}
-                                    width={mark.rectSize}
-                                    height={mark.rectSize}
-                                    fill={
-                                        mark.bin.patternRef
-                                            ? `url(#${mark.bin.patternRef})`
-                                            : mark.bin.color
-                                    }
-                                    stroke={manager.categoricalBinStroke}
-                                    strokeWidth={0.4}
-                                    opacity={manager.legendOpacity} // defaults to undefined which removes the prop
-                                />
-                                ,
-                                <text
-                                    x={this.legendX + mark.label.bounds.x}
-                                    y={
-                                        this.categoryLegendY +
-                                        mark.label.bounds.y
-                                    }
-                                    // we can't use dominant-baseline to do proper alignment since our svg-to-png library Sharp
-                                    // doesn't support that (https://github.com/lovell/sharp/issues/1996), so we'll have to make
-                                    // do with some rough positioning.
-                                    dy={dyFromAlign(VerticalAlign.middle)}
-                                    fontSize={mark.label.fontSize}
-                                >
-                                    {mark.label.text}
-                                </text>
-                            </g>
-                        )
-                    })}
-                </g>
+                                fill="#fff"
+                                opacity={0}
+                            />
+                        </g>
+                    )
+                })}
+            </g>
+        )
+    }
+
+    render(): React.ReactElement {
+        return (
+            <g
+                id={makeIdForHumanConsumption("categorical-color-legend")}
+                className="categoricalColorLegend"
+            >
+                {this.renderSwatches()}
+                {this.renderLabels()}
+                {!this.manager.isStatic && this.renderInteractiveElements()}
             </g>
         )
     }

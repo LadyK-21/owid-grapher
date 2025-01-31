@@ -1,4 +1,11 @@
 import {
+    EPOCH_DATE,
+    Time,
+    TimeBound,
+    TimeBoundValue,
+    TimeBoundValueStr,
+} from "@ourworldindata/types"
+import {
     parseIntOrUndefined,
     isString,
     diffDateISOStringInDays,
@@ -6,12 +13,6 @@ import {
     isNegativeInfinity,
     isPositiveInfinity,
 } from "./Util.js"
-import { EPOCH_DATE, Time, TimeBound, TimeBoundValue } from "./owidTypes.js"
-
-enum TimeBoundValueStr {
-    unboundedLeft = "earliest",
-    unboundedRight = "latest",
-}
 
 export const timeFromTimebounds = (
     timeBound: TimeBound,
@@ -51,7 +52,9 @@ const parseTimeBound = (str: string): TimeBound | undefined => {
 const fromJSON = (value: TimeBound | string | undefined): number | undefined =>
     isString(value) ? parseTimeBound(value) : value
 
-const toJSON = (bound: TimeBound | undefined): string | number | undefined => {
+const toJSON = (
+    bound: TimeBound | undefined
+): TimeBoundValueStr | number | undefined => {
     if (bound === undefined) return undefined
     if (isNegativeInfinity(bound)) return TimeBoundValueStr.unboundedLeft
     if (isPositiveInfinity(bound)) return TimeBoundValueStr.unboundedRight
@@ -97,8 +100,8 @@ const upgradeLegacyTimeString = (time: string): string => {
     return time.endsWith("..")
         ? time + "latest"
         : time.startsWith("..")
-        ? "earliest" + time
-        : time
+          ? "earliest" + time
+          : time
 }
 
 export const getTimeDomainFromQueryString = (

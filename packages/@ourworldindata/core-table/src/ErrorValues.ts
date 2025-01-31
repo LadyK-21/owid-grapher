@@ -7,14 +7,8 @@
  *
  * For a good read on the "Errors are values" pattern: https://blog.golang.org/errors-are-values
  */
-export abstract class ErrorValue {
-    toString(): string {
-        return ""
-    }
-    toErrorString(): string {
-        return this.constructor.name
-    }
-}
+
+import { ErrorValue } from "@ourworldindata/types"
 
 class NaNButShouldBeNumber extends ErrorValue {}
 export class DroppedForTesting extends ErrorValue {}
@@ -33,6 +27,8 @@ class NoValueToCompareAgainst extends ErrorValue {}
 class FilteredValue extends ErrorValue {}
 class NoValueForInterpolation extends ErrorValue {}
 class InvalidQuarterValue extends ErrorValue {}
+class InvalidNegativeValue extends ErrorValue {}
+class NoMatchingVariableId extends ErrorValue {}
 
 // todo: if we don't export this, get an error in Transforms. should be fixable, see: https://github.com/microsoft/TypeScript/issues/5711
 export class MissingValuePlaceholder extends ErrorValue {}
@@ -57,6 +53,8 @@ export const ErrorValueTypes = {
     FilteredValue: new FilteredValue(),
     NoValueForInterpolation: new NoValueForInterpolation(),
     InvalidQuarterValue: new InvalidQuarterValue(),
+    InvalidNegativeValue: new InvalidNegativeValue(),
+    NoMatchingVariableId: new NoMatchingVariableId(),
 }
 
 // https://github.com/robertmassaioli/ts-is-present

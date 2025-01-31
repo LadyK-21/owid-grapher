@@ -111,8 +111,14 @@
     }
 
     &.large-banner {
+        .offset-subnavigation {
+            position: relative;
+            z-index: $zindex-extended-header;
+        }
         .offset-header {
             background-color: $blue-10;
+            position: relative;
+            z-index: $zindex-extended-header;
         }
 
         .article-header {
@@ -123,6 +129,11 @@
                 @include display-1-semibold;
                 margin-top: 2rem;
                 margin-bottom: 0;
+
+                @include sm-only {
+                    font-size: 32px;
+                    margin-top: 0;
+                }
             }
         }
 

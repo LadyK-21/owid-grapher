@@ -1,4 +1,4 @@
-import React from "react"
+import * as React from "react"
 import { NoDataModal } from "./NoDataModal"
 
 export default {
@@ -6,7 +6,7 @@ export default {
     component: NoDataModal,
 }
 
-export const WithAddDataButtons = (): JSX.Element => {
+export const WithAddDataButtons = (): React.ReactElement => {
     return (
         <div className="chart" style={{ width: 640, height: 480 }}>
             <svg>
@@ -14,8 +14,7 @@ export const WithAddDataButtons = (): JSX.Element => {
                     message="You have no data, but this is only a test"
                     manager={{
                         canChangeEntity: true,
-                        canAddData: true,
-                        isSelectingData: false,
+                        canAddEntities: true,
                         entityType: "Country",
                     }}
                 />

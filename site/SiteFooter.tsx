@@ -1,11 +1,13 @@
-import React from "react"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faAngleRight } from "@fortawesome/free-solid-svg-icons"
 import { SiteFooterContext } from "@ourworldindata/utils"
-import { VITE_ASSET_SITE_ENTRY, viteAssets } from "./viteUtils.js"
+import { viteAssetsForSite } from "./viteUtils.js"
+import { ScriptLoadErrorDetector } from "./NoJSDetector.js"
+import { RSS_FEEDS, SOCIALS } from "./SiteConstants.js"
 
 interface SiteFooterProps {
     hideDonate?: boolean
+    hideDonationFlag?: boolean
     baseUrl: string
     context?: SiteFooterContext
     debug?: boolean
@@ -29,7 +31,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <a
                                 href="/donate"
                                 className="owid-button donate-button"
-                                data-track-note="donate-footer"
+                                data-track-note="donate_footer"
                             >
                                 <span className="label">Donate now</span>
                                 <span className="icon">
@@ -49,7 +51,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/about"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     About
                                 </a>
@@ -57,7 +59,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/about#contact"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Contact
                                 </a>
@@ -65,7 +67,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/feedback"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Feedback
                                 </a>
@@ -73,7 +75,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/jobs"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Jobs
                                 </a>
@@ -81,23 +83,23 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/funding"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Funding
                                 </a>
                             </li>
                             <li>
                                 <a
-                                    href="/about/how-to-use-our-world-in-data"
-                                    data-track-note="footer-navigation"
+                                    href="/faqs"
+                                    data-track-note="footer_navigation"
                                 >
-                                    How to use
+                                    FAQs
                                 </a>
                             </li>
                             <li>
                                 <a
                                     href="/donate"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Donate
                                 </a>
@@ -105,7 +107,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <li>
                                 <a
                                     href="/privacy-policy"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     Privacy policy
                                 </a>
@@ -116,62 +118,48 @@ export const SiteFooter = (props: SiteFooterProps) => (
                         <ul>
                             <li>
                                 <a
-                                    href="/blog"
-                                    data-track-note="footer-navigation"
+                                    href="/latest"
+                                    data-track-note="footer_navigation"
                                 >
                                     Latest work
                                 </a>
                             </li>
                             <li>
                                 <a
-                                    href="/charts"
-                                    data-track-note="footer-navigation"
+                                    href="/data"
+                                    data-track-note="footer_navigation"
                                 >
-                                    All charts
+                                    Data Catalog
                                 </a>
                             </li>
-                        </ul>
-                        <ul>
-                            <li>
-                                <a
-                                    href="https://twitter.com/OurWorldInData"
-                                    data-track-note="footer-navigation"
-                                >
-                                    Twitter
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="https://www.facebook.com/OurWorldinData"
-                                    data-track-note="footer-navigation"
-                                >
-                                    Facebook
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="https://www.instagram.com/ourworldindata/"
-                                    data-track-note="footer-navigation"
-                                >
-                                    Instagram
-                                </a>
-                            </li>
+                            {SOCIALS.map(({ title, url }) => (
+                                <li key={title}>
+                                    <a
+                                        href={url}
+                                        data-track-note="footer_navigation"
+                                    >
+                                        {title}
+                                    </a>
+                                </li>
+                            ))}
                             <li>
                                 <a
                                     href="https://github.com/owid"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
                                     GitHub
                                 </a>
                             </li>
-                            <li>
-                                <a
-                                    href="/feed"
-                                    data-track-note="footer-navigation"
-                                >
-                                    RSS Feed
-                                </a>
-                            </li>
+                            {RSS_FEEDS.map(({ title, url }) => (
+                                <li key={title}>
+                                    <a
+                                        href={url}
+                                        data-track-note="footer_navigation"
+                                    >
+                                        {title}
+                                    </a>
+                                </li>
+                            ))}
                         </ul>
                     </div>
                     <div className="owid-col owid-col--lg-1">
@@ -179,24 +167,40 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             <a
                                 href="https://www.oxfordmartin.ox.ac.uk/global-development"
                                 className="partner-logo"
-                                data-track-note="footer-navigation"
+                                data-track-note="footer_navigation"
                             >
-                                <img
-                                    src={`${props.baseUrl}/oms-logo.png`}
-                                    alt="Oxford Martin School logo"
-                                    loading="lazy"
-                                />
+                                <picture>
+                                    <source
+                                        type="image/avif"
+                                        srcSet={`${props.baseUrl}/oms-logo.avif`}
+                                    />
+                                    <img
+                                        src={`${props.baseUrl}/oms-logo.png`}
+                                        alt="Oxford Martin School logo"
+                                        loading="lazy"
+                                        width={275}
+                                        height={139}
+                                    />
+                                </picture>
                             </a>
                             <a
                                 href="/owid-at-ycombinator"
                                 className="partner-logo"
-                                data-track-note="footer-navigation"
+                                data-track-note="footer_navigation"
                             >
-                                <img
-                                    src={`${props.baseUrl}/yc-logo.png`}
-                                    alt="Y Combinator logo"
-                                    loading="lazy"
-                                />
+                                <picture>
+                                    <source
+                                        type="image/avif"
+                                        srcSet={`${props.baseUrl}/yc-logo.avif`}
+                                    />
+                                    <img
+                                        src={`${props.baseUrl}/yc-logo.png`}
+                                        alt="Y Combinator logo"
+                                        loading="lazy"
+                                        width={490}
+                                        height={138}
+                                    />
+                                </picture>
                             </a>
                         </div>
                     </div>
@@ -209,7 +213,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                                 <a
                                     href="https://creativecommons.org/licenses/by/4.0/"
                                     target="_blank"
-                                    rel="noopener noreferrer"
+                                    rel="noopener"
                                 >
                                     Creative Commons BY license
                                 </a>
@@ -222,7 +226,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                                 <a
                                     href="https://github.com/owid/owid-grapher/blob/master/LICENSE.md "
                                     target="_blank"
-                                    rel="noopener noreferrer"
+                                    rel="noopener"
                                 >
                                     MIT license
                                 </a>
@@ -233,34 +237,47 @@ export const SiteFooter = (props: SiteFooterProps) => (
                             </p>
                             <p>
                                 Please consult our full{" "}
-                                <a href="/about#legal">legal disclaimer</a>.
+                                <a href="/organization#legal-disclaimer">
+                                    legal disclaimer
+                                </a>
+                                .
                             </p>
-                            <p>
+                            <p className="legal--last-paragraph">
+                                <span>
+                                    Our World in Data is a project of the{" "}
+                                    <a href="https://global-change-data-lab.org/">
+                                        Global Change Data Lab
+                                    </a>
+                                    , a registered charity in England and Wales
+                                    (Charity Number 1186433).
+                                </span>
                                 <a
                                     href="https://global-change-data-lab.org/"
                                     className="partner-logo gcdl-logo"
-                                    data-track-note="footer-navigation"
+                                    data-track-note="footer_navigation"
                                 >
-                                    <img
-                                        src={`${props.baseUrl}/gcdl-logo.png`}
-                                        alt="Global Change Data Lab logo"
-                                        loading="lazy"
-                                    />
+                                    <picture>
+                                        <source
+                                            type="image/webp"
+                                            srcSet={`${props.baseUrl}/gcdl-logo.webp`}
+                                        />
+                                        <img
+                                            src={`${props.baseUrl}/gcdl-logo.png`}
+                                            alt="Global Change Data Lab logo"
+                                            loading="lazy"
+                                            width={106}
+                                            height={127}
+                                        />
+                                    </picture>
                                 </a>
-                                Our World In Data is a project of the{" "}
-                                <a href="https://global-change-data-lab.org/">
-                                    Global Change Data Lab
-                                </a>
-                                , a registered charity in England and Wales
-                                (Charity Number 1186433).
                             </p>
-                            {/* <a href="/" className="owid-logo">Our World in Data</a> */}
                         </div>
                     </div>
                 </div>
             </div>
             <div className="site-tools" />
-            {viteAssets(VITE_ASSET_SITE_ENTRY).forFooter}
+            {viteAssetsForSite().forFooter}
+            <ScriptLoadErrorDetector />
             <script
                 type="module"
                 dangerouslySetInnerHTML={{
@@ -268,6 +285,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                         context: props.context,
                         debug: props.debug,
                         isPreviewing: props.isPreviewing,
+                        hideDonationFlag: props.hideDonationFlag,
                     })})`, // todo: gotta be a better way.
                 }}
             />

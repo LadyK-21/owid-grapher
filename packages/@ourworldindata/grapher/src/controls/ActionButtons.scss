@@ -1,0 +1,104 @@
+// keep in sync with constant values in ActionButtons.tsx
+$actionButtonHeight: 32px; // keep in sync with BUTTON_HEIGHT
+$paddingBetweenActionButtons: 8px; // keep in sync with PADDING_BETWEEN_BUTTONS
+$paddingBetweenIconAndLabel: 8px; // keep in sync with PADDING_BETWEEN_ICON_AND_LABEL
+$paddingX: 12px; // keep in sync with PADDING_X
+
+.ActionButtons {
+    margin: 0;
+    padding: 0;
+    white-space: nowrap;
+
+    ul {
+        list-style: none;
+        height: $actionButtonHeight;
+        padding: 0;
+    }
+
+    li {
+        height: 100%;
+        display: inline-block;
+        position: relative;
+    }
+
+    li + li {
+        margin-left: $paddingBetweenActionButtons;
+    }
+}
+
+div.ActionButton {
+    --light-fill: #{$gray-10};
+    --hover-fill: #{$gray-20};
+    --active-fill: #{$blue-20};
+    --text-color: #{$dark-text};
+
+    &.ActionButton--exploreData {
+        --light-fill: #{$blue-20};
+        --hover-fill: #{$blue-20};
+        --active-fill: #{$blue-10};
+        --text-color: #{$blue-90};
+
+        --hover-decoration: underline;
+    }
+
+    height: 100%;
+    border-radius: 4px;
+    position: relative;
+
+    button,
+    a {
+        display: flex;
+        align-items: center;
+        gap: $paddingBetweenIconAndLabel;
+        height: 100%;
+        width: 100%;
+        cursor: pointer;
+        color: var(--text-color);
+        font-size: 13px;
+        font-weight: 500;
+        padding: 0 $paddingX;
+        border-radius: inherit;
+        background-color: var(--light-fill);
+        position: relative;
+        letter-spacing: 0.01em;
+
+        svg {
+            font-size: 12px;
+        }
+
+        &.icon-only {
+            display: block;
+            padding: 0;
+        }
+
+        &:visited {
+            color: var(--text-color);
+        }
+
+        &:hover {
+            background-color: var(--hover-fill);
+            text-decoration: var(--hover-decoration);
+        }
+
+        &:active,
+        &.active {
+            color: $active-text;
+            background-color: var(--active-fill);
+        }
+    }
+
+    .hover-label {
+        width: max-content;
+        position: absolute;
+        top: -100%;
+        left: 50%;
+        transform: translate(-50%, -4px);
+        padding: 8px;
+        background-color: $tooltip-fill;
+        color: $tooltip-text;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        z-index: $zindex-Tooltip;
+    }
+}

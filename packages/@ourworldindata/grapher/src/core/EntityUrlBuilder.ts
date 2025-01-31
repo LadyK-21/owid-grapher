@@ -1,4 +1,4 @@
-import { EntityName } from "@ourworldindata/core-table"
+import { EntityName, SeriesName } from "@ourworldindata/types"
 import { Url, performUrlMigrations, UrlMigration } from "@ourworldindata/utils"
 import { codeToEntityName, entityNameToCode } from "./EntityCodes"
 
@@ -54,6 +54,7 @@ const entityNamesFromV2Param = (queryParam: string): EntityName[] => {
 
 const migrateV1Delimited: UrlMigration = (url) => {
     const { country } = url.encodedQueryParams
+
     if (country !== undefined && isV1Param(country)) {
         return url.updateQueryParams({
             country: entityNamesToV2Param(
@@ -87,7 +88,8 @@ const migrateV1Delimited: UrlMigration = (url) => {
  *
  */
 
-const LegacyDimensionRegex = /\-\d+$/
+// Pattern for a entity name - number pair, where the entity name contains at least one non-digit character.
+const LegacyDimensionRegex = /^(.*\D.*)-\d+$/
 
 const injectEntityNamesInLegacyDimension = (
     entityNames: EntityName[]
@@ -100,7 +102,7 @@ const injectEntityNamesInLegacyDimension = (
         if (LegacyDimensionRegex.test(entityName)) {
             const nonDimensionName = entityName.replace(
                 LegacyDimensionRegex,
-                ""
+                "$1"
             )
             newNames.push(nonDimensionName)
         }
@@ -144,19 +146,52 @@ export const migrateSelectedEntityNamesParam: UrlMigration = (
 export const getSelectedEntityNamesParam = (
     url: Url
 ): EntityName[] | undefined => {
-    const { country } = migrateSelectedEntityNamesParam(url).queryParams
+    // Expects an already-migrated URL as input
+    const { country } = url.queryParams
     return country !== undefined
         ? entityNamesFromV2Param(country).map(codeToEntityName)
         : undefined
 }
 
+export const generateSelectedEntityNamesParam = (
+    entityNames: EntityName[]
+): string => entityNamesToV2Param(entityNames.map(entityNameToCode))
+
 export const setSelectedEntityNamesParam = (
     url: Url,
     entityNames: EntityName[] | undefined
 ): Url => {
-    return migrateSelectedEntityNamesParam(url).updateQueryParams({
+    // Expects an already-migrated URL as input
+    return url.updateQueryParams({
         country: entityNames
-            ? entityNamesToV2Param(entityNames.map(entityNameToCode))
+            ? generateSelectedEntityNamesParam(entityNames)
             : undefined,
     })
 }
+
+/*
+ * Focused series names
+ *
+ * A focused series name is one of:
+ * (i) an entity name (common case)
+ * (ii) an indicator name (less common, but not rare)
+ * (iii) a combination of both, typically represented as 'entityName – indicatorName' (rare)
+ *
+ * Parsing and serializing focused series names for the URL is done using utility
+ * functions that have originally been written for entity names, so that the same
+ * delimiter is used and entity names are mapped to their codes if possible. Note
+ * that stand-alone entity names are mapped to their codes (case i), while entity
+ * names that are a substring of a series name are not (case iii).
+ */
+
+export const getFocusedSeriesNamesParam = (
+    queryParam: string | undefined
+): SeriesName[] | undefined => {
+    return queryParam !== undefined
+        ? entityNamesFromV2Param(queryParam).map(codeToEntityName)
+        : undefined
+}
+
+export const generateFocusedSeriesNamesParam = (
+    seriesNames: SeriesName[]
+): string => entityNamesToV2Param(seriesNames.map(entityNameToCode))
