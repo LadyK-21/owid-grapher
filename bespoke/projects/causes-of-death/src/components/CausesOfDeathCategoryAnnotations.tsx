@@ -1,3 +1,5 @@
+import { dyFromAlign, VerticalAlign } from "@ourworldindata/utils"
+
 import { PlacedCategory } from "../helpers/CausesOfDeathCategoryAnnotationsHelpers.js"
 
 import { BezierArrow } from "../../../../components/BezierArrow/BezierArrow.js"
@@ -49,8 +51,13 @@ function CausesOfDeathCategoryAnnotation({
         fontSize,
         fill: color,
         textAnchor: anchor,
-        dominantBaseline: position === "bottom" ? "hanging" : undefined,
     }
+
+    // Use dy instead of dominant-baseline: hanging, which Safari doesn't support
+    const dy =
+        position === "bottom"
+            ? dyFromAlign(VerticalAlign.bottom)
+            : undefined
 
     const arrowStart: [number, number] = [
         x + (isEndAnchored ? 3 : -3),
@@ -74,7 +81,7 @@ function CausesOfDeathCategoryAnnotation({
 
     return (
         <g>
-            <text x={x} y={y} style={textStyle}>
+            <text x={x} y={y} dy={dy} style={textStyle}>
                 {textFragments.map(({ text, style }) => (
                     <tspan key={text} {...style}>
                         {text}
