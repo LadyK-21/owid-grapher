@@ -78,7 +78,6 @@ export const ColumnGrammar: Grammar<ColumnCellDef> = {
         ...StringCellDef,
         keyword: "description",
         description: "Describe the column",
-        isDisplayProperty: true,
     },
     unit: {
         ...StringCellDef,
