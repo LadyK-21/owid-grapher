@@ -55,9 +55,7 @@ function CausesOfDeathCategoryAnnotation({
 
     // Use dy instead of dominant-baseline: hanging, which Safari doesn't support
     const dy =
-        position === "bottom"
-            ? dyFromAlign(VerticalAlign.bottom)
-            : undefined
+        position === "bottom" ? dyFromAlign(VerticalAlign.bottom) : undefined
 
     const arrowStart: [number, number] = [
         x + (isEndAnchored ? 3 : -3),
