@@ -14,10 +14,11 @@ Add or update synonym entries in `site/search/synonymUtils.ts` so that our Algol
 
 ## Steps
 
-1. **Start from a clean, up-to-date main branch.** Run:
+1. **Start from a clean, up-to-date main branch and create a feature branch.** Run:
     - `git checkout master` to switch to the main branch.
     - `git pull` to get the latest changes.
     - If either command fails (e.g. uncommitted changes), explain clearly what's happening and help resolve it. For uncommitted changes, `git stash` is usually the right fix.
+    - Create and checkout a new branch: `git checkout -b add-synonym-<username>-<date>` where `<username>` is the GitHub username and `<date>` is today's date as YYYYMMDD (e.g. `add-synonym-bastianherre-20260413`).
 
 2. Ask the user what synonyms they want to add. They can describe it in natural language (e.g. "add WHO as a synonym for World Health Organization" or "make 'EV' and 'electric vehicle' synonyms").
 
@@ -42,12 +43,14 @@ Add or update synonym entries in `site/search/synonymUtils.ts` so that our Algol
         - `yarn testLintChanged` and fix any errors.
         - `yarn test run --reporter dot site/search/synonymUtils.test.ts` and fix any errors.
 
-7. Commit to master with a message in this exact format:
+7. Commit to the feature branch with a message in this exact format:
     - Prefix: `✨🤖`
     - Followed by a short description, e.g. `✨🤖 Add "WHO" synonym for "World Health Organization"`
     - Add `Co-Authored-By: Claude <noreply@anthropic.com>` as a trailer.
 
-8. Push the commit to the remote.
+8. Push the branch and create a PR:
+    - Push with `git push -u origin HEAD`.
+    - Create a PR with `gh pr create --title "<same as commit message>" --body "" --reviewer edomt`.
 
 ## Important notes
 
