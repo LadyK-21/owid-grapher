@@ -43,12 +43,14 @@ Add or update synonym entries in `site/search/synonymUtils.ts` so that our Algol
         - `yarn testLintChanged` and fix any errors.
         - `yarn test run --reporter dot site/search/synonymUtils.test.ts` and fix any errors.
 
-7. Commit to the feature branch with a message in this exact format:
+7. **Pause and ask the user to confirm** the changes look correct before proceeding. Show them what was added and wait for their go-ahead.
+
+8. Commit to the feature branch with a message in this exact format:
     - Prefix: `✨🤖`
     - Followed by a short description, e.g. `✨🤖 Add "WHO" synonym for "World Health Organization"`
     - Add `Co-Authored-By: Claude <noreply@anthropic.com>` as a trailer.
 
-8. Push the branch and create a PR:
+9. Push the branch and create a PR:
     - Push with `git push -u origin HEAD`.
     - Create a PR with `gh pr create --title "<same as commit message>" --body "" --reviewer edomt`.
 
