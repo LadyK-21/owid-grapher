@@ -3,13 +3,13 @@
 .pull-chart {
     margin-bottom: 16px;
 
-    .chart-thumbnail {
+    .pull-chart__thumbnail {
         max-width: 300px;
         margin-bottom: 8px;
     }
 
     &.pull-chart--align-left-center {
-        .chart-thumbnail {
+        .pull-chart__thumbnail {
             float: left;
             margin-right: 24px;
             margin-left: calc(-100vw / 12); // one column width
@@ -17,7 +17,7 @@
     }
 
     &.pull-chart--align-right-center {
-        .chart-thumbnail {
+        .pull-chart__thumbnail {
             float: right;
             margin-left: 24px;
             margin-right: calc(-100vw / 12); // one column width
@@ -27,13 +27,13 @@
     // Between 768-960px: keep float but remove the offset
     @include md-only {
         &.pull-chart--align-left-center {
-            .chart-thumbnail {
+            .pull-chart__thumbnail {
                 margin-left: 0;
             }
         }
 
         &.pull-chart--align-right-center {
-            .chart-thumbnail {
+            .pull-chart__thumbnail {
                 margin-right: 0;
             }
         }
@@ -43,12 +43,16 @@
     @include sm-only {
         &.pull-chart--align-left-center,
         &.pull-chart--align-right-center {
-            .chart-thumbnail {
+            .pull-chart__thumbnail {
                 float: none;
                 margin: 0 0 16px 0;
                 max-width: unset;
                 width: calc(10 / 12 * 100%);
             }
         }
+    }
+
+    .pull-chart__content > *:last-child {
+        margin-bottom: 0;
     }
 }

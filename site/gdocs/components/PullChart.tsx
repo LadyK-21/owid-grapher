@@ -19,14 +19,14 @@ export default function PullChart({
         <div className={cx("pull-chart", alignClass, className)}>
             <a
                 href={d.url}
-                className="chart-thumbnail"
+                className="chart-thumbnail pull-chart__thumbnail"
                 aria-label="See chart"
                 aria-describedby={hasContent ? contentId : undefined}
             >
                 <ChartThumbnail image={d.image} containerType="pull-chart" />
             </a>
             {hasContent && (
-                <div id={contentId}>
+                <div className="pull-chart__content" id={contentId}>
                     {d.content.map((block, i) => (
                         <Paragraph
                             key={i}
