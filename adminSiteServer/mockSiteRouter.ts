@@ -278,7 +278,6 @@ getPlainRouteWithROTransaction(
                 await renderPreviewDataPageOrGrapherPage(
                     chartRow.config,
                     chartRow.id,
-                    chartRow.forceDatapage,
                     trx
                 )
             res.send(previewDataPageOrGrapherPage)

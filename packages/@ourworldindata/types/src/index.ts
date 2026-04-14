@@ -437,6 +437,10 @@ export {
     type DbPlainChartXEntity,
 } from "./dbTypes/ChartsXEntities.js"
 export {
+    type DbPlainDatapage,
+    DatapagesTableName,
+} from "./dbTypes/Datapages.js"
+export {
     type DbPlainDataset,
     type DbInsertDataset,
     DatasetsTableName,
