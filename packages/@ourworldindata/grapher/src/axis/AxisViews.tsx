@@ -286,14 +286,16 @@ export class DualAxisComponent extends React.Component<DualAxisViewProps> {
             />
         )
 
-        const comparisonLines = dualAxis.comparisonLines.map((line, index) => (
-            <ComparisonLine
-                key={`${line.label}-${index}`}
-                dualAxis={dualAxis}
-                comparisonLine={line}
-                backgroundColor={backgroundColor}
-            />
-        ))
+        const comparisonLines = dualAxis.comparisonLines.lines.map(
+            (line, index) => (
+                <ComparisonLine
+                    key={`${line.label}-${index}`}
+                    dualAxis={dualAxis}
+                    comparisonLine={line}
+                    backgroundColor={backgroundColor}
+                />
+            )
+        )
 
         return (
             <>

@@ -21,13 +21,12 @@ import { MarkdownTextWrap } from "@ourworldindata/components"
 import { CoreColumn } from "@ourworldindata/core-table"
 import {
     DEFAULT_GRAPHER_BOUNDS,
-    GRAPHER_FONT_SCALE_10_5,
     GRAPHER_FONT_SCALE_11,
     GRAPHER_FONT_SCALE_12,
 } from "../core/GrapherConstants.js"
 import { makeAxisLabel } from "./AxisUtils.js"
 import * as R from "remeda"
-import { isValidVerticalComparisonLineConfig } from "../comparisonLine/ComparisonLineHelpers"
+import { ComparisonLines } from "../comparisonLine/ComparisonLines"
 
 interface TickLabelPlacement {
     value: number
@@ -867,6 +866,7 @@ interface DualAxisProps {
 // space to work with, and vice versa
 export class DualAxis {
     private readonly props: DualAxisProps
+
     constructor(props: DualAxisProps) {
         makeObservable(this)
         this.props = props
@@ -911,7 +911,7 @@ export class DualAxis {
                 // Make space for the y-axis label if plotted above the axis
                 .padTop(this.props.verticalAxis.labelOffsetTop)
                 // Make space for vertical comparison line labels if any
-                .padTop(this.comparisonLineLabelOffset)
+                .padTop(this.comparisonLines.topPadding)
                 .padTop(
                     this.shouldShowLogNotice
                         ? this.props.verticalAxis.logNoticeHeight
@@ -924,24 +924,11 @@ export class DualAxis {
         return this.props.bounds ?? DEFAULT_GRAPHER_BOUNDS
     }
 
-    @computed get comparisonLines(): ComparisonLineConfig[] {
-        return this.props.comparisonLines ?? []
-    }
-
-    @computed get comparisonLineLabelFontSize(): number {
-        return Math.floor(
-            GRAPHER_FONT_SCALE_10_5 * this.props.verticalAxis.fontSize
-        )
-    }
-
-    @computed private get comparisonLineLabelOffset(): number {
-        const hasVerticalComparisonLines = this.comparisonLines.some((line) =>
-            isValidVerticalComparisonLineConfig(line)
-        )
-
-        if (!hasVerticalComparisonLines) return 0
-
-        return this.comparisonLineLabelFontSize
+    @computed get comparisonLines(): ComparisonLines {
+        return new ComparisonLines(this.props.comparisonLines ?? [], {
+            dualAxis: this,
+            fontSize: this.props.verticalAxis.fontSize,
+        })
     }
 
     @computed private get shouldShowLogNotice(): boolean {
