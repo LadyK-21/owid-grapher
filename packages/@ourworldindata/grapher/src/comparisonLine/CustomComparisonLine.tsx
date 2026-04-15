@@ -27,7 +27,7 @@ export class CustomComparisonLine extends React.Component<
     }
 
     @computed private get fontSize(): number {
-        return this.props.dualAxis.comparisonLineLabelFontSize
+        return this.props.dualAxis.comparisonLines.fontSize
     }
 
     @computed private get haloOutlineWidth(): number {

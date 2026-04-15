@@ -364,6 +364,11 @@ export type ComparisonLineConfig =
     | VerticalComparisonLineConfig
     | CustomComparisonLineConfig
 
+export interface VerticalComparisonLineLabelPlacement {
+    x: number
+    anchor: "start" | "end"
+}
+
 export enum LogoOption {
     owid = "owid",
     "core+owid" = "core+owid",

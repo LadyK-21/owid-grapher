@@ -121,6 +121,7 @@ export {
     type ComparisonLineConfig,
     type VerticalComparisonLineConfig,
     type CustomComparisonLineConfig,
+    type VerticalComparisonLineLabelPlacement,
     type AxisConfigInterface,
     type ColorSchemeInterface,
     type Tickmark,
