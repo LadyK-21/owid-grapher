@@ -188,7 +188,9 @@ export class EditorTextTab<
     // Bold the substring matching the user's query in each dropdown option
     highlightMatch(text: string, query: string): JSX.Element | string {
         if (!query) return text
-        const idx = text.toLowerCase().indexOf(query.toLowerCase())
+        const idx = text
+            .toLowerCase()
+            .indexOf(query.toLowerCase().replace(/ /g, "-"))
         if (idx === -1) return text
         return (
             <>
@@ -341,7 +343,11 @@ export class EditorTextTab<
                             filterOption={(inputValue, option) =>
                                 option?.value
                                     .toLowerCase()
-                                    .includes(inputValue.toLowerCase()) ?? false
+                                    .includes(
+                                        inputValue
+                                            .toLowerCase()
+                                            .replace(/ /g, "-")
+                                    ) ?? false
                             }
                             optionRender={(option) => {
                                 const data = option.data as {
