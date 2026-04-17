@@ -185,6 +185,16 @@ export class EditorTextTab<
         this.isNavigatingDropdown = false
     }
 
+    @action.bound onOriginUrlBlur(): void {
+        // Spaces are a search aid only — never persist them in the stored URL.
+        // Normalize to dashes on blur so the committed value matches the
+        // slug-style options in the dropdown.
+        const { grapherState } = this.props.editor
+        if (grapherState.originUrl?.includes(" ")) {
+            grapherState.originUrl = grapherState.originUrl.replace(/ /g, "-")
+        }
+    }
+
     @action.bound onDropdownNavigated(): void {
         this.isNavigatingDropdown = true
     }
@@ -386,10 +396,12 @@ export class EditorTextTab<
                                     this.onDropdownNavigated()
                                 }
                             }}
+                            onBlur={this.onOriginUrlBlur}
                             dropdownRender={(menu) => {
                                 const val = grapherState.originUrl ?? ""
                                 const showHint =
                                     val.length > 4 &&
+                                    !val.includes(" ") &&
                                     !this.isNavigatingDropdown &&
                                     !this.originUrlOptions.some(
                                         (o) => o.value === val
