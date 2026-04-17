@@ -3,7 +3,12 @@
         "allow": [
             "Bash(git log:*)",
             "Bash(grep:*)",
-            "Bash(yarn typecheck)",
+            "Bash(yarn typecheck:*)",
+            "Bash(yarn testLintChanged:*)",
+            "Bash(yarn fixLintChanged:*)",
+            "Bash(yarn testFormatChanged:*)",
+            "Bash(yarn fixFormatChanged:*)",
+            "Bash(yarn query:*)",
 
             "Bash(gh issue list:*)",
             "Bash(gh issue view:*)",
