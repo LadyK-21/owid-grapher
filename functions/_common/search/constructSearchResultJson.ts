@@ -274,16 +274,10 @@ export async function pickDisplayEntities(
     const enrichPickedEntities = async () => {
         if (pickedEntities.length === 0) return defaultEntities
 
-        const pickedComparisonEntities = await selectPeerEntitiesForSearch({
+        const comparisonEntities = await selectPeerEntitiesForSearch({
             grapherState,
             targetEntity: pickedEntities[0],
         })
-
-        // Default to the default entities if no comparison entities could be found
-        const comparisonEntities =
-            pickedComparisonEntities.length > 0
-                ? pickedComparisonEntities
-                : defaultEntities
 
         // It's important to prepend the picked entities because we later
         // take the first N entities to render if there are space constraints
