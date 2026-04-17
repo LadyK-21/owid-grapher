@@ -1,38 +1,45 @@
-import { BASE_FONT_SIZE, GRAPHER_FONT_SCALE_10 } from "../core/GrapherConstants"
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_FONT_SCALE_10,
+    GRAPHER_FONT_SCALE_11,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_FONT_SCALE_13,
+} from "../core/GrapherConstants"
 
-// not sure if we want to do something more sophisticated
+const roundToHalf = (value: number): number => Math.round(value * 2) / 2
+
 export const getFontSize = (
     containerWidth: number,
-    count: number,
+    cellWidth: number,
     baseFontSize = BASE_FONT_SIZE,
-    minSize = 8
+    minSize = 10
 ): number => {
     // Pick a fixed font size for very small charts
-    if (containerWidth < 300) return GRAPHER_FONT_SCALE_10 * baseFontSize
+    if (containerWidth < 300)
+        return roundToHalf(GRAPHER_FONT_SCALE_10 * baseFontSize)
 
-    // Scale the font size based on the number of series otherwise
-    if (count <= 2) return Math.max(minSize, baseFontSize * (15 / 16))
-    if (count <= 4) return Math.max(minSize, baseFontSize * (14 / 16))
-    if (count <= 9) return Math.max(minSize, baseFontSize * (13 / 16))
-    if (count <= 16) return Math.max(minSize, baseFontSize * (12 / 16))
-    if (count <= 25) return Math.max(minSize, baseFontSize * (11 / 16))
-    return minSize
+    // Scale the font size based on the space available per facet
+    const scaled = (ratio: number): number =>
+        Math.max(minSize, roundToHalf(baseFontSize * ratio))
+
+    if (cellWidth >= 300) return scaled(GRAPHER_FONT_SCALE_13)
+    if (cellWidth >= 200) return scaled(GRAPHER_FONT_SCALE_12)
+
+    return scaled(GRAPHER_FONT_SCALE_11)
 }
-
-export const getLabelPadding = (baseFontSize: number): number =>
-    0.5 * baseFontSize
 
 export const getFacetGridPadding = ({
     baseFontSize,
+    labelPadding,
     shouldAddRowPadding = true,
     shouldAddColumnPadding = true,
 }: {
     baseFontSize: number
+    labelPadding: number
     shouldAddRowPadding?: boolean
     shouldAddColumnPadding?: boolean
 }): { rowPadding: number; columnPadding: number; outerPadding: number } => {
     const labelHeight = baseFontSize
-    const labelPadding = getLabelPadding(baseFontSize)
 
     const rowPadding = shouldAddRowPadding ? baseFontSize : 0
     const columnPadding = shouldAddColumnPadding ? baseFontSize : 0

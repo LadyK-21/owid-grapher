@@ -40,7 +40,6 @@ import {
     calculateAspectRatio,
     getFacetGridPadding,
     getFontSize,
-    getLabelPadding,
 } from "./FacetChartUtils"
 import {
     FacetSeries,
@@ -175,7 +174,7 @@ export class FacetChart
     }
 
     @computed private get labelPadding(): number {
-        return getLabelPadding(this.facetFontSize)
+        return 0.25 * this.facetFontSize
     }
 
     @computed private get facetsContainerBounds(): Bounds {
@@ -192,7 +191,8 @@ export class FacetChart
     }
 
     @computed private get facetFontSize(): number {
-        return getFontSize(this.bounds.width, this.series.length, this.fontSize)
+        const cellWidth = this.bounds.width / this.gridParams.columns
+        return getFontSize(this.bounds.width, cellWidth, this.fontSize)
     }
 
     @computed private get yAxisConfig(): AxisConfig {
@@ -231,7 +231,11 @@ export class FacetChart
     }
 
     @computed private get facetGridPadding(): SplitBoundsPadding {
-        return getFacetGridPadding({ baseFontSize: this.facetFontSize })
+        const { facetFontSize, labelPadding } = this
+        return getFacetGridPadding({
+            baseFontSize: facetFontSize,
+            labelPadding,
+        })
     }
 
     @computed private get hideFacetLegends(): boolean {
