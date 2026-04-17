@@ -5,6 +5,7 @@ import {
     ColumnSlug,
     PrimitiveType,
     imemo,
+    merge,
 } from "@ourworldindata/utils"
 import {
     CoreColumn,
@@ -105,7 +106,7 @@ export class CoreTable<
             const sourceDef = this.inputColumnDefs.find(
                 (def) => def.slug === sourceSlug
             )
-            return { ...sourceDef, ...def }
+            return merge(sourceDef, def)
         })
 
         // If any values were passed in, copy those to column store now and then remove them from column definitions.
