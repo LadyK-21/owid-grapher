@@ -1018,7 +1018,7 @@ function findTableSlotKey(
 /**
  * Selects peer entities for search, handling both countries and aggregate regions.
  *
- * For countries: delegates to selectPeerCountries with the ParentRegions strategy.
+ * For countries: delegates to selectPeerCountries.
  * For aggregate regions: returns sibling regions at the same hierarchical level.
  * For the World entity: returns continents or income groups if available.
  */
@@ -1040,10 +1040,8 @@ export async function selectPeerEntitiesForSearch({
     if (!targetRegion) return []
 
     if (checkIsCountry(targetRegion)) {
-        // For backward compatibility, default to the ParentRegions strategy
         const peerCountryStrategy =
-            grapherState.peerCountryStrategy ??
-            PeerCountryStrategy.ParentRegions
+            grapherState.peerCountryStrategy ?? PeerCountryStrategy.DataRange
 
         // For countries, use Grapher's peer selection logic
         return selectPeerCountriesForGrapher(grapherState, {
