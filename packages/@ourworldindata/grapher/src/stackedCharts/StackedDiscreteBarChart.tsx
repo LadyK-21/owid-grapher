@@ -128,7 +128,11 @@ export class StackedDiscreteBarChart
     }
 
     @computed private get showLegend(): boolean {
-        return !this.props.hideLegend && !!this.manager.showLegend
+        return (
+            !this.props.hideLegend &&
+            this.legendBins.length > 1 &&
+            !!this.manager.showLegend
+        )
     }
 
     @computed private get boundsWithoutLegend(): Bounds {
