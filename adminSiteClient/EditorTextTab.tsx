@@ -176,7 +176,11 @@ export class EditorTextTab<
     }
 
     @action.bound onOriginUrlChange(value: string): void {
-        this.props.editor.grapherState.originUrl = value.trim() || undefined
+        // Store the raw value so trailing spaces survive mid-typing (e.g.
+        // "child " on the way to "child labor"). Treat whitespace-only as empty.
+        this.props.editor.grapherState.originUrl = value.trim()
+            ? value
+            : undefined
         // Reset so the custom URL hint reappears as the user types more
         this.isNavigatingDropdown = false
     }
