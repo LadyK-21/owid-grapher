@@ -176,23 +176,15 @@ export class EditorTextTab<
     }
 
     @action.bound onOriginUrlChange(value: string): void {
-        // Store the raw value so trailing spaces survive mid-typing (e.g.
-        // "child " on the way to "child labor"). Treat whitespace-only as empty.
+        // Spaces get turned into dashes as the user types, so "child labor"
+        // becomes "child-labor" live and the stored URL never contains spaces
+        // or ends up URL-encoded as %20.
+        const normalized = value.replace(/ /g, "-")
         this.props.editor.grapherState.originUrl = value.trim()
-            ? value
+            ? normalized
             : undefined
         // Reset so the custom URL hint reappears as the user types more
         this.isNavigatingDropdown = false
-    }
-
-    @action.bound onOriginUrlBlur(): void {
-        // Spaces are a search aid only — never persist them in the stored URL.
-        // Normalize to dashes on blur so the committed value matches the
-        // slug-style options in the dropdown.
-        const { grapherState } = this.props.editor
-        if (grapherState.originUrl?.includes(" ")) {
-            grapherState.originUrl = grapherState.originUrl.replace(/ /g, "-")
-        }
     }
 
     @action.bound onDropdownNavigated(): void {
@@ -202,9 +194,7 @@ export class EditorTextTab<
     // Bold the substring matching the user's query in each dropdown option
     highlightMatch(text: string, query: string): JSX.Element | string {
         if (!query) return text
-        const idx = text
-            .toLowerCase()
-            .indexOf(query.toLowerCase().replace(/ /g, "-"))
+        const idx = text.toLowerCase().indexOf(query.toLowerCase())
         if (idx === -1) return text
         return (
             <>
@@ -357,11 +347,7 @@ export class EditorTextTab<
                             filterOption={(inputValue, option) =>
                                 option?.value
                                     .toLowerCase()
-                                    .includes(
-                                        inputValue
-                                            .toLowerCase()
-                                            .replace(/ /g, "-")
-                                    ) ?? false
+                                    .includes(inputValue.toLowerCase()) ?? false
                             }
                             optionRender={(option) => {
                                 const data = option.data as {
@@ -396,12 +382,10 @@ export class EditorTextTab<
                                     this.onDropdownNavigated()
                                 }
                             }}
-                            onBlur={this.onOriginUrlBlur}
                             dropdownRender={(menu) => {
                                 const val = grapherState.originUrl ?? ""
                                 const showHint =
                                     val.length > 4 &&
-                                    !val.includes(" ") &&
                                     !this.isNavigatingDropdown &&
                                     !this.originUrlOptions.some(
                                         (o) => o.value === val
