@@ -121,15 +121,13 @@ export const mapGrapherTabNameToQueryParam = mapGrapherTabNameToConfigOption
 
 export function makeLabelForGrapherTab(
     tab: GrapherTabName,
-    options?: { useGenericChartLabel?: boolean; format?: "short" | "long" }
+    options?: { format?: "short" | "long" }
 ): string {
-    const { useGenericChartLabel = false, format = "short" } = options ?? {}
+    const { format = "short" } = options ?? {}
 
     if (tab === GRAPHER_TAB_NAMES.Table) return "Table"
     if (tab === GRAPHER_TAB_NAMES.WorldMap)
         return format === "short" ? "Map" : "World map"
-
-    if (useGenericChartLabel) return "Chart"
 
     return format === "short"
         ? CHART_TYPE_LABEL[tab]
