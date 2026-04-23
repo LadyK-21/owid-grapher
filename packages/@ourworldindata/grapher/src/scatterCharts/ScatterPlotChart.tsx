@@ -572,12 +572,14 @@ export class ScatterPlotChart
 
     @computed
     private get selectedEntitiesWithoutData(): string[] {
+        // Reversing the order so that newly added entities without data
+        // show up at the top of the no data section
         const entitiesWithoutData = _.uniq(
             _.difference(
                 this.selectedEntityNames,
                 this.series.map((s) => s.seriesName)
             )
-        )
+        ).reverse()
 
         return entitiesWithoutData.map((entityName) => {
             const shortName = getShortNameForEntity(entityName)
