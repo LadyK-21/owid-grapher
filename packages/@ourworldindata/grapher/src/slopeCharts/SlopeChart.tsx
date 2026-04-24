@@ -833,9 +833,12 @@ export class SlopeChart
             this.sidebarWidth,
             this.bounds.height
         )
-        const seriesNames = this.noDataSeries.map((series) =>
-            this.makeMissingDataLabel(series)
-        )
+
+        // Reversing the order so that newly added entities without data
+        // show up at the top of the no data section
+        const seriesNames = this.noDataSeries
+            .map((series) => this.makeMissingDataLabel(series))
+            .reverse()
 
         return (
             <NoDataSection
