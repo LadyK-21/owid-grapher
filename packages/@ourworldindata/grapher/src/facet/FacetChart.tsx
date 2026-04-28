@@ -21,6 +21,8 @@ import { action, computed, makeObservable, observable } from "mobx"
 import {
     BASE_FONT_SIZE,
     DEFAULT_GRAPHER_BOUNDS,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_FONT_SCALE_12_8,
 } from "../core/GrapherConstants"
 import {
     GRAPHER_CHART_TYPES,
@@ -36,11 +38,7 @@ import {
 import { ChartComponent, makeChartInstance } from "../chart/ChartTypeMap"
 import { ChartManager } from "../chart/ChartManager"
 import { ChartInterface, ChartState } from "../chart/ChartInterface"
-import {
-    calculateAspectRatio,
-    getFacetGridPadding,
-    getFontSize,
-} from "./FacetChartUtils"
+import { calculateAspectRatio, getFacetGridPadding } from "./FacetChartUtils"
 import {
     FacetSeries,
     FacetChartProps,
@@ -174,7 +172,7 @@ export class FacetChart
     }
 
     @computed private get labelPadding(): number {
-        return 0.25 * this.facetFontSize
+        return 0.5 * this.facetLabelFontSize
     }
 
     @computed private get facetsContainerBounds(): Bounds {
@@ -182,7 +180,7 @@ export class FacetChart
             this.showLegend && this.legend.height > 0
                 ? this.legend.height + this.legendPadding
                 : 0
-        const labelSpace = this.facetFontSize + this.labelPadding
+        const labelSpace = this.facetLabelFontSize + this.labelPadding
         return this.bounds.padTop(legendHeightWithPadding + labelSpace)
     }
 
@@ -190,14 +188,19 @@ export class FacetChart
         return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
-    @computed private get facetFontSize(): number {
-        const cellWidth = this.bounds.width / this.gridParams.columns
-        return getFontSize(this.bounds.width, cellWidth, this.fontSize)
+    @computed private get facetLabelFontSize(): number {
+        if (this.gridParams.columns >= 3)
+            return GRAPHER_FONT_SCALE_12 * this.fontSize
+        return GRAPHER_FONT_SCALE_12_8 * this.fontSize
+    }
+
+    @computed private get facetBaseFontSize(): number {
+        return Math.max(this.facetLabelFontSize, 11)
     }
 
     @computed private get yAxisConfig(): AxisConfig {
         return new AxisConfig(this.manager.yAxisConfig, {
-            fontSize: this.facetFontSize,
+            fontSize: this.facetBaseFontSize,
         })
     }
 
@@ -231,9 +234,9 @@ export class FacetChart
     }
 
     @computed private get facetGridPadding(): SplitBoundsPadding {
-        const { facetFontSize, labelPadding } = this
+        const { facetLabelFontSize, labelPadding } = this
         return getFacetGridPadding({
-            baseFontSize: facetFontSize,
+            labelFontSize: facetLabelFontSize,
             labelPadding,
         })
     }
@@ -262,7 +265,7 @@ export class FacetChart
             this
 
         // Copy properties from manager to facets
-        const fontSize = this.facetFontSize
+        const fontSize = this.facetBaseFontSize
         // We are using `bounds` instead of `facetsContainerBounds` because the legend
         // is not yet created, and it is derived from the intermediate chart series.
         const gridBoundsArr = this.bounds.grid(
@@ -886,7 +889,7 @@ export class FacetChart
         return {
             maxWidth: Infinity, // Facet labels never wrap
             fontWeight: 700,
-            fontSize: this.facetFontSize,
+            fontSize: this.facetLabelFontSize,
             showRegionTooltip: !this.manager.isStatic,
         }
     }

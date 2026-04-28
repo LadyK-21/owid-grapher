@@ -1,48 +1,18 @@
-import {
-    BASE_FONT_SIZE,
-    GRAPHER_FONT_SCALE_10,
-    GRAPHER_FONT_SCALE_11,
-    GRAPHER_FONT_SCALE_12,
-    GRAPHER_FONT_SCALE_13,
-} from "../core/GrapherConstants"
-
-const roundToHalf = (value: number): number => Math.round(value * 2) / 2
-
-export const getFontSize = (
-    containerWidth: number,
-    cellWidth: number,
-    baseFontSize = BASE_FONT_SIZE,
-    minSize = 10
-): number => {
-    // Pick a fixed font size for very small charts
-    if (containerWidth < 300)
-        return roundToHalf(GRAPHER_FONT_SCALE_10 * baseFontSize)
-
-    // Scale the font size based on the space available per facet
-    const scaled = (ratio: number): number =>
-        Math.max(minSize, roundToHalf(baseFontSize * ratio))
-
-    if (cellWidth >= 300) return scaled(GRAPHER_FONT_SCALE_13)
-    if (cellWidth >= 200) return scaled(GRAPHER_FONT_SCALE_12)
-
-    return scaled(GRAPHER_FONT_SCALE_11)
-}
-
 export const getFacetGridPadding = ({
-    baseFontSize,
+    labelFontSize,
     labelPadding,
     shouldAddRowPadding = true,
     shouldAddColumnPadding = true,
 }: {
-    baseFontSize: number
+    labelFontSize: number
     labelPadding: number
     shouldAddRowPadding?: boolean
     shouldAddColumnPadding?: boolean
 }): { rowPadding: number; columnPadding: number; outerPadding: number } => {
-    const labelHeight = baseFontSize
+    const labelHeight = labelFontSize
 
-    const rowPadding = shouldAddRowPadding ? baseFontSize : 0
-    const columnPadding = shouldAddColumnPadding ? baseFontSize : 0
+    const rowPadding = shouldAddRowPadding ? labelFontSize : 0
+    const columnPadding = shouldAddColumnPadding ? labelFontSize : 0
 
     return {
         rowPadding: Math.round(labelHeight + labelPadding + rowPadding),

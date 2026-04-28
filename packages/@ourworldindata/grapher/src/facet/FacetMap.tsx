@@ -208,7 +208,7 @@ export class FacetMap
 
     @computed private get facetGridPadding(): SplitBoundsPadding {
         return getFacetGridPadding({
-            baseFontSize: this.facetFontSize,
+            labelFontSize: this.facetFontSize,
             labelPadding: this.labelPadding,
             shouldAddRowPadding: false,
         })
