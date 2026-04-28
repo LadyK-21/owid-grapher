@@ -1,3 +1,36 @@
+import {
+    BASE_FONT_SIZE,
+    GRAPHER_FONT_SCALE_10,
+    GRAPHER_FONT_SCALE_11,
+    GRAPHER_FONT_SCALE_12,
+    GRAPHER_FONT_SCALE_12_8,
+} from "../core/GrapherConstants"
+
+export const getFacetLabelFontSize = ({
+    containerWidth,
+    count,
+    baseFontSize = BASE_FONT_SIZE,
+    minSize = 8,
+}: {
+    containerWidth: number
+    count: number
+    baseFontSize?: number
+    minSize?: number
+}): number => {
+    // Pick a fixed font size for very small charts
+    if (containerWidth < 300) return GRAPHER_FONT_SCALE_10 * baseFontSize
+
+    // Scale the font size based on the number of series otherwise
+    if (count <= 9)
+        return Math.max(minSize, baseFontSize * GRAPHER_FONT_SCALE_12_8)
+    if (count <= 16)
+        return Math.max(minSize, baseFontSize * GRAPHER_FONT_SCALE_12)
+    if (count <= 25)
+        return Math.max(minSize, baseFontSize * GRAPHER_FONT_SCALE_11)
+
+    return minSize
+}
+
 export const getFacetGridPadding = ({
     labelFontSize,
     labelPadding,

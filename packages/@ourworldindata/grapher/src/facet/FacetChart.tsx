@@ -21,8 +21,6 @@ import { action, computed, makeObservable, observable } from "mobx"
 import {
     BASE_FONT_SIZE,
     DEFAULT_GRAPHER_BOUNDS,
-    GRAPHER_FONT_SCALE_12,
-    GRAPHER_FONT_SCALE_12_8,
 } from "../core/GrapherConstants"
 import {
     GRAPHER_CHART_TYPES,
@@ -38,7 +36,11 @@ import {
 import { ChartComponent, makeChartInstance } from "../chart/ChartTypeMap"
 import { ChartManager } from "../chart/ChartManager"
 import { ChartInterface, ChartState } from "../chart/ChartInterface"
-import { calculateAspectRatio, getFacetGridPadding } from "./FacetChartUtils"
+import {
+    calculateAspectRatio,
+    getFacetGridPadding,
+    getFacetLabelFontSize,
+} from "./FacetChartUtils"
 import {
     FacetSeries,
     FacetChartProps,
@@ -189,13 +191,15 @@ export class FacetChart
     }
 
     @computed private get facetLabelFontSize(): number {
-        if (this.gridParams.columns >= 3)
-            return GRAPHER_FONT_SCALE_12 * this.fontSize
-        return GRAPHER_FONT_SCALE_12_8 * this.fontSize
+        return getFacetLabelFontSize({
+            containerWidth: this.bounds.width,
+            count: this.series.length,
+            baseFontSize: this.fontSize,
+        })
     }
 
     @computed private get facetBaseFontSize(): number {
-        return Math.max(this.facetLabelFontSize, 11)
+        return this.facetLabelFontSize
     }
 
     @computed private get yAxisConfig(): AxisConfig {
