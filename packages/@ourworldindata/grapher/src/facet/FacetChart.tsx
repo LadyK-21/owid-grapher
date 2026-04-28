@@ -382,24 +382,24 @@ export class FacetChart
 
     @computed private get isSharedYAxis(): boolean {
         // When the Y axis is uniform for all facets:
-        // - for most charts, we want to only show the axis on the left-most facet charts, and omit
-        //   it on the others
-        // - for bar charts the Y axis is plotted horizontally, so we don't want to omit it
-        return (
-            this.uniformYAxis &&
-            ![
-                GRAPHER_CHART_TYPES.StackedDiscreteBar,
-                GRAPHER_CHART_TYPES.DiscreteBar,
-            ].includes(this.chartTypeName as any)
-        )
+        // - For most charts, we want to only show the axis on the left-most
+        //   facet charts, and omit it on the others
+        // - For bar charts, the Y axis is plotted horizontally, so we don't
+        //   want to omit it
+        const isHorizontalYAxis =
+            this.chartTypeName === GRAPHER_CHART_TYPES.DiscreteBar ||
+            this.chartTypeName === GRAPHER_CHART_TYPES.StackedDiscreteBar
+
+        return this.uniformYAxis && !isHorizontalYAxis
     }
 
     @computed private get isSharedXAxis(): boolean {
         return (
             this.uniformXAxis &&
-            // TODO: do this for stacked area charts and line charts as well?
-            this.chartTypeName === GRAPHER_CHART_TYPES.StackedBar &&
-            this.facetCount >= SHARED_X_AXIS_MIN_FACET_COUNT
+            this.facetCount >= SHARED_X_AXIS_MIN_FACET_COUNT &&
+            (this.chartTypeName === GRAPHER_CHART_TYPES.LineChart ||
+                this.chartTypeName === GRAPHER_CHART_TYPES.StackedBar ||
+                this.chartTypeName === GRAPHER_CHART_TYPES.StackedArea)
         )
     }
 
