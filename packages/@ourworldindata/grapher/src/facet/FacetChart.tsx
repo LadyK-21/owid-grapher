@@ -230,11 +230,7 @@ export class FacetChart
     }
 
     @computed private get facetGridPadding(): SplitBoundsPadding {
-        const { isSharedXAxis, facetFontSize } = this
-        return getFacetGridPadding({
-            baseFontSize: facetFontSize,
-            shouldAddRowPadding: !isSharedXAxis,
-        })
+        return getFacetGridPadding({ baseFontSize: this.facetFontSize })
     }
 
     @computed private get hideFacetLegends(): boolean {
@@ -473,9 +469,7 @@ export class FacetChart
                     ])
                     config.minSize = size
                     if (shared) {
-                        const sharedAxisSize =
-                            axis.orient === Position.bottom ? 0 : size
-                        sharedAxesSizes[axis.orient] = sharedAxisSize
+                        sharedAxesSizes[axis.orient] = size
                     }
                 }
             } else if (axisWithMaxSize) {
@@ -487,8 +481,6 @@ export class FacetChart
         // If the axes are "shared", then an axis will only plotted on the facets that are on the
         // same side as the axis.
         // For example, a vertical Y axis would be plotted on the left-most charts only.
-        // An exception is the bottom axis, which gets plotted on the top row of charts, instead of
-        // the bottom row of charts.
         const fullBounds = this.facetsContainerBounds.pad(sharedAxesSizes)
         const gridBoundsArr = fullBounds.grid(
             this.gridParams,
@@ -511,15 +503,7 @@ export class FacetChart
                 ...series.manager,
                 useValueBasedColorScheme,
                 xAxisConfig: {
-                    // For now, sharing an x axis means hiding the tick labels of inner facets.
-                    // This means that none of the x axes are actually hidden (we just don't plot their tick labels).
-                    // If we ever allow shared x axes to be actually hidden, we need to be careful with how we determine
-                    // the `minSize` – in the intermediate series (at this time) all axes are shown in
-                    // order to find the one with maximum size, but in the placed series, some axes are
-                    // hidden. This expands the available area for the chart, which can in turn increase
-                    // the number of ticks shown, which can make the size of the axis in the placed
-                    // series greater than the one in the intermediate series.
-                    hideTickLabels: shouldHideFacetAxis(
+                    hideAxis: shouldHideFacetAxis(
                         xAxis,
                         cellEdges,
                         sharedAxesSizes
