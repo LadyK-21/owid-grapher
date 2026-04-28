@@ -1733,6 +1733,12 @@ export function traverseEnrichedBlock(
                 traverseEnrichedBlock(node, callback, spanCallback)
             }
         })
+        .with({ type: "data-callout-group" }, (dataCalloutGroup) => {
+            callback(dataCalloutGroup)
+            for (const node of dataCalloutGroup.content) {
+                traverseEnrichedBlock(node, callback, spanCallback)
+            }
+        })
         .with({ type: "chart-rows" }, (block) => {
             callback(block)
             for (const row of block.rows) {

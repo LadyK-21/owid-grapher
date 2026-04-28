@@ -302,6 +302,7 @@ export function extractFilenamesFromBlock(
                     "text",
                     "topic-page-intro",
                     "data-callout",
+                    "data-callout-group",
                     "country-profile-selector",
                     "bespoke-component"
                 ),

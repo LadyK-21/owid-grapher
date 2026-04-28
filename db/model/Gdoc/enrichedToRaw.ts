@@ -815,6 +815,12 @@ export function enrichedBlockToRawBlock(
                 },
             }
         })
+        .with({ type: "data-callout-group" }, (b) => ({
+            type: "data-callout-group" as const,
+            value: {
+                content: b.content.map(enrichedBlockToRawBlock),
+            },
+        }))
         .exhaustive()
 }
 

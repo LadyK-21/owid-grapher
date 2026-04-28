@@ -69,6 +69,7 @@ import { BlockQueryClientProvider } from "./BlockQueryClientProvider.js"
 import { ExploreDataSection } from "./ExploreDataSection.js"
 import { LTPTableOfContents } from "./LTPTableOfContents.js"
 import { DataCallout } from "./DataCallout.js"
+import { DataCalloutGroup } from "./DataCalloutGroup.js"
 import { CountryProfileSelector } from "./CountryProfileSelector.js"
 
 function ArticleBlockInternal({
@@ -1014,6 +1015,9 @@ function ArticleBlockInternal({
         ))
         .with({ type: "data-callout" }, (block) => (
             <DataCallout block={block} containerType={containerType} />
+        ))
+        .with({ type: "data-callout-group" }, (block) => (
+            <DataCalloutGroup block={block} containerType={containerType} />
         ))
         .with({ type: "country-profile-selector" }, (block) => (
             <CountryProfileSelector

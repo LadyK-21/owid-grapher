@@ -640,5 +640,8 @@ ${links}`
                 ) || undefined
             )
         })
+        .with({ type: "data-callout-group" }, (b): string | undefined =>
+            enrichedBlocksToMarkdown(b.content, exportComponents, options)
+        )
         .exhaustive()
 }

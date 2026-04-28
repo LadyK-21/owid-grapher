@@ -60,6 +60,7 @@ import {
     RawBlockStaticViz,
     RawBlockConditionalSection,
     RawBlockDataCallout,
+    RawBlockDataCalloutGroup,
     RawBlockCountryProfileSelector,
     RawBlockBespokeComponent,
     RawBlockChartRows,
@@ -1061,6 +1062,20 @@ function* rawBlockDataCalloutToArchieMLString(
     yield "{}"
 }
 
+function* rawBlockDataCalloutGroupToArchieMLString(
+    block: RawBlockDataCalloutGroup
+): Generator<string, void, undefined> {
+    yield "{.data-callout-group}"
+    if (block.value.content) {
+        yield "[.+content]"
+        for (const contentBlock of block.value.content) {
+            yield* OwidRawGdocBlockToArchieMLStringGenerator(contentBlock)
+        }
+        yield "[]"
+    }
+    yield "{}"
+}
+
 function* rawBlockCountryProfileSelectorToArchieMLString(
     block: RawBlockCountryProfileSelector
 ): Generator<string, void, undefined> {
@@ -1207,6 +1222,10 @@ export function* OwidRawGdocBlockToArchieMLStringGenerator(
         )
         .with({ type: "socials" }, rawBlockSocialsToArchieMLString)
         .with({ type: "data-callout" }, rawBlockDataCalloutToArchieMLString)
+        .with(
+            { type: "data-callout-group" },
+            rawBlockDataCalloutGroupToArchieMLString
+        )
         .with(
             { type: "country-profile-selector" },
             rawBlockCountryProfileSelectorToArchieMLString

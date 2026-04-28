@@ -445,6 +445,9 @@ export function enrichedBlockToIndexableText(
                 },
                 (): undefined => undefined
             )
+            .with({ type: "data-callout-group" }, (b): string | undefined =>
+                enrichedBlocksToIndexableText(b.content, options)
+            )
             .exhaustive()
     )
 }
