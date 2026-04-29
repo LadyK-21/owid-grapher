@@ -41,7 +41,7 @@ import {
     isNotErrorValueOrEmptyCell,
     OwidTable,
 } from "@ourworldindata/core-table"
-import { GRAPHER_BACKGROUND_DEFAULT } from "../color/ColorConstants"
+import { GRAPHER_BACKGROUND } from "../color/ColorConstants"
 import { InteractionState } from "../interaction/InteractionState"
 
 import * as R from "remeda"
@@ -323,10 +323,8 @@ export function NoDataPattern({
 
 export function getChartSvgProps({
     fontSize,
-    backgroundColor,
 }: {
     fontSize?: number
-    backgroundColor?: string
 }): React.SVGProps<SVGSVGElement> {
     return {
         xmlns: "http://www.w3.org/2000/svg",
@@ -335,7 +333,7 @@ export function getChartSvgProps({
             ...SVG_STYLE_PROPS,
             fontSize: fontSize ?? BASE_FONT_SIZE,
             // Needs to be set here or else pngs will have a black background
-            backgroundColor: backgroundColor ?? GRAPHER_BACKGROUND_DEFAULT,
+            backgroundColor: GRAPHER_BACKGROUND,
         },
     }
 }

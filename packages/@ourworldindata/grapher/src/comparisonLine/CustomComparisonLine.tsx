@@ -117,7 +117,6 @@ export class CustomComparisonLine extends React.Component<
                 <Halo
                     id={`halo-${renderUid}`}
                     outlineWidth={this.haloOutlineWidth}
-                    outlineColor={this.props.backgroundColor}
                 >
                     <textPath
                         baselineShift="-0.2rem"

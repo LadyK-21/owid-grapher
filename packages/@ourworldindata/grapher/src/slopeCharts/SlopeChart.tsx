@@ -65,10 +65,7 @@ import { TooltipFooterIcon } from "../tooltip/TooltipProps"
 import { Halo } from "@ourworldindata/components"
 import { HorizontalColorLegendManager } from "../legend/HorizontalColorLegends"
 import { CategoricalBin } from "../color/ColorScaleBin"
-import {
-    GRAPHER_BACKGROUND_DEFAULT,
-    GRAPHER_DARK_TEXT,
-} from "../color/ColorConstants"
+import { GRAPHER_DARK_TEXT } from "../color/ColorConstants"
 import { LabelSeries } from "../verticalLabels/VerticalLabelsTypes"
 import { resolveEmphasis } from "../interaction/Emphasis"
 import { SlopeChartState } from "./SlopeChartState"
@@ -148,10 +145,6 @@ export class SlopeChart
 
     @computed private get lineStrokeWidth(): number {
         return this.manager.isStaticAndSmall ? 3 : 1.5
-    }
-
-    @computed private get backgroundColor(): string {
-        return this.manager.backgroundColor ?? GRAPHER_BACKGROUND_DEFAULT
     }
 
     @computed private get isHoverModeActive(): boolean {
@@ -859,7 +852,6 @@ export class SlopeChart
                         series={series}
                         strokeWidth={this.lineStrokeWidth}
                         outlineWidth={0.5}
-                        outlineStroke={this.backgroundColor}
                     />
                 ))}
             </g>
@@ -1051,7 +1043,6 @@ export class SlopeChart
                     outlineWidth={
                         GRAPHER_TEXT_OUTLINE_FACTOR * this.labelsFontSize
                     }
-                    outlineColor={this.backgroundColor}
                 >
                     <text
                         x={this.startX}

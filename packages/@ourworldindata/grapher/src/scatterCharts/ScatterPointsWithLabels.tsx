@@ -468,7 +468,6 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                                 outlineWidth={
                                     GRAPHER_TEXT_OUTLINE_FACTOR * label.fontSize
                                 }
-                                outlineColor={this.props.backgroundColor}
                             >
                                 <text
                                     id={makeFigmaId("label", label.text)}
@@ -608,7 +607,6 @@ export class ScatterPointsWithLabels extends React.Component<ScatterPointsWithLa
                                 outlineWidth={
                                     GRAPHER_TEXT_OUTLINE_FACTOR * label.fontSize
                                 }
-                                outlineColor={this.props.backgroundColor}
                             >
                                 <text
                                     id={makeFigmaId("label", series.seriesName)}

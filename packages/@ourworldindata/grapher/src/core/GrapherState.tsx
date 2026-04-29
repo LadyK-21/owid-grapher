@@ -62,7 +62,6 @@ import {
     ProjectionColumnInfo,
     OwidColumnDef,
     SortConfig,
-    Color,
     GlobeRegionName,
     GrapherWindowType,
     MapRegionName,
@@ -141,10 +140,7 @@ import {
     autoDetectYColumnSlugs,
 } from "../chart/ChartUtils.js"
 import { DimensionSlot } from "../chart/DimensionSlot.js"
-import {
-    GRAPHER_LIGHT_TEXT,
-    GRAPHER_BACKGROUND_DEFAULT,
-} from "../color/ColorConstants.js"
+import { GRAPHER_LIGHT_TEXT } from "../color/ColorConstants.js"
 import { ColorScaleConfig } from "../color/ColorScaleConfig.js"
 import {
     DataTableConfig,
@@ -3590,10 +3586,6 @@ export class GrapherState
 
     @computed get isExportingForWikimedia(): boolean {
         return this.isExportingToSvgOrPng && this.isWikimediaExport
-    }
-
-    @computed get backgroundColor(): Color {
-        return GRAPHER_BACKGROUND_DEFAULT
     }
 
     @computed get shouldPinTooltipToBottom(): boolean {

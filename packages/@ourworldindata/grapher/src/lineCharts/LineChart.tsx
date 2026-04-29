@@ -54,7 +54,7 @@ import {
 } from "../chart/ChartUtils"
 import { CategoricalBin, ColorScaleBin } from "../color/ColorScaleBin"
 import { ColorScale } from "../color/ColorScale"
-import { GRAPHER_BACKGROUND_DEFAULT } from "../color/ColorConstants"
+import { GRAPHER_BACKGROUND } from "../color/ColorConstants"
 import { darkenColorForLine } from "../color/ColorUtils"
 import {
     HorizontalColorLegendManager,
@@ -262,10 +262,7 @@ export class LineChart
                                     r={this.lineStrokeWidth / 2 + 3.5}
                                     fill={valueColor}
                                     fillOpacity={opacity}
-                                    stroke={
-                                        this.manager.backgroundColor ??
-                                        GRAPHER_BACKGROUND_DEFAULT
-                                    }
+                                    stroke={GRAPHER_BACKGROUND}
                                     strokeWidth={0.5}
                                 />
                             )
@@ -421,7 +418,6 @@ export class LineChart
                 dualAxis={dualAxis}
                 showTickMarks={true}
                 detailsMarker={manager.detailsMarkerInSvg}
-                backgroundColor={manager.backgroundColor}
             />
         )
     }
@@ -454,7 +450,6 @@ export class LineChart
                     hidePoints={this.hidePoints}
                     lineStrokeWidth={this.lineStrokeWidth}
                     lineOutlineWidth={this.lineOutlineWidth}
-                    backgroundColor={this.manager.backgroundColor}
                     markerRadius={this.markerRadius}
                     isStatic={manager.isStatic}
                 />

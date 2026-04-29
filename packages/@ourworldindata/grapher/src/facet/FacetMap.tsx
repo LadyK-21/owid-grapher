@@ -267,7 +267,6 @@ export class FacetMap
         )
 
         const {
-            backgroundColor,
             isStatic,
             mapColumnSlug = "",
             mapConfig,
@@ -290,7 +289,6 @@ export class FacetMap
                 transformedTable: transformedTableFromGrapher,
                 fontSize: facetFontSize,
                 showLegend: false,
-                backgroundColor,
                 isStatic,
                 mapColumnSlug,
                 mapConfig,

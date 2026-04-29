@@ -1,6 +1,7 @@
 import { makeFigmaId, PointVector } from "@ourworldindata/utils"
 import { RenderSlopeChartSeries } from "./SlopeChartConstants"
 import { LINE_STYLE } from "../lineCharts/LineChartConstants.js"
+import { GRAPHER_BACKGROUND } from "../color/ColorConstants"
 
 interface SlopeProps {
     series: RenderSlopeChartSeries
@@ -15,7 +16,7 @@ export function Slope({
     dotRadius = 3.5,
     strokeWidth = 2,
     outlineWidth = 0.5,
-    outlineStroke = "#fff",
+    outlineStroke = GRAPHER_BACKGROUND,
 }: SlopeProps) {
     const { displayName, startPoint, endPoint } = series
 

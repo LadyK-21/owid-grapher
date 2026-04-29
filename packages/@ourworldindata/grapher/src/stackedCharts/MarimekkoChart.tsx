@@ -540,7 +540,6 @@ export class MarimekkoChart
                     dualAxis={dualAxis}
                     showTickMarks={true}
                     detailsMarker={manager.detailsMarkerInSvg}
-                    backgroundColor={manager.backgroundColor}
                 />
                 {this.showLegend && (
                     <HorizontalCategoricalColorLegend manager={this} />
