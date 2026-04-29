@@ -50,10 +50,7 @@ import { logErrorAndMaybeCaptureInSentry } from "../serverUtils/errorLog.js"
 
 import { deleteOldGraphers, getTagToSlugMap } from "./GrapherBakingUtils.js"
 import { knexRaw } from "../db/db.js"
-import {
-    getForceDatapageByChartId,
-    getRelatedChartsForVariable,
-} from "../db/model/Chart.js"
+import { getRelatedChartsForVariable } from "../db/model/Chart.js"
 import { getAllMultiDimDataPageSlugs } from "../db/model/MultiDimDataPage.js"
 import pMap from "p-map"
 import { stringify } from "safe-stable-stringify"
@@ -74,14 +71,8 @@ const renderDatapageIfApplicable = async (
         forceDatapage?: boolean
     } = {}
 ) => {
-    const shouldForceDatapage =
-        forceDatapage !== undefined
-            ? forceDatapage
-            : grapher.id !== undefined
-              ? await getForceDatapageByChartId(knex, grapher.id)
-              : false
     const variable = await getVariableOfDatapageIfApplicable(knex, grapher, {
-        forceDatapage: shouldForceDatapage,
+        forceDatapage,
     })
 
     if (!variable) return undefined
@@ -110,27 +101,22 @@ const renderDatapageIfApplicable = async (
 }
 
 /**
- *
  * Render a datapage if available, otherwise render a grapher page.
  */
-
 export const renderDataPageOrGrapherPage = async (
     grapher: GrapherInterface,
     knex: db.KnexReadonlyTransaction,
     {
         imageMetadataDictionary,
         archiveContextDictionary,
-        forceDatapage,
     }: {
         imageMetadataDictionary?: Record<string, DbEnrichedImage>
         archiveContextDictionary?: Record<number, ArchiveContext | undefined>
-        forceDatapage?: boolean
     } = {}
 ): Promise<string> => {
     const datapage = await renderDatapageIfApplicable(grapher, false, knex, {
         imageMetadataDictionary,
         archiveContextDictionary,
-        forceDatapage,
     })
     if (datapage) return datapage
     return renderGrapherPage(grapher, knex, {
@@ -293,14 +279,14 @@ export async function renderDataPageV2(
 export const renderPreviewDataPageOrGrapherPage = async (
     grapher: GrapherInterface,
     chartId: number,
-    forceDatapage: boolean,
-    knex: db.KnexReadonlyTransaction
+    knex: db.KnexReadonlyTransaction,
+    options?: { forceDatapage?: boolean }
 ) => {
     const archiveContextDictionary =
         await getLatestArchivedChartPageVersionsIfEnabled(knex)
     const datapage = await renderDatapageIfApplicable(grapher, true, knex, {
         archiveContextDictionary,
-        forceDatapage,
+        forceDatapage: options?.forceDatapage,
     })
     if (datapage) return datapage
 
@@ -396,7 +382,6 @@ const bakeGrapherPage = async (
     await fs.writeFile(
         outPath,
         await renderDataPageOrGrapherPage(grapher, knex, {
-            forceDatapage: args.forceDatapage,
             imageMetadataDictionary: args.imageMetadataDictionary,
             archiveContextDictionary: args.archiveContextDictionary,
         })
@@ -408,7 +393,6 @@ export interface BakeSingleGrapherChartArguments {
     config: string
     bakedSiteDir: string
     slug: string
-    forceDatapage: boolean
     imageMetadataDictionary: Record<string, DbEnrichedImage>
     archiveContextDictionary: Record<number, ArchiveContext | undefined>
 }
@@ -439,7 +423,6 @@ export const bakeAllChangedGrapherPagesAndDeleteRemovedGraphers = async (
         Pick<DbPlainChart, "id"> & {
             config: DbRawChartConfig["full"]
             slug: string
-            forceDatapage: boolean
         }
     >(
         knex,
@@ -447,8 +430,7 @@ export const bakeAllChangedGrapherPagesAndDeleteRemovedGraphers = async (
         SELECT
             c.id,
             cc.full as config,
-            cc.slug,
-            c.forceDatapage
+            cc.slug
         FROM charts c
         JOIN chart_configs cc ON c.configId = cc.id
         WHERE JSON_EXTRACT(cc.full, "$.isPublished")=true
@@ -471,7 +453,6 @@ export const bakeAllChangedGrapherPagesAndDeleteRemovedGraphers = async (
         config: row.config,
         bakedSiteDir: bakedSiteDir,
         slug: row.slug,
-        forceDatapage: Boolean(row.forceDatapage),
         imageMetadataDictionary,
         archiveContextDictionary,
     }))

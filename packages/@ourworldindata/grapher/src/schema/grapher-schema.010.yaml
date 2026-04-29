@@ -281,6 +281,9 @@ properties:
             - discrete-bar
             - marimekko
             - scatter
+            - stacked-area
+            - stacked-bar
+            - stacked-discrete-bar
     xAxis:
         $ref: "#/$defs/axis"
     yAxis:

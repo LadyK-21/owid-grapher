@@ -176,7 +176,13 @@ export class EditorTextTab<
     }
 
     @action.bound onOriginUrlChange(value: string): void {
-        this.props.editor.grapherState.originUrl = value.trim() || undefined
+        // Spaces get turned into dashes as the user types, so "child labor"
+        // becomes "child-labor" live and the stored URL never contains spaces
+        // or ends up URL-encoded as %20.
+        const normalized = value.replace(/ /g, "-")
+        this.props.editor.grapherState.originUrl = value.trim()
+            ? normalized
+            : undefined
         // Reset so the custom URL hint reappears as the user types more
         this.isNavigatingDropdown = false
     }

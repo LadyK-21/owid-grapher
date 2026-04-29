@@ -192,7 +192,6 @@ export async function loadLinkedChartsForSlugs(
                     chart.config,
                     originalSlug,
                     {
-                        forceDatapage: chart.forceDatapage,
                         archivedPageVersion:
                             archivedChartVersions[chartId] || undefined,
                     }
@@ -833,6 +832,24 @@ export class GdocBase implements OwidGdocBaseInterface {
                     text: block.title ?? "Country profile selector",
                 }),
             ])
+            .with({ type: "chart-rows" }, (block) =>
+                block.rows.map((row) =>
+                    createLinkFromUrl({
+                        url: row.url,
+                        sourceId: this.id,
+                        componentType: block.type,
+                        text: "",
+                    })
+                )
+            )
+            .with({ type: "pull-chart" }, (block) => [
+                createLinkFromUrl({
+                    url: block.url,
+                    sourceId: this.id,
+                    componentType: block.type,
+                    text: "",
+                }),
+            ])
             .with(
                 {
                     // no urls directly on any of these blocks
@@ -855,7 +872,6 @@ export class GdocBase implements OwidGdocBaseInterface {
                         "heading",
                         "horizontal-rule",
                         "html",
-                        "script",
                         "key-indicator-collection",
                         "list",
                         "missing-data",
@@ -1480,22 +1496,14 @@ export async function makeGrapherLinkedChart(
     knex: db.KnexReadonlyTransaction,
     config: GrapherInterface,
     originalSlug: string,
-    {
-        forceDatapage,
-        archivedPageVersion,
-    }: {
-        forceDatapage?: boolean
-        archivedPageVersion?: ArchivedPageVersion
-    } = {}
+    { archivedPageVersion }: { archivedPageVersion?: ArchivedPageVersion } = {}
 ): Promise<LinkedChart> {
     const resolvedSlug = config.slug ?? ""
     const resolvedTitle = config.title ?? ""
     const subtitle = toPlaintext(config.subtitle ?? "")
     const resolvedUrl = `${BASE_URL}/grapher/${resolvedSlug}`
     const tab = config.tab ?? GRAPHER_TAB_CONFIG_OPTIONS.chart
-    const indicatorId = await getDatapageIndicatorId(knex, config, {
-        forceDatapage,
-    })
+    const indicatorId = await getDatapageIndicatorId(knex, config)
 
     return {
         configType: ChartConfigType.Grapher,

@@ -57,12 +57,13 @@ import {
     RawBlockExpander,
     RawBlockResourcePanel,
     RawBlockCta,
-    RawBlockScript,
     RawBlockStaticViz,
     RawBlockConditionalSection,
     RawBlockDataCallout,
     RawBlockCountryProfileSelector,
     RawBlockBespokeComponent,
+    RawBlockChartRows,
+    RawBlockPullChart,
 } from "@ourworldindata/types"
 import { match } from "ts-pattern"
 
@@ -365,6 +366,54 @@ function* rawBlockRecircToArchieMLString(
     yield "{}"
 }
 
+function* rawBlockChartRowsToArchieMLString(
+    block: RawBlockChartRows
+): Generator<string, void, undefined> {
+    yield "{.chart-rows}"
+    if (block.value) {
+        yield* propertyToArchieMLString("kicker", block.value)
+        yield* propertyToArchieMLString("title", block.value)
+        yield* propertyToArchieMLString("source", block.value)
+        if (block.value.rows) {
+            yield "[.rows]"
+            for (const row of block.value.rows) {
+                yield* propertyToArchieMLString("image", row)
+                yield* propertyToArchieMLString("url", row)
+                if (row.content) {
+                    yield "[.+content]"
+                    for (const content of row.content) {
+                        yield* OwidRawGdocBlockToArchieMLStringGenerator(
+                            content
+                        )
+                    }
+                    yield "[]"
+                }
+            }
+            yield "[]"
+        }
+    }
+    yield "{}"
+}
+
+function* rawBlockPullChartToArchieMLString(
+    block: RawBlockPullChart
+): Generator<string, void, undefined> {
+    yield "{.pull-chart}"
+    if (block.value) {
+        yield* propertyToArchieMLString("align", block.value)
+        yield* propertyToArchieMLString("image", block.value)
+        yield* propertyToArchieMLString("url", block.value)
+        if (block.value.content) {
+            yield "[.+content]"
+            for (const content of block.value.content) {
+                yield* OwidRawGdocBlockToArchieMLStringGenerator(content)
+            }
+            yield "[]"
+        }
+    }
+    yield "{}"
+}
+
 function* rawBlockSubscribeBannerToArchieMLString(
     block: RawBlockSubscribeBanner
 ): Generator<string, void, undefined> {
@@ -422,15 +471,6 @@ function* rawBlockHtmlToArchieMLString(
         yield `html: ${escapeRawText(block.value)}`
         yield `:end`
     }
-}
-function* rawBlockScriptToArchieMLString(
-    block: RawBlockScript
-): Generator<string, void, undefined> {
-    yield "[.+script]"
-    for (const text of block.value) {
-        yield* rawBlockTextToArchieMLString(text)
-    }
-    yield "[]"
 }
 
 function* RawBlockHeadingToArchieMLString(
@@ -1077,6 +1117,8 @@ export function* OwidRawGdocBlockToArchieMLStringGenerator(
         .with({ type: "people-rows" }, rawBlockPeopleRowsToArchieMLString)
         .with({ type: "person" }, rawBlockPersonToArchieMLString)
         .with({ type: "pull-quote" }, rawBlockPullQuoteToArchieMLString)
+        .with({ type: "chart-rows" }, rawBlockChartRowsToArchieMLString)
+        .with({ type: "pull-chart" }, rawBlockPullChartToArchieMLString)
         .with({ type: "guided-chart" }, rawBlockGuidedChartToArchieMLString)
         .with(
             { type: "horizontal-rule" },
@@ -1090,7 +1132,6 @@ export function* OwidRawGdocBlockToArchieMLStringGenerator(
         .with({ type: "resource-panel" }, rawBlockResourcePanelToArchieMLString)
         .with({ type: "text" }, rawBlockTextToArchieMLString)
         .with({ type: "html" }, rawBlockHtmlToArchieMLString)
-        .with({ type: "script" }, rawBlockScriptToArchieMLString)
         .with({ type: "heading" }, RawBlockHeadingToArchieMLString)
         .with({ type: "sdg-grid" }, rawBlockSDGGridToArchieMLString)
         .with({ type: "static-viz" }, rawBlockStaticVizToArchieMLString)

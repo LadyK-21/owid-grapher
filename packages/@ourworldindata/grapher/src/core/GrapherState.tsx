@@ -583,6 +583,7 @@ export class GrapherState
     hideControlsRow = false
     hideRelatedQuestion = false
     canHideExternalControlsInEmbed: boolean = false
+    recommendedIframeEmbedHeight?: number
     hideExternalControlsInEmbedUrl: boolean =
         this.canHideExternalControlsInEmbed
     forceHideAnnotationFieldsInTitle: AnnotationFieldsInTitle = {
@@ -712,6 +713,7 @@ export class GrapherState
             isConfigReady: observable,
             isDataReady: observable,
             canHideExternalControlsInEmbed: observable.ref,
+            recommendedIframeEmbedHeight: observable.ref,
             hideExternalControlsInEmbedUrl: observable.ref,
             isExportingToSvgOrPng: observable.ref,
             isWikimediaExport: observable.ref,
@@ -762,6 +764,7 @@ export class GrapherState
         this.setAuthoredVersion(options)
         this.canHideExternalControlsInEmbed =
             options.canHideExternalControlsInEmbed ?? false
+        this.recommendedIframeEmbedHeight = options.recommendedIframeEmbedHeight
         this.staticBounds = options.staticBounds ?? DEFAULT_GRAPHER_BOUNDS
 
         this.narrativeChartInfo = options.narrativeChartInfo
@@ -1756,9 +1759,7 @@ export class GrapherState
         )
     }
 
-    /**
-     * Plots time on the x-axis.
-     */
+    /** Plots time on the x-axis */
     @computed private get hasTimeDimension(): boolean {
         return this.isStackedBar || this.isStackedArea || this.isLineChart
     }
@@ -1885,11 +1886,11 @@ export class GrapherState
     @action.bound private ensureHandlesAreOnDifferentTimes(): void {
         if (!this.areHandlesOnSameTime) return
 
-        const time = this.startTime // startTime = endTime
-        if (time === this.closestTimelineMinTime) {
-            this.timelineHandleTimeBounds = [time ?? -Infinity, Infinity]
+        const timeBound = this.endHandleTimeBound // same as startHandleTimeBound
+        if (this.startTime === this.closestTimelineMinTime) {
+            this.timelineHandleTimeBounds = [timeBound ?? -Infinity, Infinity]
         } else {
-            this.timelineHandleTimeBounds = [-Infinity, time ?? Infinity]
+            this.timelineHandleTimeBounds = [-Infinity, timeBound ?? Infinity]
         }
     }
 
@@ -1915,6 +1916,14 @@ export class GrapherState
         ].includes(tabName as any)
     }
 
+    private readonly checkSingleTimeSelectionPreferred = (
+        tabName: GrapherTabName
+    ): boolean => {
+        // Scatter plots can show a time range, but a single time is preferred
+        // when the scatter is not the main chart, but a secondary tab
+        return !this.isScatter && tabName === GRAPHER_TAB_NAMES.ScatterPlot
+    }
+
     private readonly checkOnlyTimeRangeSelectionPossible = (
         tabName: GrapherTabName
     ): boolean => {
@@ -1924,12 +1933,13 @@ export class GrapherState
         ].includes(tabName as any)
     }
 
-    private readonly checkSingleTimeSelectionPreferred = (
+    private readonly checkTimeRangeSelectionPreferred = (
         tabName: GrapherTabName
     ): boolean => {
-        // Scatter plots can show a time range, but a single time is preferred
-        // when the scatter is not the main chart, but a secondary tab
-        return !this.isScatter && tabName === GRAPHER_TAB_NAMES.ScatterPlot
+        return [
+            GRAPHER_TAB_NAMES.StackedArea,
+            GRAPHER_TAB_NAMES.StackedBar,
+        ].includes(tabName as any)
     }
 
     @action.bound ensureTimeHandlesAreSensibleForTab(
@@ -1940,7 +1950,10 @@ export class GrapherState
             this.checkSingleTimeSelectionPreferred(tab)
         ) {
             this.ensureHandlesAreOnSameTime()
-        } else if (this.checkOnlyTimeRangeSelectionPossible(tab)) {
+        } else if (
+            this.checkOnlyTimeRangeSelectionPossible(tab) ||
+            this.checkTimeRangeSelectionPreferred(tab)
+        ) {
             this.ensureHandlesAreOnDifferentTimes()
         }
     }
@@ -1975,17 +1988,14 @@ export class GrapherState
         }
     }
 
-    @action.bound onChartSwitching(
-        _oldTab: GrapherTabName,
-        newTab: GrapherTabName
-    ): void {
+    @action.bound adjustStateForTab(tab: GrapherTabName): void {
         if (!this.isReady)
             console.warn(
-                "onChartSwitching has been called before grapher has loaded its data, this is probably a mistake"
+                "adjustStateForTab has been called before grapher has loaded its data, this is probably a mistake"
             )
 
-        this.ensureTimeHandlesAreSensibleForTab(newTab)
-        this.ensureEntitySelectionIsSensibleForTab(newTab)
+        this.ensureTimeHandlesAreSensibleForTab(tab)
+        this.ensureEntitySelectionIsSensibleForTab(tab)
 
         // Stop animation when switching to a tab where playback is disabled
         if (this.disablePlay && this.isTimelineAnimationActive) {
@@ -2053,7 +2063,7 @@ export class GrapherState
         oldTab: GrapherTabName,
         newTab: GrapherTabName
     ): void {
-        this.onChartSwitching(oldTab, newTab)
+        this.adjustStateForTab(newTab)
         this.syncEntitySelectionBetweenChartAndMap(oldTab, newTab)
         this.validateEntitySelectorState(newTab)
     }

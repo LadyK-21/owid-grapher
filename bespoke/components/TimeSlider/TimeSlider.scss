@@ -69,7 +69,8 @@
         background-clip: content-box !important;
 
         &[data-active],
-        &[data-dragging] {
+        &[data-dragging],
+        &[data-focus-visible] {
             .time-slider__knob {
                 transform: scale(1.3);
                 background: $active-knob;

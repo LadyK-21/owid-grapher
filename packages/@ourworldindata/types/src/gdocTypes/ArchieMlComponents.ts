@@ -166,6 +166,14 @@ import type {
     RawBlockPullQuote,
 } from "./archieMLComponents/PullQuote.js"
 import type {
+    EnrichedBlockChartRows,
+    RawBlockChartRows,
+} from "./archieMLComponents/ChartRows.js"
+import type {
+    EnrichedBlockPullChart,
+    RawBlockPullChart,
+} from "./archieMLComponents/PullChart.js"
+import type {
     EnrichedBlockRecirc,
     RawBlockRecirc,
 } from "./archieMLComponents/Recirc.js"
@@ -177,10 +185,6 @@ import type {
     EnrichedBlockResourcePanel,
     RawBlockResourcePanel,
 } from "./archieMLComponents/ResourcePanel.js"
-import type {
-    EnrichedBlockScript,
-    RawBlockScript,
-} from "./archieMLComponents/Script.js"
 import type {
     EnrichedBlockSDGGrid,
     RawBlockSDGGrid,
@@ -259,6 +263,8 @@ export type OwidRawGdocBlock =
     | RawBlockPeopleRows
     | RawBlockPerson
     | RawBlockPullQuote
+    | RawBlockChartRows
+    | RawBlockPullChart
     | RawBlockGuidedChart
     | RawBlockRecirc
     | RawBlockResearchAndWriting
@@ -266,7 +272,6 @@ export type OwidRawGdocBlock =
     | RawBlockResourcePanel
     | RawBlockHeading
     | RawBlockHtml
-    | RawBlockScript
     | RawBlockHorizontalRule
     | RawBlockSDGGrid
     | RawBlockStickyRightContainer
@@ -324,12 +329,13 @@ export type OwidEnrichedGdocBlock =
     | EnrichedBlockPeopleRows
     | EnrichedBlockPerson
     | EnrichedBlockPullQuote
+    | EnrichedBlockChartRows
+    | EnrichedBlockPullChart
     | EnrichedBlockGuidedChart
     | EnrichedBlockRecirc
     | EnrichedBlockResearchAndWriting
     | EnrichedBlockHeading
     | EnrichedBlockHtml
-    | EnrichedBlockScript
     | EnrichedBlockHorizontalRule
     | EnrichedBlockSDGGrid
     | EnrichedBlockStickyRightContainer
@@ -390,6 +396,7 @@ export * from "./archieMLComponents/PullQuote.js"
 export * from "./archieMLComponents/ResearchAndWriting.js"
 export * from "./archieMLComponents/ResourcePanel.js"
 export * from "./archieMLComponents/Socials.js"
+export * from "./archieMLComponents/PullChart.js"
 export * from "./archieMLComponents/Table.js"
 export type * from "./archieMLComponents/AdditionalCharts.js"
 export type * from "./archieMLComponents/Align.js"
@@ -399,6 +406,7 @@ export type * from "./archieMLComponents/BespokeComponent.js"
 export type * from "./archieMLComponents/Blockquote.js"
 export type * from "./archieMLComponents/Callout.js"
 export type * from "./archieMLComponents/Chart.js"
+export type * from "./archieMLComponents/ChartRows.js"
 export type * from "./archieMLComponents/ChartStory.js"
 export type * from "./archieMLComponents/Code.js"
 export type * from "./archieMLComponents/ConditionalSection.js"
@@ -432,7 +440,6 @@ export type * from "./archieMLComponents/PeopleRows.js"
 export type * from "./archieMLComponents/PillRow.js"
 export type * from "./archieMLComponents/ProminentLink.js"
 export type * from "./archieMLComponents/Recirc.js"
-export type * from "./archieMLComponents/Script.js"
 export type * from "./archieMLComponents/SDGGrid.js"
 export type * from "./archieMLComponents/SDGToc.js"
 export type * from "./archieMLComponents/SideBySide.js"

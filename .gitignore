@@ -68,3 +68,5 @@ playwright-report/
 
 # Typesense
 typesense-data/
+
+.toolbox/

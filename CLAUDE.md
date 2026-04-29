@@ -8,9 +8,9 @@
 - make migrate: apply migrations
 - make dbtest: run database and api tests
 
-When you have completed implementing a big set of changes, run `yarn fixFormatChanged > /dev/null 2>&1 && yarn typecheck` and fix any errors you have.
-
 When you want to create a git commit, refer to docs/agent-guidelines/commit-messages.md for instructions.
+
+When creating new skills in `.claude/skills/`, always include `metadata: { internal: true }` in the SKILL.md frontmatter unless explicitly asked for the skill to be public. This prevents external skill indexes from crawling and listing our internal skills.
 
 ## Code style
 
@@ -19,6 +19,7 @@ When you want to create a git commit, refer to docs/agent-guidelines/commit-mess
 - Avoid the use of the `any` type. Only use it if you have to and ask for permission.
 - In Grapher and the admin, where we use MobX 6, we use a somewhat nonstandard setup. We use class based components with TC-39 stage 3 decorators, but only for @computed and @action properties. The observable props are not marked with @observable, but are instead listed in the constructor in a `makeObservable` call. The `makeObservable` call must mention all obserable props, but none of the @computed or @action ones.
 - For CSS, we mostly use named style classes following the BEM conventions in separate .scss files. We usually avoid inline styles - only use those if the component you are working on already makes use of them for a similar use case. Components usually have a companion scss file with the same name. The entry point for our site styles is /site/owid.scss, the entry point for grapher styles is /packages/@ourworldindata/grapher/src/core/grapher.scss
+- In SCSS files, do NOT use parent selector nesting (`&__element`, `&--modifier`). Write out full class names (`.block__element`) so it's easy to search/navigate between JSX and SCSS.
 - Check [docs/browser-support.md](./docs/browser-support.md) before using modern JS or CSS features. It lists our supported browsers, the "most breaking" features we rely on, and features we can't yet use.
 
 # Codebase overview

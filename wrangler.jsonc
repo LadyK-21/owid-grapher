@@ -31,7 +31,6 @@
         },
     ],
     "vars": {
-        // Vars that should be available in all envs, including local dev
         "ENV": "development",
         "GRAPHER_CONFIG_R2_BUCKET_FALLBACK_PATH": "v1",
         "DATA_API_URL_COMPLETE": "https://api.ourworldindata.org/v1/indicators/",
@@ -65,6 +64,7 @@
                 "DATA_API_URL_PARTIAL_POSTFIX": "/v1/indicators/",
                 "DATA_API_URL_COMPLETE": "",
                 "CLOUDFLARE_GOOGLE_ANALYTICS_SAMPLING_RATE": "1",
+                "CATALOG_URL": "https://catalog.ourworldindata.org",
             },
         },
         "production": {
@@ -89,6 +89,7 @@
                 "GRAPHER_CONFIG_R2_BUCKET_PATH": "v1",
                 "DATA_API_URL_COMPLETE": "https://api.ourworldindata.org/v1/indicators/",
                 "CLOUDFLARE_GOOGLE_ANALYTICS_SAMPLING_RATE": "0.01",
+                "CATALOG_URL": "https://catalog.ourworldindata.org",
             },
         },
     },

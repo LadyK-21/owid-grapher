@@ -121,11 +121,13 @@ export {
     type ComparisonLineConfig,
     type VerticalComparisonLineConfig,
     type CustomComparisonLineConfig,
+    type VerticalComparisonLineLabelPlacement,
     type AxisConfigInterface,
     type ColorSchemeInterface,
     type Tickmark,
     type SeriesName,
     type LegacyGrapherQueryParams,
+    type DownloadRewriteTarget,
     GRAPHER_QUERY_PARAM_KEYS,
     type ChartRedirect,
     type DetailsMarker,
@@ -354,6 +356,7 @@ export {
 } from "./dbTypes/AnalyticsPageviews.js"
 export {
     type DbPlainAnalyticsGrapherView,
+    type AnalyticsGrapherViewWithRank,
     AnalyticsGrapherViewsTableName,
 } from "./dbTypes/AnalyticsGrapherViews.js"
 export {
@@ -435,6 +438,10 @@ export {
     type DbInsertChartXEntity,
     type DbPlainChartXEntity,
 } from "./dbTypes/ChartsXEntities.js"
+export {
+    type DbPlainDatapage,
+    DatapagesTableName,
+} from "./dbTypes/Datapages.js"
 export {
     type DbPlainDataset,
     type DbInsertDataset,
@@ -711,6 +718,7 @@ export type {
     MultiDimDataPageConfigEnriched,
     MultiDimDataPageConfigPreProcessed,
     MultiDimDataPageConfigRaw,
+    MultiDimDataPageInitialViewData,
     MultiDimDataPageProps,
     FaqEntryKeyedByGdocIdAndFragmentId,
     Choice,

@@ -367,6 +367,20 @@ export function enrichedBlockToIndexableText(
                 { type: "simple-text" },
                 (b): string | undefined => b.value.text
             )
+            .with({ type: "chart-rows" }, (b): string | undefined => {
+                const parts = b.rows.flatMap((row) =>
+                    row.content.map((contentBlock) =>
+                        enrichedBlockToIndexableText(contentBlock, options)
+                    )
+                )
+                return joinBlocksAsSentences(parts) || undefined
+            })
+            .with({ type: "pull-chart" }, (b): string | undefined => {
+                const parts = b.content.map((contentBlock) =>
+                    enrichedBlockToIndexableText(contentBlock, options)
+                )
+                return joinBlocksAsSentences(parts) || undefined
+            })
             .with({ type: "static-viz" }, (b): string | undefined =>
                 b.caption ? spansToIndexableText(b.caption, options) : undefined
             )
@@ -421,7 +435,6 @@ export function enrichedBlockToIndexableText(
                         "recirc",
                         "research-and-writing",
                         "resource-panel",
-                        "script",
                         "sdg-grid",
                         "sdg-toc",
                         "socials",

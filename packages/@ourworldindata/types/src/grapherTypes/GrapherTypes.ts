@@ -364,6 +364,11 @@ export type ComparisonLineConfig =
     | VerticalComparisonLineConfig
     | CustomComparisonLineConfig
 
+export interface VerticalComparisonLineLabelPlacement {
+    x: number
+    anchor: "start" | "end"
+}
+
 export enum LogoOption {
     owid = "owid",
     "core+owid" = "core+owid",
@@ -632,6 +637,16 @@ export type GrapherQueryParams = {
 export type LegacyGrapherQueryParams = GrapherQueryParams & {
     year?: string
 }
+
+export type DownloadRewriteTarget =
+    | "download-full-data"
+    | "download-filtered-data"
+    | "api-csv"
+    | "api-metadata"
+    | "api-example-excel"
+    | "api-example-python"
+    | "api-example-r"
+    | "api-example-stata"
 
 // We don't use this anywhere, but this is a way to ensure that we have an object with all keys present
 // ... so GRAPHER_QUERY_PARAM_KEYS below is guaranteed to have all keys of LegacyGrapherQueryParams

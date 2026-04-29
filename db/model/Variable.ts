@@ -21,12 +21,12 @@ import {
     OwidVariableMixedData,
     OwidVariableWithSourceAndDimension,
     OwidVariableId,
-    GRAPHER_CHART_TYPES,
     DimensionProperty,
     GrapherInterface,
     DbRawVariable,
     VariablesTableName,
     DbRawChartConfig,
+    DbPlainDatapage,
     parseChartConfig,
     DbEnrichedChartConfig,
     DbEnrichedVariable,
@@ -578,14 +578,6 @@ export async function getAllChartsForIndicator(
 /**
  * Returns the indicator ID to use for datapage metadata if the grapher is
  * eligible for a datapage, otherwise undefined.
- *
- * By default, datapages require exactly one Y indicator.
- *
- * If `forceDatapage` is enabled, we instead use the first Y indicator for
- * metadata (same behavior as mdims), even when there are multiple Y indicators.
- *
- * The selected indicator must have schema version >= 2 and include text for at
- * least one of the description* fields or titlePublic.
  */
 export async function getDatapageIndicatorId(
     knex: db.KnexReadonlyTransaction,
@@ -594,50 +586,32 @@ export async function getDatapageIndicatorId(
         forceDatapage?: boolean
     }
 ): Promise<number | undefined> {
-    const yVariableIds = grapher
-        .dimensions!.filter((d) => d.property === DimensionProperty.y)
-        .map((d) => d.variableId)
-    const xVariableIds = grapher
-        .dimensions!.filter((d) => d.property === DimensionProperty.x)
-        .map((d) => d.variableId)
-
-    // For scatter plots we want to only show a data page if it has no X indicator mapped, which
-    // is a special case where time is the X axis. Marimekko charts are the other chart that uses
-    // the X dimension but there we usually map population on X which should not prevent us from
-    // showing a data page.
-    const isScatterWithMappedX =
-        grapher.chartTypes?.[0] === GRAPHER_CHART_TYPES.ScatterPlot &&
-        xVariableIds.length > 0
-
-    let variableId: number | undefined
-    if (
-        options?.forceDatapage ||
-        (yVariableIds.length === 1 && !isScatterWithMappedX)
-    ) {
-        variableId = yVariableIds[0]
+    // If a data page is forced, simply return the first y-dimension
+    if (options?.forceDatapage) {
+        const yVariableIds = grapher
+            .dimensions!.filter((d) => d.property === DimensionProperty.y)
+            .map((d) => d.variableId)
+        return yVariableIds[0]
     }
 
-    if (!variableId) return undefined
+    if (!grapher.id) {
+        console.warn(
+            "Grapher must have an ID to check for datapage eligibility"
+        )
+        return undefined
+    }
 
-    const result = await knexRawFirst<{ id: number }>(
+    const row = await knexRawFirst<DbPlainDatapage>(
         knex,
         `-- sql
-            SELECT id
-            FROM variables
-            WHERE id = ?
-              AND schemaVersion >= 2
-              AND (
-                (descriptionShort IS NOT NULL AND descriptionShort != '') OR
-                (descriptionProcessing IS NOT NULL AND descriptionProcessing != '') OR
-                (descriptionKey IS NOT NULL AND descriptionKey != '' AND descriptionKey != '[]') OR
-                (descriptionFromProducer IS NOT NULL AND descriptionFromProducer != '') OR
-                (titlePublic IS NOT NULL AND titlePublic != '')
-              )
+            SELECT variableId
+            FROM datapages
+            WHERE chartId = ?
         `,
-        [variableId]
+        [grapher.id]
     )
 
-    return result?.id
+    return row?.variableId
 }
 
 // TODO: these are domain functions and should live somewhere else
@@ -929,15 +903,9 @@ export const readSQLasDF = async (
 export async function getVariableOfDatapageIfApplicable(
     knex: db.KnexReadonlyTransaction,
     grapher: GrapherInterface,
-    options?: {
-        forceDatapage?: boolean
-    }
+    options?: { forceDatapage?: boolean }
 ): Promise<
-    | {
-          id: number
-          metadata: OwidVariableWithSourceAndDimension
-      }
-    | undefined
+    { id: number; metadata: OwidVariableWithSourceAndDimension } | undefined
 > {
     const indicatorId = await getDatapageIndicatorId(knex, grapher, options)
     if (indicatorId) {
