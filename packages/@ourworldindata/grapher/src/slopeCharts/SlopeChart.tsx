@@ -21,7 +21,6 @@ import {
     DEFAULT_GRAPHER_BOUNDS,
     GRAPHER_FONT_SCALE_11,
     GRAPHER_FONT_SCALE_12,
-    GRAPHER_TEXT_OUTLINE_FACTOR,
 } from "../core/GrapherConstants"
 import {
     SeriesName,
@@ -1008,16 +1007,12 @@ export class SlopeChart
         )
     }
 
-    @computed private get labelOutlineWidth(): number {
-        return GRAPHER_TEXT_OUTLINE_FACTOR * this.labelsFontSize
-    }
-
     private renderVerticalLabelsRight(): React.ReactElement {
         return (
             <VerticalLabels
                 state={this.rightLabelsState}
                 x={this.xRange[1] + VERTICAL_LABELS_PADDING}
-                outlineWidth={this.labelOutlineWidth}
+                outline={true}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}
@@ -1038,12 +1033,7 @@ export class SlopeChart
         // if all values have a start value of 0, show the 0-label only once
         if (allSlopesStartFromZero)
             return (
-                <Halo
-                    id="x-axis-zero-label"
-                    outlineWidth={
-                        GRAPHER_TEXT_OUTLINE_FACTOR * this.labelsFontSize
-                    }
-                >
+                <Halo id="x-axis-zero-label" fontSize={this.labelsFontSize}>
                     <text
                         x={this.startX}
                         y={this.yAxis.place(0)}
@@ -1061,7 +1051,7 @@ export class SlopeChart
             <VerticalLabels
                 state={this.leftLabelsState}
                 x={this.xRange[0] - VERTICAL_LABELS_PADDING}
-                outlineWidth={this.labelOutlineWidth}
+                outline={true}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}

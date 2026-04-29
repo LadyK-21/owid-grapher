@@ -3,15 +3,11 @@ import * as R from "remeda"
 import { computed, makeObservable } from "mobx"
 import { scaleLinear, ScaleLinear } from "d3-scale"
 import { TextWrap, TextWrapSvg, Halo } from "@ourworldindata/components"
-import {
-    makeFigmaId,
-    OwidVariableRoundingMode,
-} from "@ourworldindata/utils"
+import { makeFigmaId, OwidVariableRoundingMode } from "@ourworldindata/utils"
 import {
     BASE_FONT_SIZE,
     GRAPHER_FONT_SCALE_10,
     GRAPHER_FONT_SCALE_11,
-    GRAPHER_TEXT_OUTLINE_FACTOR,
 } from "../core/GrapherConstants"
 import { CoreColumn } from "@ourworldindata/core-table"
 import {
@@ -291,10 +287,7 @@ const LegendItem = ({
                 strokeWidth={circleStrokeWidth}
                 opacity={circleOpacity}
             />
-            <Halo
-                id={label}
-                outlineWidth={GRAPHER_TEXT_OUTLINE_FACTOR * labelFontSize}
-            >
+            <Halo id={label} fontSize={labelFontSize}>
                 <text
                     x={cx}
                     y={cy - circleRadius}

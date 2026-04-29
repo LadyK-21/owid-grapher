@@ -34,7 +34,7 @@ export interface SeriesLabelProps {
     id?: string
     color?: Partial<Record<TextRole, string>>
     opacity?: number
-    outlineWidth?: number
+    outline?: boolean
     onMouseEnter?: React.MouseEventHandler<SVGElement>
     onMouseLeave?: React.MouseEventHandler<SVGElement>
     onInfoTooltipShow?: () => void
@@ -57,7 +57,7 @@ export function SeriesLabel({
     id,
     color,
     opacity,
-    outlineWidth,
+    outline,
     onMouseEnter,
     onMouseLeave,
     onInfoTooltipShow,
@@ -76,8 +76,8 @@ export function SeriesLabel({
         }>
     ): React.ReactElement => {
         const haloId = id ? `${id}__halo` : "label__halo"
-        return outlineWidth ? (
-            <Halo id={haloId} outlineWidth={outlineWidth}>
+        return outline ? (
+            <Halo id={haloId} fontSize={state.fontSettings.fontSize}>
                 {element}
             </Halo>
         ) : (

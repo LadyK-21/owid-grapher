@@ -17,14 +17,14 @@ import { Emphasis } from "../interaction/Emphasis.js"
 export function VerticalLabels({
     state,
     x = 0,
-    outlineWidth,
+    outline = false,
     onMouseEnter,
     onMouseLeave,
     interactive = true,
 }: {
     state: VerticalLabelsState
     x?: number
-    outlineWidth?: number
+    outline?: boolean
     onMouseEnter?: (key: SeriesName) => void
     onMouseLeave?: () => void
     interactive?: boolean
@@ -49,7 +49,7 @@ export function VerticalLabels({
             )}
             <Labels
                 series={renderSeries}
-                outlineWidth={outlineWidth}
+                outline={outline}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
             />
@@ -59,12 +59,12 @@ export function VerticalLabels({
 
 function Labels({
     series,
-    outlineWidth,
+    outline = false,
     onMouseEnter,
     onMouseLeave,
 }: {
     series: RenderLabelSeries[]
-    outlineWidth?: number
+    outline: boolean
     onMouseEnter?: (key: SeriesName) => void
     onMouseLeave?: (key: SeriesName) => void
 }): React.ReactElement {
@@ -82,7 +82,7 @@ function Labels({
                         y={series.labelCoords.y}
                         color={{ name: color, value: color }}
                         opacity={LABEL_STYLE[emphasis].opacity}
-                        outlineWidth={outlineWidth}
+                        outline={outline}
                         onMouseEnter={() => onMouseEnter?.(series.seriesName)}
                         onMouseLeave={() => onMouseLeave?.(series.seriesName)}
                     />
