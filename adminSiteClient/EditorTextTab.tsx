@@ -123,15 +123,6 @@ export class EditorTextTab<
         return !isNarrativeChartEditorInstance(this.props.editor)
     }
 
-    @computed get showAnyAnnotationFieldInTitleToggle() {
-        const { features } = this.props.editor
-        return (
-            features.showEntityAnnotationInTitleToggle ||
-            features.showTimeAnnotationInTitleToggle ||
-            features.showChangeInPrefixToggle
-        )
-    }
-
     @computed get hasCopyAdminURLButton() {
         return !!this.props.editor.grapherState.id
     }
@@ -241,20 +232,16 @@ export class EditorTextTab<
                             onValue={this.onToggleTitleAnnotationEntity}
                         />
                     )}
-                    {features.showTimeAnnotationInTitleToggle && (
-                        <Toggle
-                            label="Hide automatic time"
-                            secondaryLabel={
-                                "grapherState makes sure to include the current time in the title if " +
-                                "omitting it would lead to SVG exports with no reference " +
-                                "to the time. In such cases, your preference is ignored."
-                            }
-                            value={
-                                !!grapherState.hideAnnotationFieldsInTitle?.time
-                            }
-                            onValue={this.onToggleTitleAnnotationTime}
-                        />
-                    )}
+                    <Toggle
+                        label="Hide automatic time"
+                        secondaryLabel={
+                            "Grapher makes sure to include the current time in the title if " +
+                            "omitting it would lead to SVG exports with no reference " +
+                            "to the time. In such cases, your preference is ignored."
+                        }
+                        value={!!grapherState.hideAnnotationFieldsInTitle?.time}
+                        onValue={this.onToggleTitleAnnotationTime}
+                    />
                     {features.showChangeInPrefixToggle && (
                         <Toggle
                             label="Don't prepend 'Change in' in relative line charts"
@@ -265,7 +252,7 @@ export class EditorTextTab<
                             onValue={this.onToggleTitleAnnotationChangeInPrefix}
                         />
                     )}
-                    {this.showAnyAnnotationFieldInTitleToggle && <hr />}
+                    <hr />
                     {this.showChartSlug && (
                         <AutoTextField
                             label="/grapher/"

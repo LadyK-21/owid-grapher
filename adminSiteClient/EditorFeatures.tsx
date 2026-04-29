@@ -171,17 +171,6 @@ export class EditorFeatures {
         )
     }
 
-    @computed get showTimeAnnotationInTitleToggle() {
-        return (
-            !this.grapherState.hasTimeline ||
-            !(
-                this.grapherState.hasDiscreteBar ||
-                this.grapherState.hasStackedDiscreteBar ||
-                this.grapherState.hasMarimekko
-            )
-        )
-    }
-
     @computed get canHighlightSeries() {
         return (
             !this.grapherState.isScatter &&
