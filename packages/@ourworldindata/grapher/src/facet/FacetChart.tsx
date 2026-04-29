@@ -394,12 +394,17 @@ export class FacetChart
     }
 
     @computed private get isSharedXAxis(): boolean {
+        const supportedChartTypes = [
+            GRAPHER_CHART_TYPES.LineChart,
+            GRAPHER_CHART_TYPES.StackedBar,
+            GRAPHER_CHART_TYPES.StackedArea,
+            GRAPHER_CHART_TYPES.SlopeChart,
+        ]
+
         return (
             this.uniformXAxis &&
             this.facetCount >= SHARED_X_AXIS_MIN_FACET_COUNT &&
-            (this.chartTypeName === GRAPHER_CHART_TYPES.LineChart ||
-                this.chartTypeName === GRAPHER_CHART_TYPES.StackedBar ||
-                this.chartTypeName === GRAPHER_CHART_TYPES.StackedArea)
+            supportedChartTypes.includes(this.chartTypeName as any)
         )
     }
 
