@@ -3,6 +3,7 @@ import * as _ from "remeda"
 import { computed, makeObservable } from "mobx"
 import { observer } from "mobx-react"
 import { ChartInterface } from "../chart/ChartInterface"
+import { SideWidths } from "@ourworldindata/types"
 import { SlopeChartState } from "./SlopeChartState.js"
 import { type SlopeChartProps } from "./SlopeChart.js"
 import {
@@ -325,14 +326,27 @@ export class SlopeChartThumbnail
         return this.startLabelsState?.width ?? 0
     }
 
+    // Consumed by FacetChart to align gridlines across facets
+    @computed get verticalLabelWidths(): SideWidths {
+        return { left: this.startLabelsWidth, right: this.endLabelsWidth }
+    }
+
+    @computed private get effectiveLabelWidths(): SideWidths {
+        const shared = this.manager.sharedVerticalLabelWidths
+        return {
+            left: Math.max(shared?.left ?? 0, this.startLabelsWidth),
+            right: Math.max(shared?.right ?? 0, this.endLabelsWidth),
+        }
+    }
+
     @computed private get paddedEndLabelsWidth(): number {
-        return this.endLabelsWidth > 0 ? this.endLabelsWidth + LABEL_PADDING : 0
+        const width = this.effectiveLabelWidths.right
+        return width > 0 ? width + LABEL_PADDING : 0
     }
 
     @computed private get paddedStartLabelsWidth(): number {
-        return this.startLabelsWidth > 0
-            ? this.startLabelsWidth + LABEL_PADDING
-            : 0
+        const width = this.effectiveLabelWidths.left
+        return width > 0 ? width + LABEL_PADDING : 0
     }
 
     override render(): React.ReactElement {

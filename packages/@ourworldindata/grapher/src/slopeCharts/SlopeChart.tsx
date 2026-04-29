@@ -27,6 +27,7 @@ import {
     MissingDataStrategy,
     Time,
     SeriesStrategy,
+    SideWidths,
     VerticalAlign,
     HorizontalAlign,
 } from "@ourworldindata/types"
@@ -443,6 +444,11 @@ export class SlopeChart
             : this.rightLabelsState.stableWidth
     }
 
+    // Consumed by FacetChart to align gridlines across facets
+    @computed get verticalLabelWidths(): SideWidths {
+        return { left: this.leftLabelsWidth, right: this.rightLabelsWidth }
+    }
+
     @computed
     private get visibleRightLabels(): Set<SeriesName> {
         return new Set(this.rightLabelsState?.visibleSeriesNames ?? [])
@@ -467,9 +473,18 @@ export class SlopeChart
             })
     }
 
+    @computed private get effectiveLabelWidths(): SideWidths {
+        const shared = this.manager.sharedVerticalLabelWidths
+        return {
+            left: Math.max(shared?.left ?? 0, this.leftLabelsWidth),
+            right: Math.max(shared?.right ?? 0, this.rightLabelsWidth),
+        }
+    }
+
     @computed private get xRange(): [number, number] {
-        const leftLabelsWidth = this.leftLabelsWidth + VERTICAL_LABELS_PADDING
-        const rightLabelsWidth = this.rightLabelsWidth + VERTICAL_LABELS_PADDING
+        const { left, right } = this.effectiveLabelWidths
+        const leftLabelsWidth = left + VERTICAL_LABELS_PADDING
+        const rightLabelsWidth = right + VERTICAL_LABELS_PADDING
         const chartAreaWidth = this.innerBounds.width
 
         // start and end value when the slopes are as wide as possible

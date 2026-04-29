@@ -29,6 +29,7 @@ import {
     FacetStrategy,
     SeriesColorMap,
     SeriesStrategy,
+    SideWidths,
     AxisConfigInterface,
     ChartErrorInfo,
 } from "@ourworldindata/types"
@@ -482,6 +483,18 @@ export class FacetChart
             }
         })
 
+        // Make sure that all slope facets use the same start and end point
+        let sharedVerticalLabelWidths: SideWidths | undefined
+        if (this.chartTypeName === GRAPHER_CHART_TYPES.SlopeChart) {
+            const widths = excludeUndefined(
+                intermediateChartInstances.map((c) => c.verticalLabelWidths)
+            )
+            sharedVerticalLabelWidths = {
+                left: _.max(widths.map((w) => w.left)) ?? 0,
+                right: _.max(widths.map((w) => w.right)) ?? 0,
+            }
+        }
+
         // Allocate space for shared axes, so that the content areas of charts are all equal.
         // If the axes are "shared", then an axis will only plotted on the facets that are on the
         // same side as the axis.
@@ -507,6 +520,7 @@ export class FacetChart
             const manager = {
                 ...series.manager,
                 useValueBasedColorScheme,
+                sharedVerticalLabelWidths,
                 xAxisConfig: {
                     hideAxis: shouldHideFacetAxis(
                         xAxis,
