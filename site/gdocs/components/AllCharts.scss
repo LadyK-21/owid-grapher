@@ -10,12 +10,6 @@
     align-items: center;
     margin-bottom: 40px;
 
-    .centered-article-container--linear-topic-page &, // e.g. /air-pollution
-    // e.g. /human-development-index
-    .centered-article-container--article & {
-        padding-top: 48px;
-    }
-
     .owid-btn {
         align-self: start;
         @include sm-only {
@@ -34,4 +28,11 @@
     figure.grapher-component:not(.grapherPreview) {
         height: $grapher-height;
     }
+}
+
+// e.g. /air-pollution
+.centered-article-container--linear-topic-page .article-block__all-charts,
+// e.g. /human-development-index
+.centered-article-container--article .article-block__all-charts {
+    padding-top: 48px;
 }
