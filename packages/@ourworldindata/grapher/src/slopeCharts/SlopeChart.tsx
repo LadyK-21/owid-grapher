@@ -1016,11 +1016,16 @@ export class SlopeChart
         )
     }
 
+    @computed private get labelOutlineWidth(): number {
+        return GRAPHER_TEXT_OUTLINE_FACTOR * this.labelsFontSize
+    }
+
     private renderVerticalLabelsRight(): React.ReactElement {
         return (
             <VerticalLabels
                 state={this.rightLabelsState}
                 x={this.xRange[1] + VERTICAL_LABELS_PADDING}
+                outlineWidth={this.labelOutlineWidth}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}
@@ -1065,6 +1070,7 @@ export class SlopeChart
             <VerticalLabels
                 state={this.leftLabelsState}
                 x={this.xRange[0] - VERTICAL_LABELS_PADDING}
+                outlineWidth={this.labelOutlineWidth}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}
