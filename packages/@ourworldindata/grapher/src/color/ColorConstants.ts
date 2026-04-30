@@ -16,4 +16,4 @@ export const GRAPHER_DARK_TEXT = GRAY_80
 export const GRAPHER_LIGHT_TEXT = GRAY_70
 
 export const OWID_NO_DATA_GRAY = "#6e7581"
-export const OWID_ERROR_COLOR = "ff0002"
+export const OWID_ERROR_COLOR = "#ff0002"
