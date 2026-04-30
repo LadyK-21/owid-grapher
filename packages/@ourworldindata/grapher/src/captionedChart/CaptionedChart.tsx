@@ -30,7 +30,6 @@ import { SelectionArray } from "../selection/SelectionArray"
 import {
     EntityName,
     RelatedQuestionsConfig,
-    Color,
     GrapherTabName,
     GrapherChartType,
 } from "@ourworldindata/types"
@@ -44,7 +43,7 @@ import {
     ControlsRow,
     ControlsRowManager,
 } from "../controls/controlsRow/ControlsRow"
-import { GRAPHER_BACKGROUND_DEFAULT } from "../color/ColorConstants.js"
+import { GRAPHER_BACKGROUND } from "../color/ColorConstants.js"
 import { ChartAreaContent } from "../chart/ChartAreaContent"
 import { getChartSvgProps } from "../chart/ChartUtils"
 import { StaticChartWrapper } from "../chart/StaticChartWrapper"
@@ -71,7 +70,6 @@ export interface CaptionedChartManager
     isSmall?: boolean
     isMedium?: boolean
     fontSize?: number
-    backgroundColor?: string
 
     // state
     activeTab?: GrapherTabName
@@ -152,10 +150,6 @@ abstract class AbstractCaptionedChart extends React.Component<CaptionedChartProp
 
     @computed get selectionArray(): SelectionArray | EntityName[] | undefined {
         return this.manager.selection
-    }
-
-    @computed protected get backgroundColor(): Color {
-        return this.manager.backgroundColor ?? GRAPHER_BACKGROUND_DEFAULT
     }
 
     @computed protected get svgProps(): React.SVGProps<SVGSVGElement> {
@@ -329,9 +323,7 @@ export class CaptionedChart extends AbstractCaptionedChart {
         return (
             <div
                 className="CaptionedChart"
-                style={{
-                    backgroundColor: this.backgroundColor,
-                }}
+                style={{ backgroundColor: GRAPHER_BACKGROUND }}
             >
                 {/* #1 Header */}
                 {this.showHeader && (

@@ -510,7 +510,6 @@ export class ScatterPlotChart
                 onMouseLeave={this.onScatterMouseLeave}
                 onClick={this.onScatterClick}
                 quadtree={this.quadtree}
-                backgroundColor={this.manager.backgroundColor}
             />
         )
     }
@@ -696,7 +695,6 @@ export class ScatterPlotChart
                     dualAxis={this.dualAxis}
                     showTickMarks={false}
                     detailsMarker={this.manager.detailsMarkerInSvg}
-                    backgroundColor={this.manager.backgroundColor}
                 />
                 <g clipPath={this.clipPath.id}>
                     {this.points}

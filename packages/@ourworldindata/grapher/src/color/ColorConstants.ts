@@ -10,10 +10,10 @@ export const GRAY_20 = "#e7e7e7"
 export const GRAY_10 = "#f2f2f2"
 export const GRAY_5 = "#f7f7f7"
 
-export const GRAPHER_BACKGROUND_DEFAULT = "#ffffff"
+export const GRAPHER_BACKGROUND = "#fff"
 
 export const GRAPHER_DARK_TEXT = GRAY_80
 export const GRAPHER_LIGHT_TEXT = GRAY_70
 
 export const OWID_NO_DATA_GRAY = "#6e7581"
-export const OWID_ERROR_COLOR = "ff0002"
+export const OWID_ERROR_COLOR = "#ff0002"

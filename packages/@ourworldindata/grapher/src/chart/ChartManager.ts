@@ -11,7 +11,6 @@ import {
     ColorSchemeName,
     EntityName,
     DetailsMarker,
-    Color,
     GrapherVariant,
 } from "@ourworldindata/types"
 import { TooltipManager } from "../tooltip/TooltipProps"
@@ -100,7 +99,6 @@ export interface ChartManager {
     isSemiNarrow?: boolean
     isStaticAndSmall?: boolean
     isExportingForWikimedia?: boolean
-    backgroundColor?: Color
     shouldPinTooltipToBottom?: boolean
 
     detailsOrderedByReference?: string[]

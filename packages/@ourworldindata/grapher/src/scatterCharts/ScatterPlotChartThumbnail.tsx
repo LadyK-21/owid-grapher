@@ -147,7 +147,6 @@ export class ScatterPlotChartThumbnail
                         this.chartState.selectionArray.selectedEntityNames
                     }
                     hideScatterLabels={true}
-                    backgroundColor={this.manager.backgroundColor}
                 />
             </>
         )

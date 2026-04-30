@@ -21,7 +21,6 @@ import {
     DEFAULT_GRAPHER_BOUNDS,
     GRAPHER_FONT_SCALE_11,
     GRAPHER_FONT_SCALE_12,
-    GRAPHER_TEXT_OUTLINE_FACTOR,
 } from "../core/GrapherConstants"
 import {
     SeriesName,
@@ -65,10 +64,7 @@ import { TooltipFooterIcon } from "../tooltip/TooltipProps"
 import { Halo } from "@ourworldindata/components"
 import { HorizontalColorLegendManager } from "../legend/HorizontalColorLegends"
 import { CategoricalBin } from "../color/ColorScaleBin"
-import {
-    GRAPHER_BACKGROUND_DEFAULT,
-    GRAPHER_DARK_TEXT,
-} from "../color/ColorConstants"
+import { GRAPHER_DARK_TEXT } from "../color/ColorConstants"
 import { LabelSeries } from "../verticalLabels/VerticalLabelsTypes"
 import { resolveEmphasis } from "../interaction/Emphasis"
 import { SlopeChartState } from "./SlopeChartState"
@@ -148,10 +144,6 @@ export class SlopeChart
 
     @computed private get lineStrokeWidth(): number {
         return this.manager.isStaticAndSmall ? 3 : 1.5
-    }
-
-    @computed private get backgroundColor(): string {
-        return this.manager.backgroundColor ?? GRAPHER_BACKGROUND_DEFAULT
     }
 
     @computed private get isHoverModeActive(): boolean {
@@ -859,7 +851,6 @@ export class SlopeChart
                         series={series}
                         strokeWidth={this.lineStrokeWidth}
                         outlineWidth={0.5}
-                        outlineStroke={this.backgroundColor}
                     />
                 ))}
             </g>
@@ -1021,6 +1012,7 @@ export class SlopeChart
             <VerticalLabels
                 state={this.rightLabelsState}
                 x={this.xRange[1] + VERTICAL_LABELS_PADDING}
+                outline={true}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}
@@ -1041,13 +1033,7 @@ export class SlopeChart
         // if all values have a start value of 0, show the 0-label only once
         if (allSlopesStartFromZero)
             return (
-                <Halo
-                    id="x-axis-zero-label"
-                    outlineWidth={
-                        GRAPHER_TEXT_OUTLINE_FACTOR * this.labelsFontSize
-                    }
-                    outlineColor={this.backgroundColor}
-                >
+                <Halo id="x-axis-zero-label" fontSize={this.labelsFontSize}>
                     <text
                         x={this.startX}
                         y={this.yAxis.place(0)}
@@ -1065,6 +1051,7 @@ export class SlopeChart
             <VerticalLabels
                 state={this.leftLabelsState}
                 x={this.xRange[0] - VERTICAL_LABELS_PADDING}
+                outline={true}
                 onMouseEnter={this.onVerticalLabelMouseEnter}
                 onMouseLeave={this.onVerticalLabelMouseLeave}
                 interactive={!this.manager.isStatic}

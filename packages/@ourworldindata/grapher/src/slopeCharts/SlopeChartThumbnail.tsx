@@ -347,7 +347,6 @@ export class SlopeChartThumbnail
                             dotRadius={DOT_RADIUS}
                             strokeWidth={1.5}
                             outlineWidth={0}
-                            outlineStroke={this.manager.backgroundColor}
                         />
                     ))}
                 </g>
