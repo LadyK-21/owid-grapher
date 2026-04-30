@@ -4,6 +4,7 @@ import {
     EnrichedBlockAside,
     EnrichedBlockCallout,
     EnrichedBlockDataCallout,
+    EnrichedBlockDataCalloutGroup,
     EnrichedBlockChart,
     EnrichedBlockChartStory,
     EnrichedBlockDonorList,
@@ -48,6 +49,7 @@ import {
     RawBlockAside,
     RawBlockCallout,
     RawBlockDataCallout,
+    RawBlockDataCalloutGroup,
     RawBlockChart,
     RawBlockChartStory,
     RawBlockDonorList,
@@ -214,6 +216,7 @@ export function parseRawBlocksToEnrichedBlocks(
         .with({ type: "blockquote" }, parseBlockquote)
         .with({ type: "callout" }, parseCallout)
         .with({ type: "data-callout" }, parseDataCallout)
+        .with({ type: "data-callout-group" }, parseDataCalloutGroup)
         .with({ type: "chart" }, parseChart)
         .with({ type: "narrative-chart" }, parseNarrativeChart)
         .with({ type: "code" }, parseCode)
@@ -2124,6 +2127,52 @@ function parseDataCallout(raw: RawBlockDataCallout): EnrichedBlockDataCallout {
         type: "data-callout",
         url: url.fullUrl,
         content: transformedContent,
+        parseErrors: [],
+    }
+}
+
+function parseDataCalloutGroup(
+    raw: RawBlockDataCalloutGroup
+): EnrichedBlockDataCalloutGroup {
+    const createError = (error: ParseError): EnrichedBlockDataCalloutGroup => ({
+        type: "data-callout-group",
+        parseErrors: [error],
+        content: [],
+    })
+
+    if (!raw.value.content) {
+        return createError({
+            message: "Missing content for data-callout-group block",
+        })
+    }
+
+    if (!_.isArray(raw.value.content)) {
+        return createError({
+            message:
+                "Content must be provided as an array e.g. inside a [.+content] block",
+        })
+    }
+
+    const enrichedContent = raw.value.content.map(
+        parseRawBlocksToEnrichedBlocks
+    )
+
+    const content = excludeNullish(enrichedContent)
+
+    const hasDataCallout = content.some(
+        (block) => block.type === "data-callout"
+    )
+
+    if (!hasDataCallout) {
+        return createError({
+            message:
+                "data-callout-group must contain at least one data-callout block",
+        })
+    }
+
+    return {
+        type: "data-callout-group",
+        content,
         parseErrors: [],
     }
 }
