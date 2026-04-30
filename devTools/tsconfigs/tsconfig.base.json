@@ -28,6 +28,7 @@
 
         "alwaysStrict": true,
         "noImplicitReturns": true,
+        "noUnusedLocals": true,
         "allowJs": false,
         "sourceMap": true,
         "moduleResolution": "bundler",

@@ -13,11 +13,7 @@ import {
     DEFAULT_GRAPHER_BOUNDS,
 } from "../core/GrapherConstants"
 import { AxisConfig, AxisManager } from "../axis/AxisConfig"
-import {
-    SCATTER_LINE_MIN_WIDTH,
-    SCATTER_POINT_MIN_RADIUS,
-    ScatterPlotManager,
-} from "./ScatterPlotChartConstants"
+import { ScatterPlotManager } from "./ScatterPlotChartConstants"
 import { toSizeRange } from "./ScatterUtils"
 import { DualAxisComponent } from "../axis/AxisViews"
 import { ScatterPointsWithLabels } from "./ScatterPointsWithLabels"
@@ -93,22 +89,6 @@ export class ScatterPlotChartThumbnail
         return scaleSqrt()
             .domain(this.chartState.sizeDomain)
             .range(this.sizeRange)
-    }
-
-    private getPointRadius(value: number | undefined): number {
-        const radius =
-            value !== undefined
-                ? this.sizeScale(value)
-                : this.sizeScale.range()[0]
-
-        // We are enforcing the minimum radius/width just before render,
-        // it should not be enforced earlier than that.
-        return Math.max(
-            radius,
-            this.props.chartState.isConnected
-                ? SCATTER_LINE_MIN_WIDTH
-                : SCATTER_POINT_MIN_RADIUS
-        )
     }
 
     override render(): React.ReactElement {
