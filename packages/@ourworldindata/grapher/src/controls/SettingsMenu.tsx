@@ -39,7 +39,7 @@ import {
     NoDataAreaToggleManager,
 } from "./settings/NoDataAreaToggle"
 import { GRAPHER_SETTINGS_CLASS } from "../core/GrapherConstants"
-import { LONG_CHART_TYPE_LABEL } from "../chart/ChartTabs";
+import { LONG_CHART_TYPE_LABEL } from "../chart/ChartTabs"
 
 const {
     LineChart,
