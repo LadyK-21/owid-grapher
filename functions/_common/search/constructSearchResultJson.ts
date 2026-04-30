@@ -399,13 +399,6 @@ async function pickDisplayEntitiesForScatterPlot({
 }): Promise<EntityName[]> {
     const { series, colorColumnSlug, sizeColumnSlug } = chartState
 
-    // Pick income groups or continents if available
-    const regions = selectRegionGroupByPriority(
-        grapherState.availableEntityNames,
-        { includeWorld: true }
-    )
-    if (regions.length > 0) return regions
-
     // Helper functions
     type ScatterSeries = ScatterPlotChartState["series"][number]
     const getName = (series: ScatterSeries) => series.seriesName
@@ -475,13 +468,6 @@ async function pickDisplayEntitiesForMarimekko({
     entity?: EntityName
 }): Promise<EntityName[]> {
     const { items, colorColumnSlug, xColumnSlug } = chartState
-
-    // Pick income groups or continents if available
-    const regions = selectRegionGroupByPriority(
-        grapherState.availableEntityNames,
-        { includeWorld: true }
-    )
-    if (regions.length > 0) return regions
 
     // Helper functions
     type MarimekkoItem = MarimekkoChartState["items"][number]
@@ -1077,8 +1063,7 @@ function findAvailableSiblingRegions({
  * regions as defined by the WHO or WB, for example
  */
 export function selectRegionGroupByPriority(
-    availableEntities: EntityName[],
-    { includeWorld }: { includeWorld: boolean } = { includeWorld: false }
+    availableEntities: EntityName[]
 ): EntityName[] {
     const availableEntitySet = new Set(availableEntities)
 
@@ -1110,14 +1095,7 @@ export function selectRegionGroupByPriority(
             .filter((region) => availableEntitySet.has(region.name))
             .map((region) => region.name)
 
-        if (matchingRegions.length > 0) {
-            // Add the World entity if requested and available
-            if (includeWorld && availableEntitySet.has(WORLD_ENTITY_NAME)) {
-                matchingRegions.push(WORLD_ENTITY_NAME)
-            }
-
-            return matchingRegions
-        }
+        if (matchingRegions.length > 0) return matchingRegions
     }
 
     return []
