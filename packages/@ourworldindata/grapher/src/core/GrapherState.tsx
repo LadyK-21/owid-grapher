@@ -2426,7 +2426,10 @@ export class GrapherState
                     (this.isOnDiscreteBarTab ||
                         this.isOnStackedDiscreteBarTab ||
                         this.isOnMarimekkoTab ||
-                        this.isOnMapTab)))
+                        this.isOnMapTab ||
+                        (this.isOnScatterTab &&
+                            !this.isTimeScatter &&
+                            !this.isConnectedScatter))))
         )
     }
 
