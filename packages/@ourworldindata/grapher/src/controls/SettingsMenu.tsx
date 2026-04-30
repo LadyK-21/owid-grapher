@@ -39,6 +39,7 @@ import {
     NoDataAreaToggleManager,
 } from "./settings/NoDataAreaToggle"
 import { GRAPHER_SETTINGS_CLASS } from "../core/GrapherConstants"
+import { LONG_CHART_TYPE_LABEL } from "../chart/ChartTabs"
 
 const {
     LineChart,
@@ -224,10 +225,6 @@ export class SettingsMenu extends React.Component<SettingsMenuProps> {
         return this.props.manager
     }
 
-    @computed private get chartTypeLabel(): string {
-        return this.chartType.replace(/([A-Z])/g, " $1")
-    }
-
     @computed private get selectionArray(): SelectionArray {
         return makeSelectionArray(this.manager.selection)
     }
@@ -313,8 +310,7 @@ export class SettingsMenu extends React.Component<SettingsMenuProps> {
     }
 
     @computed private get menuTitle(): string {
-        const { chartTypeLabel } = this
-        return `${chartTypeLabel} settings`
+        return `${LONG_CHART_TYPE_LABEL[this.chartType]} settings`
     }
 
     private renderSettingsButtonAndPopup(): React.ReactElement {
