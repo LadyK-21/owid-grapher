@@ -434,6 +434,15 @@ export function computeLinkedCalloutsFromPreparedTables(
  * Check if a profile should be rendered.
  * Returns false if there are data-callouts (or data-callout-groups) and ALL of them are hidden.
  * Returns true if there are no data-callouts, or if at least one callout is visible.
+ *
+ * Precondition: `content` must already have been passed through
+ * `clearIncompleteDataCallouts`, which empties callouts/groups whose data is
+ * unavailable for the current entity. This function reads `content.length` to
+ * detect that emptied state — running it on un-cleared content will report
+ * false positives (treating hidden groups as visible).
+ *
+ * In practice this is guaranteed by `instantiateProfileForEntity`, which
+ * clears as its final step before returning.
  */
 export function checkShouldProfileRender(content: {
     body?: OwidEnrichedGdocBlock[]
