@@ -29,7 +29,8 @@ export const cachedGetVariableMetadata = _.memoize(
             })
         )
         return await response.json()
-    }
+    },
+    (variableId, isPreviewing) => `${variableId}-${isPreviewing}`
 )
 
 export const cachedGetGrapherConfigByUuid = _.memoize(
@@ -46,7 +47,8 @@ export const cachedGetGrapherConfigByUuid = _.memoize(
         })
         const response = await fetchWithRetry(url)
         return await response.json()
-    }
+    },
+    (grapherConfigUuid, isPreviewing) => `${grapherConfigUuid}-${isPreviewing}`
 )
 
 export async function getMultiDimConfigBySlug(

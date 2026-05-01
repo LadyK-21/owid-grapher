@@ -141,7 +141,8 @@ export async function renderMultiDimDataPageFromConfig({
     const initialViewVariableId = initialView?.indicators?.y?.[0]?.id
     if (initialView && initialViewVariableId) {
         const variableMetadata = await getVariableMetadata(
-            initialViewVariableId
+            initialViewVariableId,
+            { noCache: isPreviewing }
         )
         const mergedMetadata = pageConfig.mergeViewMetadata(
             initialViewDimensions,
