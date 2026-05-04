@@ -225,7 +225,7 @@
         "@types/topojson-server": "^3.0.4",
         "@types/url-parse": "^1.4.11",
         "@types/yargs": "^17.0.35",
-        "@typescript/native-preview": "^7.0.0-dev.20260408.1",
+        "@typescript/native-preview": "^7.0.0-dev.20260504.1",
         "@vitejs/plugin-react": "^6.0.1",
         "@vitest/coverage-v8": "^4.1.5",
         "@yarnpkg/types": "^4.0.1",
