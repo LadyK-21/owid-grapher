@@ -6,7 +6,6 @@
     "trailingComma": "es5",
     "overrides": [
         {
-            // sadly, trailing commas are not generally supported by all jsonc parsers
             "files": ["*.jsonc"],
             "options": {
                 "trailingComma": "none"
