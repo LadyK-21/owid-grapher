@@ -48,6 +48,7 @@
         "test:functions:e2e-r2": "vitest functions/test/grapher-config-r2.e2e.test.ts",
         "testBdd": "yarn bddgen && yarn playwright test",
         "checkRaycastSnippets": "tsx --tsconfig tsconfig.tsx.json devTools/gdocs/raycastSnippets/generateRaycastSnippets.ts --check",
+        "tsc": "tsgo",
         "typecheck": "yarn tsgo -b -f",
         "generateDbTypes": "npx @rmp135/sql-ts -c db/sql-ts/sql-ts-config.json",
         "generateRaycastSnippets": "tsx --tsconfig tsconfig.tsx.json devTools/gdocs/raycastSnippets/generateRaycastSnippets.ts",
