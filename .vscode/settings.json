@@ -4,8 +4,7 @@
     "editor.tabSize": 4,
     "editor.detectIndentation": false,
     "editor.defaultFormatter": "oxc.oxc-vscode",
-
-    "oxc.fmt.configPath": ".oxfmtrc.json",
+    "oxc.fmt.configPath": ".oxfmtrc.jsonc",
     "files.insertFinalNewline": false,
     "search.exclude": {
         ".yarn": true,
