@@ -57,11 +57,14 @@ interface DiscreteBarStyle {
     labelOpacity: number
 }
 
+const DEFAULT_DISCRETE_BAR_STYLE: DiscreteBarStyle = {
+    barOpacity: GRAPHER_AREA_OPACITY_DEFAULT,
+    labelOpacity: 1,
+}
+
 export const DISCRETE_BAR_STYLE: Record<Emphasis, DiscreteBarStyle> = {
-    [Emphasis.Default]: {
-        barOpacity: GRAPHER_AREA_OPACITY_DEFAULT,
-        labelOpacity: 1,
-    },
+    [Emphasis.Default]: DEFAULT_DISCRETE_BAR_STYLE,
+    [Emphasis.Elevated]: DEFAULT_DISCRETE_BAR_STYLE,
     [Emphasis.Highlighted]: {
         barOpacity: GRAPHER_AREA_OPACITY_HIGHLIGHTED,
         labelOpacity: 1,

@@ -65,8 +65,13 @@ export class Lines extends React.Component<LinesProps> {
         return GRAPHER_BACKGROUND
     }
 
-    // Don't display point markers if there are very many of them for performance reasons
-    // Note that we're using circle elements instead of marker-mid because marker performance in Safari 10 is very poor for some reason
+    /**
+     * Don't display point markers if there are very many of them for
+     * performance reasons
+     *
+     * Note that we're using circle elements instead of marker-mid because
+     * marker performance in Safari 10 is very poor for some reason
+     */
     @computed private get hasMarkers(): boolean {
         if (this.props.hidePoints) return false
         const totalPoints = _.sum(
