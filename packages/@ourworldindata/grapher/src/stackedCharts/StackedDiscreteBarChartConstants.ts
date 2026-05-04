@@ -11,6 +11,7 @@ interface LabelStyleConfig {
 
 export const LABEL_STYLE: Record<Emphasis, LabelStyleConfig> = {
     [Emphasis.Default]: { opacity: 1 },
+    [Emphasis.Elevated]: { opacity: 1 },
     [Emphasis.Highlighted]: { opacity: 1 },
     [Emphasis.Muted]: { opacity: GRAPHER_AREA_OPACITY_MUTED },
 }

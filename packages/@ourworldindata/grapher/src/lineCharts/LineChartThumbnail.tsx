@@ -119,6 +119,7 @@ export class LineChartThumbnail
     @computed private get renderSeries(): RenderLineChartSeries[] {
         return toRenderLineChartSeries(this.placedSeries, {
             isFocusModeActive: this.chartState.isFocusModeActive,
+            shouldElevateSingleSeries: false,
         })
     }
 
