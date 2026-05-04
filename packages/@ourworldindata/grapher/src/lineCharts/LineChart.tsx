@@ -45,6 +45,7 @@ import {
     STATIC_SMALL_MARKER_RADIUS,
     DEFAULT_MARKER_RADIUS,
     LINE_CHART_CLASS_NAME,
+    ELEVATED_MARKER_RADIUS,
 } from "./LineChartConstants"
 import { CoreColumn } from "@ourworldindata/core-table"
 import {
@@ -204,6 +205,7 @@ export class LineChart
         if (this.hasMarkersOnlySeries) return DISCONNECTED_DOTS_MARKER_RADIUS
         if (this.hasColorScale) return VARIABLE_COLOR_MARKER_RADIUS
         if (this.manager.isStaticAndSmall) return STATIC_SMALL_MARKER_RADIUS
+        if (this.renderSeries.length === 1) return ELEVATED_MARKER_RADIUS
         return DEFAULT_MARKER_RADIUS
     }
 

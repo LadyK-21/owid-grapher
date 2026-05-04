@@ -18,6 +18,7 @@ export const VARIABLE_COLOR_STROKE_WIDTH = 2.5
 
 // Marker radius
 export const DEFAULT_MARKER_RADIUS = 1.8
+export const ELEVATED_MARKER_RADIUS = 2.2
 export const VARIABLE_COLOR_MARKER_RADIUS = 2.2
 export const DISCONNECTED_DOTS_MARKER_RADIUS = 2.6
 export const STATIC_SMALL_MARKER_RADIUS = 3
