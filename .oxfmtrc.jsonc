@@ -17,6 +17,6 @@
         "grapherData/",
         ".vscode/",
         ".claude/settings.local.json",
-        "*.handlebars"
-    ]
+        "*.handlebars",
+    ],
 }
