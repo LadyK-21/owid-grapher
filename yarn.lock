@@ -1937,10 +1937,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@figma/rest-api-spec@npm:^0.27.0":
-  version: 0.27.0
-  resolution: "@figma/rest-api-spec@npm:0.27.0"
-  checksum: 10/97ba8155551ce31fd9a4c5d61653c1e39c7fe44f6b345327122c3afaf1adc05d5d2353073d4e0eddb91fc3f29ee18bf37547c867071d6853f7bbcd54d090028e
+"@figma/rest-api-spec@npm:>=0.37.0 <1.0.0":
+  version: 0.37.0
+  resolution: "@figma/rest-api-spec@npm:0.37.0"
+  checksum: 10/7aa97b323c6896a15cae496dc8c136e34d73dad66e4551098a72f7430e0bfcc37ac9b0e8bb46106a786a93729de6c20be4f321e1ee71224cda6d72f44db87117
   languageName: node
   linkType: hard
 
@@ -7107,7 +7107,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:^1.13.5, axios@npm:^1.7.5, axios@npm:^1.8.3":
+"axios@npm:^1.15.2, axios@npm:^1.7.5, axios@npm:^1.8.3":
   version: 1.16.0
   resolution: "axios@npm:1.16.0"
   dependencies:
@@ -9262,13 +9262,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"figma-api@npm:^2.1.2-beta":
-  version: 2.1.2-beta
-  resolution: "figma-api@npm:2.1.2-beta"
+"figma-api@npm:^2.2.0-beta":
+  version: 2.2.0-beta
+  resolution: "figma-api@npm:2.2.0-beta"
   dependencies:
-    "@figma/rest-api-spec": "npm:^0.27.0"
-    axios: "npm:^1.13.5"
-  checksum: 10/9216d3220b409cab382bab09b17d49bf5f01c9e6aa556b85696a47b372c4f442d4b8bc8993a7216be31f3f343cc3ca80a4ca0bbecb463391253b8e9bd235322f
+    "@figma/rest-api-spec": "npm:>=0.37.0 <1.0.0"
+    axios: "npm:^1.15.2"
+  checksum: 10/573875ed12f59bf0e3c5876ed0bc26b30be55281b945dd87b0ebb86ac4ba2a492f905f88a909e8917a398c642a566ec04c362fe5a082182cabdb6bafc54a5866
   languageName: node
   linkType: hard
 
@@ -9832,7 +9832,7 @@ __metadata:
     eslint-plugin-mobx: "npm:^0.0.14"
     eslint-plugin-react-refresh: "npm:^0.5.2"
     express: "npm:^5.2.1"
-    figma-api: "npm:^2.1.2-beta"
+    figma-api: "npm:^2.2.0-beta"
     filenamify: "npm:^6.0.0"
     flag-icons: "npm:^7.5.0"
     fparser: "npm:^3.1.0"
