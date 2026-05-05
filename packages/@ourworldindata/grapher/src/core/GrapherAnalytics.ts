@@ -31,12 +31,10 @@ type GAConsent = ["consent", "default" | "update", GAConsentParams]
 // Note: consent-based blocking dealt with at the Google Tag Manager level.
 // Events are discarded if consent not given.
 export class GrapherAnalytics {
-    constructor(environment: string = "", version = "1.0.0") {
+    constructor(environment: string = "") {
         this.isDev = environment === "development"
-        this.version = version
     }
 
-    private readonly version: string // Ideally the Git hash commit
     private readonly isDev: boolean
 
     logGrapherView(

@@ -47,7 +47,6 @@ import {
     LINE_CHART_CLASS_NAME,
     ELEVATED_MARKER_RADIUS,
 } from "./LineChartConstants"
-import { CoreColumn } from "@ourworldindata/core-table"
 import {
     getHoverStateForSeries,
     getSeriesKey,
@@ -526,14 +525,6 @@ export class LineChart
 
     @computed protected get yColumnSlugs(): string[] {
         return this.chartState.yColumnSlugs
-    }
-
-    @computed private get colorColumn(): CoreColumn {
-        return this.chartState.colorColumn
-    }
-
-    @computed private get formatColumn(): CoreColumn {
-        return this.chartState.formatColumn
     }
 
     @computed private get hasColorScale(): boolean {
