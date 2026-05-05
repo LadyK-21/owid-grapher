@@ -4442,39 +4442,39 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@slack/logger@npm:^4.0.0":
-  version: 4.0.0
-  resolution: "@slack/logger@npm:4.0.0"
+"@slack/logger@npm:^4.0.1":
+  version: 4.0.1
+  resolution: "@slack/logger@npm:4.0.1"
   dependencies:
-    "@types/node": "npm:>=18.0.0"
-  checksum: 10/dc79e9d2032c4bf9ce01d96cc72882f003dd376d036f172d4169662cfc2c9b384a80d5546b06021578dd473e7059f064303f0ba851eeb153387f2081a1e3062e
+    "@types/node": "npm:>=18"
+  checksum: 10/17e51749aa484262baa6cd8b057b7b2331ea6b140040d371c05ebe57ba61895c53b87e7e5bbfb1687c8e56199a78b36d675f06c35d8e20a363eabd9632cc8e96
   languageName: node
   linkType: hard
 
-"@slack/types@npm:^2.9.0":
-  version: 2.12.0
-  resolution: "@slack/types@npm:2.12.0"
-  checksum: 10/2b3a77523289d315aacf5dea690a02ebdcebd03bccc3eba90bf4f9032d4ecd0db98a24c8375178d323622b1b72aef53a21812e933d1e833e70b04282257d02be
+"@slack/types@npm:^2.20.1":
+  version: 2.20.1
+  resolution: "@slack/types@npm:2.20.1"
+  checksum: 10/5d13017df8c8468f34e4d24579a26f5ada934a6b7139e88d894c7d1d14f47da826a20c08e2537c6ab74d7624a4b193dc2b34458bae6466173fad1fd5c053b6f6
   languageName: node
   linkType: hard
 
-"@slack/web-api@npm:^7.9.1":
-  version: 7.9.1
-  resolution: "@slack/web-api@npm:7.9.1"
+"@slack/web-api@npm:^7.15.1":
+  version: 7.15.1
+  resolution: "@slack/web-api@npm:7.15.1"
   dependencies:
-    "@slack/logger": "npm:^4.0.0"
-    "@slack/types": "npm:^2.9.0"
-    "@types/node": "npm:>=18.0.0"
+    "@slack/logger": "npm:^4.0.1"
+    "@slack/types": "npm:^2.20.1"
+    "@types/node": "npm:>=18"
     "@types/retry": "npm:0.12.0"
-    axios: "npm:^1.8.3"
+    axios: "npm:^1.15.0"
     eventemitter3: "npm:^5.0.1"
-    form-data: "npm:^4.0.0"
+    form-data: "npm:^4.0.4"
     is-electron: "npm:2.2.2"
     is-stream: "npm:^2"
     p-queue: "npm:^6"
     p-retry: "npm:^4"
     retry: "npm:^0.13.1"
-  checksum: 10/589accc75c0e23d479649b3e3efc5d476d618d614f506bd2d6b191dff25c21121bcb90feeca60542b541b5161a7f9610eddfc7852c404fbda38235c102a9cae2
+  checksum: 10/adcb05f19109756a0f2a4cd1f3706ec04a3a304449d1f96f74e39bc2b2d8026730cb688aca09884462f829f92b652408e0495e1dc9aa31f653c6a75ba4489544
   languageName: node
   linkType: hard
 
@@ -6052,7 +6052,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:>=18.0.0, @types/node@npm:>=20.0.0, @types/node@npm:>=8.1.0, @types/node@npm:^22.19.15":
+"@types/node@npm:*, @types/node@npm:>=18, @types/node@npm:>=20.0.0, @types/node@npm:>=8.1.0, @types/node@npm:^22.19.15":
   version: 22.19.15
   resolution: "@types/node@npm:22.19.15"
   dependencies:
@@ -7107,7 +7107,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:^1.15.2, axios@npm:^1.7.5, axios@npm:^1.8.3":
+"axios@npm:^1.15.0, axios@npm:^1.15.2, axios@npm:^1.7.5":
   version: 1.16.0
   resolution: "axios@npm:1.16.0"
   dependencies:
@@ -9408,7 +9408,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"form-data@npm:^4.0.0, form-data@npm:^4.0.5":
+"form-data@npm:^4.0.4, form-data@npm:^4.0.5":
   version: 4.0.5
   resolution: "form-data@npm:4.0.5"
   dependencies:
@@ -9762,7 +9762,7 @@ __metadata:
     "@sentry/profiling-node": "npm:^10.51.0"
     "@sentry/react": "npm:^10.51.0"
     "@sentry/vite-plugin": "npm:^5.2.1"
-    "@slack/web-api": "npm:^7.9.1"
+    "@slack/web-api": "npm:^7.15.1"
     "@swc/core": "npm:^1.15.21"
     "@tanstack/react-query": "npm:^5.90.6"
     "@testing-library/dom": "npm:^10.4.1"
