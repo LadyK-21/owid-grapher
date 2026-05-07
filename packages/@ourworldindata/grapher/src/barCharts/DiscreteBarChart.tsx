@@ -515,7 +515,7 @@ export class DiscreteBarChart
     private renderAxis(): React.ReactElement {
         return (
             <HorizontalAxisZeroLine
-                horizontalAxis={this.yAxis}
+                axis={this.yAxis}
                 bounds={this.innerBounds}
                 strokeWidth={0.5}
                 // If the chart doesn't have negative values, then we

@@ -631,13 +631,13 @@ export class StackedDiscreteBarChart
                             preferredAxisPosition={innerBounds.bottom}
                         />
                         <HorizontalAxisGridLines
-                            horizontalAxis={yAxis}
+                            axis={yAxis}
                             bounds={innerBounds}
                         />
                     </>
                 )}
                 <HorizontalAxisZeroLine
-                    horizontalAxis={yAxis}
+                    axis={yAxis}
                     bounds={innerBounds}
                     strokeWidth={0.5}
                     // Moves the zero line a little to the left

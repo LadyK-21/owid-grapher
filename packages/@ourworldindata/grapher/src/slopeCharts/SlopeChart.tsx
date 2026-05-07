@@ -908,7 +908,7 @@ export class SlopeChart
                 {!this.yAxis.hideGridlines && (
                     <VerticalAxisZeroLine
                         bounds={bounds}
-                        verticalAxis={this.yAxis}
+                        axis={this.yAxis}
                         stroke="#ddd"
                         strokeDasharray="3,2"
                     />
