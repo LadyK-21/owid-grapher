@@ -132,6 +132,7 @@ export {
     guidedChartRegex,
     plaintextCalloutRegex,
     extractDetailsFromSyntax,
+    stripDetailOnDemandLinks,
     parseFloatOrUndefined,
     bind,
     merge,
