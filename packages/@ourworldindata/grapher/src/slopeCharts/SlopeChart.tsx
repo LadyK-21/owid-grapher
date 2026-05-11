@@ -88,6 +88,7 @@ type SVGMouseOrTouchEvent =
 const TIME_LABEL_PADDING = 4
 const VERTICAL_LABELS_PADDING = 4
 const SIDEBAR_MARGIN = 10
+const ZERO_LABEL_PADDING = 8
 
 export type SlopeChartProps = ChartComponentProps<SlopeChartState>
 
@@ -125,11 +126,16 @@ export class SlopeChart
         return this.props.bounds ?? DEFAULT_GRAPHER_BOUNDS
     }
 
-    @computed private get innerBounds(): Bounds {
+    @computed private get boundsWithVerticalPadding(): Bounds {
         return this.bounds
             .padTop(6) // Leave room for overflowing dots
             .padBottom(this.xAxisHeight + 3)
+    }
+
+    @computed private get innerBounds(): Bounds {
+        return this.boundsWithVerticalPadding
             .padRight(this.sidebarWidth + SIDEBAR_MARGIN)
+            .padLeft(this.zeroLineLabelWidth + ZERO_LABEL_PADDING)
     }
 
     /**
@@ -606,6 +612,35 @@ export class SlopeChart
         )
     }
 
+    @computed private get zeroLineLabelFontSize(): number {
+        return GRAPHER_FONT_SCALE_12 * this.fontSize
+    }
+
+    @computed private get shouldShowZeroLine(): boolean {
+        const hasAnyNonZeroStartValue = this.chartState.series.some(
+            (series) => series.start.value !== 0
+        )
+        const isZeroInDomain = this.yDomain[0] <= 0 && this.yDomain[1] >= 0
+
+        return (
+            !this.chartState.isRelativeMode &&
+            hasAnyNonZeroStartValue &&
+            isZeroInDomain
+        )
+    }
+
+    @computed private get zeroLineLabel(): string {
+        return this.chartState.yColumns[0].formatForTick(0)
+    }
+
+    @computed private get zeroLineLabelWidth(): number {
+        if (!this.shouldShowZeroLine) return 0
+
+        return Bounds.forText(this.zeroLineLabel, {
+            fontSize: this.zeroLineLabelFontSize,
+        }).width
+    }
+
     override componentDidMount() {
         exposeInstanceOnWindow(this)
     }
@@ -894,48 +929,29 @@ export class SlopeChart
     }
 
     private renderZeroLine(): React.ReactElement | null {
-        // Don't draw a zero line if all start values are zero,
-        // which is trivially true in relative mode
-        if (this.chartState.isRelativeMode) return null
+        if (!this.shouldShowZeroLine) return null
 
-        // Don't draw a zero line if all start values are zero
-        const areAllStartValuesZero = !this.chartState.series.some(
-            (series) => series.start.value !== 0
-        )
-        if (areAllStartValuesZero) return null
-
-        // Don't show a zero line if it's not in the domain
-        const isZeroInDomain =
-            this.yAxis.domain[0] <= 0 && this.yAxis.domain[1] >= 0
-        if (!isZeroInDomain) return null
-
-        const fontSize = GRAPHER_FONT_SCALE_12 * this.fontSize
-        const tickLabelOffset = 5
-
-        const tickLabel = this.yAxis.formatTick(0)
-        const tickLabelLength = Bounds.forText(tickLabel, { fontSize }).width
-        const bounds = this.innerBounds.padLeft(
-            tickLabelLength + tickLabelOffset
-        )
+        const bounds = this.boundsWithVerticalPadding
+        const boundsForLine = bounds.padLeft(this.zeroLineLabelWidth + 2)
 
         return (
             <>
                 {!this.yAxis.hideGridlines && (
                     <VerticalAxisZeroLine
-                        bounds={bounds}
+                        bounds={boundsForLine}
                         axis={this.yAxis}
                         stroke="#ddd"
                         strokeDasharray="3,2"
                     />
                 )}
                 <text
-                    x={this.innerBounds.left}
+                    x={bounds.left}
                     y={this.yAxis.place(0).toFixed(2)}
                     dy={dyFromAlign(VerticalAlign.middle)}
-                    fontSize={fontSize}
+                    fontSize={this.zeroLineLabelFontSize}
                     fill={GRAPHER_DARK_TEXT}
                 >
-                    {tickLabel}
+                    {this.zeroLineLabel}
                 </text>
             </>
         )
