@@ -1938,7 +1938,9 @@ export function lowercaseObjectKeys(
  * #dod:text_underscored-and-hyphenated
  * Duplicated in parser.ts
  */
-export const detailOnDemandRegex = /#dod:([\w\-_]+)/
+export const detailOnDemandRegex = /#dod:([A-Za-z0-9_-]+)/
+
+export const detailOnDemandLinkRegex = /\[([^\]]+)\]\(#dod:([A-Za-z0-9_-]+)\)/g
 
 export const guidedChartRegex = /#guide:(https?:\/\/[^\s]+)/
 
@@ -1957,6 +1959,10 @@ export function extractDetailsFromSyntax(str: string): string[] {
     return [...str.matchAll(new RegExp(detailOnDemandRegex, "g"))].map(
         ([_, term]) => term
     )
+}
+
+export function stripDetailOnDemandLinks(str: string): string {
+    return str.replace(detailOnDemandLinkRegex, "$1")
 }
 
 /**
