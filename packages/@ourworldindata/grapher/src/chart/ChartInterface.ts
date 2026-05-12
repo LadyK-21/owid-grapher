@@ -5,6 +5,7 @@ import {
     SeriesStrategy,
     Color,
     ChartErrorInfo,
+    SideWidths,
 } from "@ourworldindata/types"
 import { ColorScale } from "../color/ColorScale"
 import { HorizontalAxis, VerticalAxis } from "../axis/Axis"
@@ -80,4 +81,10 @@ export interface ChartInterface {
      * Only relevant for StackedBar charts.
      */
     shouldUseValueBasedColorScheme?: boolean
+
+    /**
+     * Width of the vertical labels rendered on each side of the chart's
+     * plotting area.
+     */
+    verticalLabelWidths?: SideWidths
 }

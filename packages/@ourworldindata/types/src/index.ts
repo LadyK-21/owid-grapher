@@ -763,6 +763,7 @@ export {
 export {
     type AdditionalGrapherDataFetchFn,
     type GrapherTrendArrowDirection,
+    type SideWidths,
 } from "./grapherTypes/GrapherTypes.js"
 export {
     type CatalogKey,

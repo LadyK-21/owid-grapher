@@ -780,6 +780,8 @@ export enum GrapherWindowType {
 
 export type GrapherTrendArrowDirection = "up" | "right" | "down"
 
+export type SideWidths = { left: number; right: number }
+
 /** Function type for loading additional indicator data from the catalog */
 export type AdditionalGrapherDataFetchFn = <K extends CatalogKey>(
     catalogKey: K
