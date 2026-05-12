@@ -5,7 +5,7 @@ import { GRAPHER_BACKGROUND } from "../color/ColorConstants"
 
 interface SlopeProps {
     series: RenderSlopeChartSeries
-    dotRadius?: number
+    dotRadius: number
     strokeWidth?: number
     outlineWidth?: number
     outlineStroke?: string

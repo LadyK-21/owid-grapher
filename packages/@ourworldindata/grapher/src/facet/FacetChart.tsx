@@ -39,8 +39,7 @@ import { ChartInterface, ChartState } from "../chart/ChartInterface"
 import {
     calculateAspectRatio,
     getFacetGridPadding,
-    getFontSize,
-    getLabelPadding,
+    getFacetLabelFontSize,
 } from "./FacetChartUtils"
 import {
     FacetSeries,
@@ -175,7 +174,7 @@ export class FacetChart
     }
 
     @computed private get labelPadding(): number {
-        return getLabelPadding(this.facetFontSize)
+        return 0.5 * this.facetLabelFontSize
     }
 
     @computed private get facetsContainerBounds(): Bounds {
@@ -183,7 +182,7 @@ export class FacetChart
             this.showLegend && this.legend.height > 0
                 ? this.legend.height + this.legendPadding
                 : 0
-        const labelSpace = this.facetFontSize + this.labelPadding
+        const labelSpace = this.facetLabelFontSize + this.labelPadding
         return this.bounds.padTop(legendHeightWithPadding + labelSpace)
     }
 
@@ -191,13 +190,21 @@ export class FacetChart
         return this.manager.fontSize ?? BASE_FONT_SIZE
     }
 
-    @computed private get facetFontSize(): number {
-        return getFontSize(this.bounds.width, this.series.length, this.fontSize)
+    @computed private get facetLabelFontSize(): number {
+        return getFacetLabelFontSize({
+            containerWidth: this.bounds.width,
+            count: this.series.length,
+            baseFontSize: this.fontSize,
+        })
+    }
+
+    @computed private get facetBaseFontSize(): number {
+        return this.facetLabelFontSize
     }
 
     @computed private get yAxisConfig(): AxisConfig {
         return new AxisConfig(this.manager.yAxisConfig, {
-            fontSize: this.facetFontSize,
+            fontSize: this.facetBaseFontSize,
         })
     }
 
@@ -231,7 +238,11 @@ export class FacetChart
     }
 
     @computed private get facetGridPadding(): SplitBoundsPadding {
-        return getFacetGridPadding({ baseFontSize: this.facetFontSize })
+        const { facetLabelFontSize, labelPadding } = this
+        return getFacetGridPadding({
+            labelFontSize: facetLabelFontSize,
+            labelPadding,
+        })
     }
 
     @computed private get hideFacetLegends(): boolean {
@@ -258,7 +269,7 @@ export class FacetChart
             this
 
         // Copy properties from manager to facets
-        const fontSize = this.facetFontSize
+        const fontSize = this.facetBaseFontSize
         // We are using `bounds` instead of `facetsContainerBounds` because the legend
         // is not yet created, and it is derived from the intermediate chart series.
         const gridBoundsArr = this.bounds.grid(
@@ -882,7 +893,7 @@ export class FacetChart
         return {
             maxWidth: Infinity, // Facet labels never wrap
             fontWeight: 700,
-            fontSize: this.facetFontSize,
+            fontSize: this.facetLabelFontSize,
             showRegionTooltip: !this.manager.isStatic,
         }
     }

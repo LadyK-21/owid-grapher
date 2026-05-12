@@ -85,6 +85,8 @@ type SVGMouseOrTouchEvent =
     | React.MouseEvent<SVGGElement>
     | React.TouchEvent<SVGGElement>
 
+const DOT_RADIUS = 3.5
+
 const TIME_LABEL_PADDING = 4
 const VERTICAL_LABELS_PADDING = 4
 const SIDEBAR_MARGIN = 10
@@ -128,7 +130,7 @@ export class SlopeChart
 
     @computed private get boundsWithVerticalPadding(): Bounds {
         return this.bounds
-            .padTop(6) // Leave room for overflowing dots
+            .padTop(DOT_RADIUS) // Leave room for overflowing dots
             .padBottom(this.xAxisHeight + 3)
     }
 
@@ -899,6 +901,7 @@ export class SlopeChart
                     <Slope
                         key={series.seriesName}
                         series={series}
+                        dotRadius={DOT_RADIUS}
                         strokeWidth={this.lineStrokeWidth}
                         outlineWidth={0.5}
                     />
