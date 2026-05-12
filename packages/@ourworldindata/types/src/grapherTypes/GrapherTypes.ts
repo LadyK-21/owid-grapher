@@ -743,7 +743,7 @@ export const grapherKeysToSerialize = [
     "missingDataStrategy",
     "peerCountryStrategy",
 
-    // internals
+    // Internals
     "adminBaseUrl",
     "bakedGrapherURL",
 ]
