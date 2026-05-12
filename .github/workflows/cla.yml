@@ -1,0 +1,74 @@
+name: "CLA Assistant"
+
+# Blocks pull requests from contributors who haven't signed the Contributor
+# Agreement (see /CONTRIBUTOR_AGREEMENT.md). Contributors sign by posting a
+# magic comment on their PR. Signatures are stored as a JSON file on the
+# `cla-signatures` branch of this repository.
+#
+# NOTE: `contributor-assistant/github-action` was archived on 2026-03-23.
+# v2.6.1 is the final release and existing releases remain functional, but
+# it no longer receives updates. If the action breaks (e.g. due to a future
+# GitHub API change), create and maintain a fork.
+#
+# Manual setup steps required before this workflow works:
+#   1. Create an unprotected branch named `cla-signatures` in this repo.
+#      The action will commit the signatures JSON file to this branch.
+#   2. Allow GitHub Actions to create and approve pull requests on this
+#      branch (Settings → Actions → General → Workflow permissions).
+#   3. If the repo's default workflow permissions are read-only, they will
+#      be overridden by the explicit `permissions:` block below.
+#   4. Verify the allowlist below — add any missing OWID staff or bot
+#      accounts that legitimately push changes.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+# Explicit permissions because the repo's default workflow permissions may
+# be set to read-only.
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  CLAAssistant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "CLA Assistant"
+        if:
+          (github.event.comment.body == 'recheck' || github.event.comment.body == 'I
+          have read the Contributor Agreement and I hereby sign it') ||
+          github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-signatures: "signatures/version1/cla.json"
+          path-to-document:
+            "https://github.com/owid/owid-grapher/blob/master/CONTRIBUTOR\
+            _AGREEMENT.md"
+          branch: "cla-signatures"
+          custom-pr-sign-comment:
+            "I have read the Contributor Agreement and I hereby sign
+            it"
+          custom-notsigned-prcomment:
+            "Thanks for your contribution! Before we can merge,
+            we need you to sign our [Contributor
+            Agreement]($pathToCLADocument), which transfers ownership
+            of the contribution to Global Change Data Lab (the charity
+            that operates Our World in Data) and licences it back to
+            you for your own use. To sign, please post a comment on
+            this pull request containing **exactly** this text: `I
+            have read the Contributor Agreement and I hereby sign it`.
+            If you're contributing on behalf of an employer, please
+            email us before signing so we can put the appropriate
+            entity-level agreement in place."
+          custom-allsigned-prcomment:
+            "All contributors have signed the Contributor
+            Agreement. Thank you!"
+          lock-pullrequest-aftermerge: true
+          allowlist: danyx23,ikesau,lucasrodes,marcelgerber,rakyi,mlbrgl,Marigold,pabloarosado,sophiamersmann,bnjmacdonald,spoonerf,veronikasamborska1994,edomt,paarriagadap,owidbot,dependabot[bot],copilot-swe-agent[bot]

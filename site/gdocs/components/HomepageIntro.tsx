@@ -244,8 +244,8 @@ function DonationCta() {
             <FontAwesomeIcon icon={faHeart} />
             <div>
                 <p className="homepage-intro__donation-message note-12-medium">
-                    We are a non-profit — all our work is free to use and open
-                    source.
+                    We are a non-profit — all our work is free to use and openly
+                    licensed.
                 </p>
                 <a
                     href="/donate"
