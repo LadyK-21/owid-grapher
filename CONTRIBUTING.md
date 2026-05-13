@@ -16,9 +16,9 @@ transfers ownership of the contribution to Global Change Data Lab (the
 charity that operates Our World in Data) and licences it back to you for
 your own use.
 
-The CLA Assistant bot will prompt you to sign the Contributor Agreement on
-your first pull request. Pull requests cannot be merged until the agreement
-has been accepted.
+For now, we handle Contributor Agreement acceptance manually. If your pull
+request is eligible for review, an Our World in Data staff member will ask you
+to confirm acceptance of the agreement before the pull request can be merged.
 
 If you are contributing on behalf of an employer or other organisation,
 please contact us before submitting a pull request so that the appropriate

@@ -96,6 +96,6 @@ You represent that:
 
 ## Acceptance
 
-You accept this Agreement by signing it via the CLA Assistant bot on your first pull request to the Project. By clicking “I agree”, signing through CLA Assistant, or otherwise accepting this Agreement through GCDL’s designated contribution workflow, You agree that this electronic acceptance is intended to have the same legal effect as a written signature.
+You accept this Agreement by confirming acceptance through GCDL’s designated contribution workflow, such as a pull request comment or another written process specified by GCDL. You agree that this electronic acceptance is intended to have the same legal effect as a written signature.
 
 If you are contributing on behalf of an employer or other entity, please contact GCDL before submitting a Contribution so that the appropriate Entity-level agreement can be put in place.
