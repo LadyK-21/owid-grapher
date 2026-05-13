@@ -12,7 +12,7 @@ To request permission, contact [licensing@ourworldindata.org](mailto:licensing@o
 
 ## **Contributions**
 
-Contributions to this repository are accepted only under the terms of the [Contributor Agreement](https://github.com/owid/owid-grapher/blob/5183c67796fe20933eb4d3a0900037dd711ab176/CONTRIBUTOR_AGREEMENT.md). By submitting a contribution, you agree to those terms.
+Contributions to this repository are accepted only under the terms of the [Contributor Agreement](https://github.com/owid/owid-grapher/blob/master/CONTRIBUTOR_AGREEMENT.md). By submitting a contribution, you agree to those terms.
 
 ## **Historical note — prior MIT licence**
 
