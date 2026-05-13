@@ -70,3 +70,4 @@ playwright-report/
 typesense-data/
 
 .toolbox/
+.pi/

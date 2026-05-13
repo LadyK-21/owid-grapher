@@ -10,7 +10,7 @@
     },
     "keywords": [],
     "author": "",
-    "license": "MIT",
+    "license": "SEE LICENSE IN LICENSE.md",
     "dependencies": {
         "zod": "^4.1.11"
     }

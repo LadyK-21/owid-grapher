@@ -165,13 +165,15 @@ export const SiteFooter = (props: SiteFooterProps) => {
                         <a href="https://creativecommons.org/licenses/by/4.0/">
                             CC BY
                         </a>
-                        , unless stated otherwise. Tools and software we develop
-                        are open source under the{" "}
+                        , unless stated otherwise. The source code for our tools
+                        and software is made publicly available for transparency
+                        and educational reference under a{" "}
                         <a href="https://github.com/owid/owid-grapher/blob/master/LICENSE.md">
-                            MIT license
+                            custom license
                         </a>
-                        . Third-party materials, including some charts and data,
-                        are subject to third-party licenses. See our{" "}
+                        . Re-use requires permission. Third-party materials,
+                        including some charts and data, are subject to
+                        third-party licenses. See our{" "}
                         <a href={`${linkBaseUrl}/faqs`}>FAQs</a> for more
                         details.
                     </p>

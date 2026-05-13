@@ -58,13 +58,13 @@ export function HomepageSearch(props: { className?: string }) {
                     across {commafyNumber(topicCount)} topics
                 </div>
                 <p className="homepage-search__tagline">
-                    All free: open access and open source
+                    All free: open access and openly licensed
                 </p>
             </div>
         ) : (
             <p className="homepage-search__tagline">
                 Thousands of charts across 200 topics - All free: open access
-                and open source
+                and openly licensed
             </p>
         )
     return (
