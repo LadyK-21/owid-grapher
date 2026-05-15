@@ -56,7 +56,6 @@ export interface DropdownProps<DropdownOption extends BasicDropdownOption> {
         option: DropdownOption | null
     ) => React.ReactNode | undefined
     renderMenuOption?: (option: DropdownOption) => React.ReactNode
-    portalContainer?: HTMLElement
     "data-track-note"?: string
     "aria-label"?: string
 }
@@ -93,7 +92,6 @@ export function Dropdown<DropdownOption extends BasicDropdownOption>({
     isSearchable,
     renderTriggerValue,
     renderMenuOption,
-    portalContainer,
     ...otherProps
 }: DropdownProps<DropdownOption>): React.ReactElement {
     const { contains } = useFilter({ sensitivity: "base" })
@@ -160,13 +158,52 @@ export function Dropdown<DropdownOption extends BasicDropdownOption>({
         </ListBox>
     )
 
+    const popover = (
+        <Popover
+            className={cx(
+                "grapher-dropdown-menu",
+                "portaled-popover",
+                menuClassName
+            )}
+            offset={4}
+        >
+            {isSearchable ? (
+                // If inputValue is provided, the component is controlled
+                // and we expect the filtering to happen outside of it.
+                <Autocomplete filter={inputValue ? undefined : contains}>
+                    <SearchField
+                        className="grapher-dropdown-search"
+                        aria-label="Search"
+                        autoFocus
+                        value={inputValue}
+                        onChange={onInputChange}
+                    >
+                        <span className="grapher-dropdown-search-icon" />
+                        <Input
+                            className="grapher-dropdown-search-input"
+                            style={{
+                                fontSize: isTouchDevice() ? 16 : undefined,
+                            }}
+                        />
+                        <Button className="grapher-dropdown-search-reset">
+                            <FontAwesomeIcon icon={faTimesCircle} aria-hidden />
+                        </Button>
+                    </SearchField>
+                    {listBox}
+                </Autocomplete>
+            ) : (
+                listBox
+            )}
+        </Popover>
+    )
+
     return (
         <Select
             className={cx("grapher-dropdown", className)}
             // null means no selection, undefined means the component is
             // uncontrolled, so we need to set it explicitly.
-            selectedKey={value?.value ?? null}
-            onSelectionChange={handleSelectionChange}
+            value={value?.value ?? null}
+            onChange={handleSelectionChange}
             placeholder={placeholder}
             isDisabled={isDisabled}
             {...otherProps}
@@ -196,46 +233,7 @@ export function Dropdown<DropdownOption extends BasicDropdownOption>({
             )}
             {/* Note: "portaled-popover" class is used by SlideInDrawer to detect
                 clicks inside portaled popovers. Update both if renaming. */}
-            <Popover
-                className={cx(
-                    "grapher-dropdown-menu",
-                    "portaled-popover",
-                    menuClassName
-                )}
-                offset={4}
-                UNSTABLE_portalContainer={portalContainer}
-            >
-                {isSearchable ? (
-                    // If inputValue is provided, the component is controlled
-                    // and we expect the filtering to happen outside of it.
-                    <Autocomplete filter={inputValue ? undefined : contains}>
-                        <SearchField
-                            className="grapher-dropdown-search"
-                            aria-label="Search"
-                            autoFocus
-                            value={inputValue}
-                            onChange={onInputChange}
-                        >
-                            <span className="grapher-dropdown-search-icon" />
-                            <Input
-                                className="grapher-dropdown-search-input"
-                                style={{
-                                    fontSize: isTouchDevice() ? 16 : undefined,
-                                }}
-                            />
-                            <Button className="grapher-dropdown-search-reset">
-                                <FontAwesomeIcon
-                                    icon={faTimesCircle}
-                                    aria-hidden
-                                />
-                            </Button>
-                        </SearchField>
-                        {listBox}
-                    </Autocomplete>
-                ) : (
-                    listBox
-                )}
-            </Popover>
+            {popover}
         </Select>
     )
 }
