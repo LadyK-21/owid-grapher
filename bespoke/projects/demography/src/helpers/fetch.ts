@@ -23,8 +23,7 @@ export const useDemographyMetadata = (): {
 } => {
     const result = useQuery({
         queryKey: queryKeys.metadata(),
-        queryFn: () =>
-            fetchJson<DemographyMetadata>(METADATA_PATH + "?nocache"),
+        queryFn: () => fetchJson<DemographyMetadata>(METADATA_PATH),
     })
 
     return { data: result.data, status: result.status }
@@ -46,9 +45,10 @@ export const useDemographyEntityData = (
     const result = useQuery({
         queryKey: queryKeys.data(entitySlug!),
         queryFn: async (): Promise<CountryData> => {
-            const path =
-                DATA_PATH.replace("{countrySlug}", entitySlug!.toString()) +
-                "?nocache"
+            const path = DATA_PATH.replace(
+                "{countrySlug}",
+                entitySlug!.toString()
+            )
             return fetchJson<CountryData>(path)
         },
         enabled: entitySlug !== undefined,
